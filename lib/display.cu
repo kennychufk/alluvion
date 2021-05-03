@@ -208,6 +208,7 @@ void Display::resize_callback(GLFWwindow *window, int width, int height) {
   display->trackball_.setScreenSize(width, height);
   display->width_ = width;
   display->height_ = height;
+  glViewport(0, 0, width, height);
 }
 
 void Display::run() {

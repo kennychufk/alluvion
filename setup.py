@@ -41,6 +41,7 @@ class CMakeBuild(build_ext):
             os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = [
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
+            '-DCMAKE_CUDA_ARCHITECTURES=86',
             '-DPYTHON_EXECUTABLE=' + sys.executable
         ]
 

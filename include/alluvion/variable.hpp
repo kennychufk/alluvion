@@ -11,13 +11,15 @@
 #include "alluvion/data_type.hpp"
 
 namespace alluvion {
-template <unsigned int D, typename M>
+template <U D, typename M>
 class Variable : public BaseVariable {
  public:
   Variable() : ptr_(nullptr) {}
   Variable(const Variable& var) = default;
-  Variable(std::array<unsigned int, D> const& shape)
-      : shape_(shape), ptr_(nullptr) {
+  Variable(std::array<U, D> const& shape) : ptr_(nullptr) {
+    for (U i = 0; i < D; ++i) {
+      shape_[i] = shape[i];
+    }
     Allocator::allocate<M>(&ptr_, get_num_elements());
     // std::cout << "constructed Variable with size " << shape_[0] << ", "
     //           << shape_[1] << ", " << shape_[2] << " at " << ptr_ <<
@@ -35,24 +37,28 @@ class Variable : public BaseVariable {
     if (typeid(M) == typeid(U)) return NumericType::u32;
     return NumericType::undefined;
   }
-  constexpr unsigned int get_vector_size() const {
-    if (typeid(M) == typeid(F) || typeid(M) == typeid(I) ||
-        typeid(M) == typeid(U))
-      return 1;
+  constexpr U get_vector_size() const {
+    if (typeid(M) == typeid(F)) return 1;
+    if (typeid(M) == typeid(I)) return 1;
+    if (typeid(M) == typeid(U)) return 1;
     if (typeid(M) == typeid(F2)) return 2;
+    if (typeid(M) == typeid(I2)) return 2;
+    if (typeid(M) == typeid(U2)) return 2;
     if (typeid(M) == typeid(F3)) return 3;
+    if (typeid(M) == typeid(I3)) return 3;
+    if (typeid(M) == typeid(U3)) return 3;
     if (typeid(M) == typeid(F4)) return 4;
+    if (typeid(M) == typeid(I4)) return 4;
+    if (typeid(M) == typeid(U4)) return 4;
     return 0;
   }
-  unsigned int get_num_vectors() const {
+  U get_num_vectors() const {
     return std::accumulate(std::begin(shape_), std::end(shape_), 1,
-                           std::multiplies<unsigned int>());
+                           std::multiplies<U>());
   }
-  unsigned int get_num_elements() const {
-    return get_num_vectors() * get_vector_size();
-  }
-  unsigned int get_num_bytes() const { return get_num_vectors() * sizeof(M); }
-  void get_bytes(void* dst, unsigned int num_bytes) const {
+  U get_num_elements() const { return get_num_vectors() * get_vector_size(); }
+  U get_num_bytes() const { return get_num_vectors() * sizeof(M); }
+  void get_bytes(void* dst, U num_bytes) const {
     if (num_bytes == 0) return;
     if (num_bytes > get_num_bytes()) {
       std::cerr << "retrieving more than allocated" << std::endl;
@@ -60,7 +66,7 @@ class Variable : public BaseVariable {
     }
     Allocator::copy_to_host(dst, ptr_, num_bytes);
   }
-  void set_bytes(void const* src, unsigned int num_bytes) {
+  void set_bytes(void const* src, U num_bytes) {
     if (num_bytes == 0) return;
     if (num_bytes > get_num_bytes()) {
       std::cerr << "setting more than allocated: " << num_bytes << " "
@@ -69,18 +75,54 @@ class Variable : public BaseVariable {
     }
     Allocator::copy_to_device(ptr_, src, num_bytes);
   }
+  void set_zero() { Allocator::set_device(ptr_, get_num_bytes()); }
 
   constexpr __device__ M& operator()(U i) {
-    return (D == 1) ? *(reinterpret_cast<M*>(ptr_) + i)
-                    : *(reinterpret_cast<M*>(0));
+    return *(reinterpret_cast<M*>(ptr_) + i);
   }
 
   constexpr __device__ M& operator()(U i, U j) {
-    return (D == 2) ? *(reinterpret_cast<M*>(ptr_) + i * shape_[1] + j)
+    return (D == 2) ? *(reinterpret_cast<M*>(ptr_) + (i * shape_[1] + j))
                     : *(reinterpret_cast<M*>(0));
   }
 
-  std::array<unsigned int, D> shape_;
+  constexpr __device__ M& operator()(U i, U j, U k) {
+    return (D == 3) ? *(reinterpret_cast<M*>(ptr_) +
+                        ((i * shape_[1] + j) * shape_[2] + k))
+                    : *(reinterpret_cast<M*>(0));
+  }
+
+  constexpr __device__ M& operator()(I3 index) {
+    return (D == 3) ? *(reinterpret_cast<M*>(ptr_) +
+                        ((index.x * shape_[1] + index.y) * shape_[2] + index.z))
+                    : *(reinterpret_cast<M*>(0));
+  }
+
+  constexpr __device__ M& operator()(U i, U j, U k, U l) {
+    return (D == 4) ? *(reinterpret_cast<M*>(ptr_) +
+                        (((i * shape_[1] + j) * shape_[2] + k) * shape_[3] + l))
+                    : *(reinterpret_cast<M*>(0));
+  }
+
+  constexpr __device__ M& operator()(U4 index) {
+    return (D == 4)
+               ? *(reinterpret_cast<M*>(ptr_) +
+                   (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
+                        shape_[3] +
+                    index.w))
+               : *(reinterpret_cast<M*>(0));
+  }
+
+  constexpr __device__ M& operator()(I3 index, U l) {
+    return (D == 4)
+               ? *(reinterpret_cast<M*>(ptr_) +
+                   (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
+                        shape_[3] +
+                    l))
+               : *(reinterpret_cast<M*>(0));
+  }
+
+  U shape_[D];
   void* ptr_;
 };
 

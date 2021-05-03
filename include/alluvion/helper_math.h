@@ -848,6 +848,9 @@ inline __host__ __device__ void operator*=(float3 &a, float b) {
   a.y *= b;
   a.z *= b;
 }
+inline __host__ __device__ float3 operator*(float3 a, int3 b) {
+  return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
 
 inline __host__ __device__ double3 operator*(double3 a, double3 b) {
   return make_double3(a.x * b.x, a.y * b.y, a.z * b.z);
@@ -867,6 +870,9 @@ inline __host__ __device__ void operator*=(double3 &a, double b) {
   a.x *= b;
   a.y *= b;
   a.z *= b;
+}
+inline __host__ __device__ double3 operator*(double3 a, int3 b) {
+  return make_double3(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
 inline __host__ __device__ int3 operator*(int3 a, int3 b) {
@@ -1397,6 +1403,14 @@ inline __host__ __device__ uint dot(uint4 a, uint4 b) {
 ////////////////////////////////////////////////////////////////////////////////
 // length
 ////////////////////////////////////////////////////////////////////////////////
+//
+inline __host__ __device__ float length_sqr(float2 v) { return dot(v, v); }
+inline __host__ __device__ float length_sqr(float3 v) { return dot(v, v); }
+inline __host__ __device__ float length_sqr(float4 v) { return dot(v, v); }
+
+inline __host__ __device__ double length_sqr(double2 v) { return dot(v, v); }
+inline __host__ __device__ double length_sqr(double3 v) { return dot(v, v); }
+inline __host__ __device__ double length_sqr(double4 v) { return dot(v, v); }
 
 inline __host__ __device__ float length(float2 v) { return sqrtf(dot(v, v)); }
 inline __host__ __device__ float length(float3 v) { return sqrtf(dot(v, v)); }
@@ -1440,13 +1454,13 @@ inline __host__ __device__ double4 normalize(double4 v) {
 // floor
 ////////////////////////////////////////////////////////////////////////////////
 
-inline __host__ __device__ float2 floorf(float2 v) {
+inline __host__ __device__ float2 floor(float2 v) {
   return make_float2(floorf(v.x), floorf(v.y));
 }
-inline __host__ __device__ float3 floorf(float3 v) {
+inline __host__ __device__ float3 floor(float3 v) {
   return make_float3(floorf(v.x), floorf(v.y), floorf(v.z));
 }
-inline __host__ __device__ float4 floorf(float4 v) {
+inline __host__ __device__ float4 floor(float4 v) {
   return make_float4(floorf(v.x), floorf(v.y), floorf(v.z), floorf(v.w));
 }
 

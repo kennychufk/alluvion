@@ -4,13 +4,12 @@
 #include "alluvion/graphical_allocator.hpp"
 #include "alluvion/variable.hpp"
 namespace alluvion {
-template <unsigned int D, typename M>
+template <U D, typename M>
 class GraphicalVariable : public Variable<D, M> {
  public:
   using Base = Variable<D, M>;
-  GraphicalVariable(std::array<unsigned int, D> const& shape)
-      : vbo_(0), res_(nullptr) {
-    Base::shape_ = shape;
+  GraphicalVariable(std::array<U, D> const& shape)
+      : vbo_(0), res_(nullptr), Base(shape) {
     std::cout << "here" << std::endl;
     GraphicalAllocator::allocate<M>(&vbo_, &res_, Base::get_num_elements());
     std::cout << "allocated" << std::endl;
