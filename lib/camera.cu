@@ -23,7 +23,7 @@ const glm::vec3& Camera::getUp() { return mUp; }
 void Camera::reset() {
   mEye.x = 0.f;
   mEye.y = 0.f;
-  mEye.z = 1.f;
+  mEye.z = 20.f;
   mCenter.x = 0.f;
   mCenter.y = 0.f;
   mCenter.z = 0.f;
