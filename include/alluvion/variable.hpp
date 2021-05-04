@@ -25,9 +25,7 @@ class Variable : public BaseVariable {
     //           << shape_[1] << ", " << shape_[2] << " at " << ptr_ <<
     //           std::endl;
   }
-  virtual ~Variable() {
-    std::cout << "destructing Variable with addr " << ptr_ << std::endl;
-  }
+  virtual ~Variable() {}
   virtual void set_pointer(void* ptr) override { ptr_ = ptr; }
   constexpr NumericType get_type() const {
     if (typeid(M) == typeid(F) || typeid(M) == typeid(F2) ||
@@ -66,6 +64,7 @@ class Variable : public BaseVariable {
     }
     Allocator::copy_to_host(dst, ptr_, num_bytes);
   }
+  void get_bytes(void* dst) const { get_bytes(dst, get_num_bytes()); }
   void set_bytes(void const* src, U num_bytes) {
     if (num_bytes == 0) return;
     if (num_bytes > get_num_bytes()) {
@@ -75,51 +74,52 @@ class Variable : public BaseVariable {
     }
     Allocator::copy_to_device(ptr_, src, num_bytes);
   }
+  void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
   void set_zero() { Allocator::set_device(ptr_, get_num_bytes()); }
 
   constexpr __device__ M& operator()(U i) {
-    return *(reinterpret_cast<M*>(ptr_) + i);
+    return *(static_cast<M*>(ptr_) + i);
   }
 
   constexpr __device__ M& operator()(U i, U j) {
-    return (D == 2) ? *(reinterpret_cast<M*>(ptr_) + (i * shape_[1] + j))
-                    : *(reinterpret_cast<M*>(0));
+    return (D == 2) ? *(static_cast<M*>(ptr_) + (i * shape_[1] + j))
+                    : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   constexpr __device__ M& operator()(U i, U j, U k) {
-    return (D == 3) ? *(reinterpret_cast<M*>(ptr_) +
+    return (D == 3) ? *(static_cast<M*>(ptr_) +
                         ((i * shape_[1] + j) * shape_[2] + k))
-                    : *(reinterpret_cast<M*>(0));
+                    : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   constexpr __device__ M& operator()(I3 index) {
-    return (D == 3) ? *(reinterpret_cast<M*>(ptr_) +
+    return (D == 3) ? *(static_cast<M*>(ptr_) +
                         ((index.x * shape_[1] + index.y) * shape_[2] + index.z))
-                    : *(reinterpret_cast<M*>(0));
+                    : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   constexpr __device__ M& operator()(U i, U j, U k, U l) {
-    return (D == 4) ? *(reinterpret_cast<M*>(ptr_) +
+    return (D == 4) ? *(static_cast<M*>(ptr_) +
                         (((i * shape_[1] + j) * shape_[2] + k) * shape_[3] + l))
-                    : *(reinterpret_cast<M*>(0));
+                    : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   constexpr __device__ M& operator()(U4 index) {
     return (D == 4)
-               ? *(reinterpret_cast<M*>(ptr_) +
+               ? *(static_cast<M*>(ptr_) +
                    (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
                         shape_[3] +
                     index.w))
-               : *(reinterpret_cast<M*>(0));
+               : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   constexpr __device__ M& operator()(I3 index, U l) {
     return (D == 4)
-               ? *(reinterpret_cast<M*>(ptr_) +
+               ? *(static_cast<M*>(ptr_) +
                    (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
                         shape_[3] +
                     l))
-               : *(reinterpret_cast<M*>(0));
+               : *(static_cast<M*>(ptr_ - 0xffffffff));
   }
 
   U shape_[D];

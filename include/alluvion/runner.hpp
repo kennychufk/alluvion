@@ -15,9 +15,9 @@ class Runner {
   virtual ~Runner();
   template <typename T>
   static void sum(void* dst, void* ptr, U num_elements) {
-    *reinterpret_cast<T*>(dst) = thrust::reduce(
-        thrust::device_ptr<T>(reinterpret_cast<T*>(ptr)),
-        thrust::device_ptr<T>(reinterpret_cast<T*>(ptr)) + num_elements);
+    *static_cast<T*>(dst) = thrust::reduce(
+        thrust::device_ptr<T>(static_cast<T*>(ptr)),
+        thrust::device_ptr<T>(static_cast<T*>(ptr)) + num_elements);
   }
 
   template <class Lambda>
@@ -981,7 +981,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> particle_x,
         U neighbor_occupancy =
             min(pid_length(neighbor_ipos), cnst::max_num_particles_per_cell);
         for (U k = 0; k < neighbor_occupancy; ++k) {
-          U p_j = pid_length(neighbor_ipos, k);
+          U p_j = pid(neighbor_ipos, k);
           if (p_j != p_i &&
               length_sqr(x - particle_x(p_j)) < cnst::kernel_radius_sqr) {
             particle_neighbors(p_i, num_neighbors) = p_j;
@@ -1053,7 +1053,7 @@ __global__ void compute_density_boundary(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF density = 0.0;
     TF3 x_i = particle_x(p_i);
     for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
@@ -1062,7 +1062,7 @@ __global__ void compute_density_boundary(
       density += vj * displacement_cubic_kernel(x_i - bx_j);
     }
     particle_density(p_i) += density * cnst::density0;
-  }
+  });
 }
 
 // Viscosity_Standard
@@ -1074,7 +1074,7 @@ __global__ void compute_viscosity_fluid(Variable<1, TF3> particle_x,
                                         Variable<1, U> particle_num_neighbors,
                                         Variable<1, TF3> particle_a,
                                         U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF d = 10.0;
     TF3 v_i = particle_v(p_i);
     TF3 x_i = particle_x(p_i);
@@ -1091,7 +1091,7 @@ __global__ void compute_viscosity_fluid(Variable<1, TF3> particle_x,
             displacement_cubic_kernel_grad(xixj);
     }
     particle_a(p_i) += da;
-  }
+  });
 }
 
 template <typename TF3, typename TF>
@@ -1102,7 +1102,7 @@ __global__ void compute_viscosity_boundary(
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega,
     Variable<1, TF> boundary_viscosity, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF d = 10.0;
     TF3 v_i = particle_v(p_i);
     TF3 x_i = particle_x(p_i);
@@ -1173,15 +1173,15 @@ __global__ void compute_viscosity_boundary(
       }
     }
     particle_a(p_i) += da;
-  }
+  });
 }
 
 template <typename TF3, typename TF>
 __global__ void reset_angular_acceleration(
     Variable<1, TF3> particle_angular_acceleration, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_angular_acceleration(p_i) = make_zeros<TF3>();
-  }
+  });
 }
 
 // Micropolar Model
@@ -1192,7 +1192,7 @@ __global__ void compute_vorticity_fluid(
     Variable<1, TF3> particle_a, Variable<1, TF3> particle_angular_acceleration,
     Variable<2, U> particle_neighbors, TF dt,
     Variable<1, U> particle_num_neighbors, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v_i = particle_v(p_i);
     TF3 omegai = particle_omega(p_i);
@@ -1221,7 +1221,7 @@ __global__ void compute_vorticity_fluid(
 
     particle_a(p_i) += da;
     particle_angular_acceleration(p_i) += dangular_acc;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void compute_vorticity_boundary(
@@ -1231,7 +1231,7 @@ __global__ void compute_vorticity_boundary(
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v_i = particle_v(p_i);
     TF3 omegai = particle_omega(p_i);
@@ -1255,16 +1255,16 @@ __global__ void compute_vorticity_boundary(
     }
     particle_a(p_i) += da;
     particle_angular_acceleration(p_i) += dangular_acc;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void integrate_angular_acceleration(
     Variable<1, TF3> particle_omega,
     Variable<1, TF3> particle_angular_acceleration, TF dt, U num_neighbors,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_omega(p_i) += dt * particle_angular_acceleration(p_i);
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void compute_normal(Variable<1, TF3> particle_x,
@@ -1273,7 +1273,7 @@ __global__ void compute_normal(Variable<1, TF3> particle_x,
                                Variable<2, U> particle_neighbors,
                                Variable<1, U> particle_num_neighbors,
                                U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 ni = make_zeros<TF3>();
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
@@ -1284,7 +1284,7 @@ __global__ void compute_normal(Variable<1, TF3> particle_x,
             displacement_cubic_kernel_grad(x_i - x_j);
     }
     particle_normal(p_i) = ni;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void compute_surface_tension_fluid(
@@ -1292,7 +1292,7 @@ __global__ void compute_surface_tension_fluid(
     Variable<1, TF3> particle_normal, Variable<1, TF3> particle_a,
     Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 ni = particle_normal(p_i);
     TF density_i = particle_density(p_i);
@@ -1314,7 +1314,7 @@ __global__ void compute_surface_tension_fluid(
       da += k_ij * accel;
     }
     particle_a(p_i) += da;
-  }
+  });
 }
 
 template <typename TF3, typename TF>
@@ -1323,7 +1323,7 @@ __global__ void compute_surface_tension_boundary(
     Variable<1, TF3> particle_a, Variable<1, TF3> particle_normal,
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 ni = particle_normal(p_i);
     TF density_i = particle_density(p_i);
@@ -1340,25 +1340,24 @@ __global__ void compute_surface_tension_boundary(
       }
     }
     particle_a(p_i) += da;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void calculate_cfl_v2(Variable<1, TF3> particle_v,
                                  Variable<1, TF3> particle_a,
                                  Variable<1, TF> particle_cfl_v2, TF dt,
                                  U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_cfl_v2(p_i) += length_sqr(particle_v(p_i) + particle_a(p_i) * dt) /
                             num_particles / num_particles;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void predict_advection0_fluid_advect(Variable<1, TF3> particle_v,
                                                 Variable<1, TF3> particle_a,
                                                 TF dt, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
-    particle_v(p_i) += dt * particle_a(p_i);
-  }
+  forThreadMappedToElement(
+      num_particles, [&](U p_i) { particle_v(p_i) += dt * particle_a(p_i); });
 }
 template <typename TF3, typename TF>
 __global__ void predict_advection0_fluid(Variable<1, TF3> particle_x,
@@ -1367,7 +1366,7 @@ __global__ void predict_advection0_fluid(Variable<1, TF3> particle_x,
                                          Variable<2, U> particle_neighbors,
                                          Variable<1, U> particle_num_neighbors,
                                          U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i) / cnst::density0;
     TF density2 = density * density;
@@ -1381,14 +1380,14 @@ __global__ void predict_advection0_fluid(Variable<1, TF3> particle_x,
              displacement_cubic_kernel_grad(x_i - x_j);
     }
     particle_dii(p_i) = dii;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void predict_advection0_boundary(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
     Variable<1, TF3> particle_dii, Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i) / cnst::density0;
     TF density2 = density * density;
@@ -1399,15 +1398,15 @@ __global__ void predict_advection0_boundary(
       dii -= vj / density2 * displacement_cubic_kernel_grad(x_i - bx_j);
     }
     particle_dii(p_i) += dii;
-  }
+  });
 }
 template <typename TF>
 __global__ void reset_last_pressure(Variable<1, TF> particle_pressure,
                                     Variable<1, TF> particle_last_pressure,
                                     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_last_pressure(p_i) = particle_pressure(p_i) * 0.5;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void predict_advection1_fluid(
@@ -1416,7 +1415,7 @@ __global__ void predict_advection1_fluid(
     Variable<1, TF> particle_aii, Variable<1, TF> particle_density,
     Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     TF dt, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF3 dii = particle_dii(p_i);
@@ -1441,7 +1440,7 @@ __global__ void predict_advection1_fluid(
     }
     particle_adv_density(p_i) = density_adv;
     particle_aii(p_i) = aii;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void predict_advection1_boundary(
@@ -1452,7 +1451,7 @@ __global__ void predict_advection1_boundary(
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, TF dt,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF3 dii = particle_dii(p_i);
@@ -1477,7 +1476,7 @@ __global__ void predict_advection1_boundary(
     }
     particle_adv_density(p_i) += density_adv;
     particle_aii(p_i) += aii;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void pressure_solve_iteration0(
@@ -1485,7 +1484,7 @@ __global__ void pressure_solve_iteration0(
     Variable<1, TF> particle_last_pressure, Variable<1, TF3> particle_dij_pj,
     Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
 
     // target
@@ -1503,7 +1502,7 @@ __global__ void pressure_solve_iteration0(
                 displacement_cubic_kernel_grad(x_i - x_j);
     }
     particle_dij_pj(p_i) = dij_pj;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void pressure_solve_iteration1_fluid(
@@ -1512,7 +1511,7 @@ __global__ void pressure_solve_iteration1_fluid(
     Variable<1, TF3> particle_dij_pj, Variable<1, TF> particle_sum_tmp,
     Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF last_pressure = particle_last_pressure(p_i);
     TF3 dij_pj = particle_dij_pj(p_i);
@@ -1537,14 +1536,14 @@ __global__ void pressure_solve_iteration1_fluid(
                      grad_w);
     }
     particle_sum_tmp(p_i) = sum_tmp;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void pressure_solve_iteration1_boundary(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_dij_pj,
     Variable<1, TF> particle_sum_tmp, Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 dij_pj = particle_dij_pj(p_i);
 
@@ -1556,14 +1555,14 @@ __global__ void pressure_solve_iteration1_boundary(
       sum_tmp += vj * dot(dij_pj, displacement_cubic_kernel_grad(x_i - bx_j));
     }
     particle_sum_tmp(p_i) += sum_tmp;
-  }
+  });
 }
 template <typename TF>
 __global__ void pressure_solve_iteration1_summarize(
     Variable<1, TF> particle_aii, Variable<1, TF> particle_adv_density,
     Variable<1, TF> particle_sum_tmp, Variable<1, TF> particle_last_pressure,
     Variable<1, TF> particle_pressure, TF dt, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF last_pressure = particle_last_pressure(p_i);
     TF b = 1.0 - particle_adv_density(p_i);
     TF dt2 = dt * dt;
@@ -1580,7 +1579,7 @@ __global__ void pressure_solve_iteration1_summarize(
     }
     particle_pressure(p_i) = pressure;
     particle_last_pressure(p_i) = pressure;
-  }
+  });
 }
 
 template <typename TF3, typename TF>
@@ -1589,7 +1588,7 @@ __global__ void compute_pressure_accels_fluid(
     Variable<1, TF> particle_pressure, Variable<1, TF3> particle_pressure_accel,
     Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i) / cnst::density0;
     TF density2 = density * density;
@@ -1610,7 +1609,7 @@ __global__ void compute_pressure_accels_fluid(
             displacement_cubic_kernel_grad(x_i - x_j);
     }
     particle_pressure_accel(p_i) = ai;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void compute_pressure_accels_boundary(
@@ -1620,7 +1619,7 @@ __global__ void compute_pressure_accels_boundary(
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i) / cnst::density0;
     TF density2 = density * density;
@@ -1640,14 +1639,14 @@ __global__ void compute_pressure_accels_boundary(
           cross(bx_j - rigid_x(boundary_id), force);
     }
     particle_pressure_accel(p_i) += ai;
-  }
+  });
 }
 template <typename TF3, typename TF>
 __global__ void kinematic_integration(Variable<1, TF3> particle_x,
                                       Variable<1, TF3> particle_v,
                                       Variable<1, TF3> particle_pressure_accel,
                                       TF dt, U num_particles) {
-  for (U p_i = 0; p_i < num_particles; ++p_i) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     v += particle_pressure_accel(p_i) * dt;
@@ -1655,7 +1654,7 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
     // TODO: refactor into particle_x(p_i)+= v * dt;
     particle_x(p_i) = x_i;
     particle_v(p_i) = v;
-  }
+  });
 }
 
 }  // namespace alluvion

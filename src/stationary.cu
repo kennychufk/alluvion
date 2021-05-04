@@ -18,7 +18,7 @@ int main(void) {
   F density0 = 1.0;
   F particle_mass = 0.1;
   F dt = 1e-3;
-  F gravity = -0.001;
+  F gravity = -9.81;
   cnst::set_cubic_discretization_constants();
   cnst::set_kernel_radius(kernel_radius);
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
@@ -54,11 +54,12 @@ int main(void) {
   CubicLagrangeDiscreteGrid distance_grid_prerequisite(domain,
                                                        resolution_array);
   distance_grid_prerequisite.addFunction([sphere_radius](Vector3r const& xi) {
-    // F signed_distance_from_sphere = xi.norm() - sphere_radius;
-    // return signed_distance_from_sphere;
-    Vector3r q =
-        xi.cwiseAbs() - Vector3r({sphere_radius, sphere_radius, sphere_radius});
-    return q.cwiseMax(0).norm() + min(q.maxCoeff(), 0.0);
+    F signed_distance_from_sphere = xi.norm() - sphere_radius;
+    return signed_distance_from_sphere;
+    // Vector3r q =
+    //     xi.cwiseAbs() - Vector3r({sphere_radius, sphere_radius,
+    //     sphere_radius});
+    // return q.cwiseMax(0).norm() + min(q.maxCoeff(), 0.0);
   });
   // rigid map: copy attributes
   U num_nodes = distance_grid_prerequisite.node_data()[0].size();
@@ -77,8 +78,7 @@ int main(void) {
                       distance_grid_prerequisite.invCellSize()(2));
   Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});
   Variable<1, F> volume_nodes = store.create<1, F>({num_nodes});
-  distance_nodes.set_bytes(distance_grid_prerequisite.node_data()[0].data(),
-                           num_nodes * sizeof(F));
+  distance_nodes.set_bytes(distance_grid_prerequisite.node_data()[0].data());
 
   Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
     clear_volume_field<<<grid_size, block_size>>>(volume_nodes, num_nodes);
@@ -139,28 +139,29 @@ int main(void) {
   rigid_omega.set_zero();
   {
     std::vector<F> host_boundary_vis(num_rigids, 0.1);
-    boundary_viscosity.set_bytes(host_boundary_vis.data(),
-                                 num_rigids * sizeof(F));
+    boundary_viscosity.set_bytes(host_boundary_vis.data());
   }
 
   store.unmap_graphical_pointers();
 
-  // {{{
+  U frame_id = 0;
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, [&](ShadingProgram& program, Display& display) {
+        // std::cout << "============= frame_id = " << frame_id << std::endl;
+
         store.map_graphical_pointers();
         // start of simulation loop
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
           clear_acceleration<<<grid_size, block_size>>>(particle_a,
                                                         num_particles);
         });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   compute_particle_boundary<<<grid_size, block_size>>>(
-        //       volume_nodes, distance_nodes, F3{0, 0, 0}, Q{0, 0, 0, 1}, 0,
-        //       domain_min, domain_max, resolution, cell_size, inv_cell_size,
-        //       num_nodes, 0, sign, map_thickness, dt, particle_x, particle_v,
-        //       particle_boundary_xj, particle_boundary_volume, num_particles);
-        // });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          compute_particle_boundary<<<grid_size, block_size>>>(
+              volume_nodes, distance_nodes, F3{0, 0, 0}, Q{0, 0, 0, 1}, 0,
+              domain_min, domain_max, resolution, cell_size, inv_cell_size,
+              num_nodes, 0, sign, map_thickness, dt, particle_x, particle_v,
+              particle_boundary_xj, particle_boundary_volume, num_particles);
+        });
         Runner::launch(num_grid_cells, 256, [&](U grid_size, U block_size) {
           clear_particle_grid<<<grid_size, block_size>>>(pid_length,
                                                          num_grid_cells);
@@ -179,28 +180,27 @@ int main(void) {
               particle_x, particle_neighbors, particle_num_neighbors,
               particle_density, num_particles);
         });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   compute_density_boundary<<<grid_size, block_size>>>(
-        //       particle_x, particle_density, particle_boundary_xj,
-        //       particle_boundary_volume, num_particles);
-        // });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          compute_density_boundary<<<grid_size, block_size>>>(
+              particle_x, particle_density, particle_boundary_xj,
+              particle_boundary_volume, num_particles);
+        });
         // compute_normal
         // compute_surface_tension_fluid
         // compute_surface_tension_boundary
-        //
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   compute_viscosity_fluid<<<grid_size, block_size>>>(
-        //       particle_x, particle_v, particle_density, particle_neighbors,
-        //       particle_num_neighbors, particle_a, num_particles);
-        // });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   compute_viscosity_boundary<<<grid_size, block_size>>>(
-        //       particle_x, particle_v, particle_a, particle_force,
-        //       particle_torque, particle_boundary_xj,
-        //       particle_boundary_volume, rigid_x, rigid_v, rigid_omega,
-        //       boundary_viscosity, num_particles);
-        // });
-        //
+
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          compute_viscosity_fluid<<<grid_size, block_size>>>(
+              particle_x, particle_v, particle_density, particle_neighbors,
+              particle_num_neighbors, particle_a, num_particles);
+        });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          compute_viscosity_boundary<<<grid_size, block_size>>>(
+              particle_x, particle_v, particle_a, particle_force,
+              particle_torque, particle_boundary_xj, particle_boundary_volume,
+              rigid_x, rigid_v, rigid_omega, boundary_viscosity, num_particles);
+        });
+
         // reset_angular_acceleration
         // compute_vorticity_fluid
         // compute_vorticity_boundary
@@ -218,11 +218,11 @@ int main(void) {
               particle_x, particle_density, particle_dii, particle_neighbors,
               particle_num_neighbors, num_particles);
         });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   predict_advection0_boundary<<<grid_size, block_size>>>(
-        //       particle_x, particle_density, particle_dii,
-        //       particle_boundary_xj, particle_boundary_volume, num_particles);
-        // });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          predict_advection0_boundary<<<grid_size, block_size>>>(
+              particle_x, particle_density, particle_dii, particle_boundary_xj,
+              particle_boundary_volume, num_particles);
+        });
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
           reset_last_pressure<<<grid_size, block_size>>>(
               particle_pressure, particle_last_pressure, num_particles);
@@ -233,13 +233,13 @@ int main(void) {
               particle_aii, particle_density, particle_neighbors,
               particle_num_neighbors, dt, num_particles);
         });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   predict_advection1_boundary<<<grid_size, block_size>>>(
-        //       particle_x, particle_v, particle_density, particle_dii,
-        //       particle_adv_density, particle_aii, particle_boundary_xj,
-        //       particle_boundary_volume, rigid_x, rigid_v, rigid_omega, dt,
-        //       num_particles);
-        // });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          predict_advection1_boundary<<<grid_size, block_size>>>(
+              particle_x, particle_v, particle_density, particle_dii,
+              particle_adv_density, particle_aii, particle_boundary_xj,
+              particle_boundary_volume, rigid_x, rigid_v, rigid_omega, dt,
+              num_particles);
+        });
 
         for (U p_solve_iteration = 0; p_solve_iteration < 5;
              ++p_solve_iteration) {
@@ -255,12 +255,11 @@ int main(void) {
                 particle_dii, particle_dij_pj, particle_sum_tmp,
                 particle_neighbors, particle_num_neighbors, num_particles);
           });
-          // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-          //   pressure_solve_iteration1_boundary<<<grid_size, block_size>>>(
-          //       particle_x, particle_dij_pj, particle_sum_tmp,
-          //       particle_boundary_xj, particle_boundary_volume,
-          //       num_particles);
-          // });
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            pressure_solve_iteration1_boundary<<<grid_size, block_size>>>(
+                particle_x, particle_dij_pj, particle_sum_tmp,
+                particle_boundary_xj, particle_boundary_volume, num_particles);
+          });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             pressure_solve_iteration1_summarize<<<grid_size, block_size>>>(
                 particle_aii, particle_adv_density, particle_sum_tmp,
@@ -274,13 +273,13 @@ int main(void) {
               particle_pressure_accel, particle_neighbors,
               particle_num_neighbors, num_particles);
         });
-        // Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-        //   compute_pressure_accels_boundary<<<grid_size, block_size>>>(
-        //       particle_x, particle_density, particle_pressure,
-        //       particle_pressure_accel, particle_force, particle_torque,
-        //       particle_boundary_xj, particle_boundary_volume, rigid_x,
-        //       num_particles);
-        // });
+        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+          compute_pressure_accels_boundary<<<grid_size, block_size>>>(
+              particle_x, particle_density, particle_pressure,
+              particle_pressure_accel, particle_force, particle_torque,
+              particle_boundary_xj, particle_boundary_volume, rigid_x,
+              num_particles);
+        });
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
           kinematic_integration<<<grid_size, block_size>>>(
               particle_x, particle_v, particle_pressure_accel, dt,
@@ -288,7 +287,9 @@ int main(void) {
         });
 
         store.unmap_graphical_pointers();
+        frame_id += 1;
       }));
+  // {{{
   display->add_shading_program(new ShadingProgram(
       R"CODE(
 #version 330 core
