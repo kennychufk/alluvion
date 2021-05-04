@@ -311,25 +311,18 @@ __device__ TF3 index_to_node_position(TF3 domain_min, U3 resolution,
 
 template <typename TF3>
 __device__ void resolve(TF3 domain_min, TF3 domain_max, U3 resolution,
-                        TF3 cell_size, TF3 inv_cell_size, TF3 x, I3* ipos,
-                        TF3* inner_x, TF3* c0) {
-  *ipos = make_zeros<I3>();
-  *inner_x = make_zeros<TF3>();
-  *c0 = make_zeros<TF3>();
-  TF3 sd_min, sd_max, denom, c1;
+                        TF3 cell_size, TF3 x, I3* ipos, TF3* inner_x) {
+  TF3 sd_min;
+  TF3 inv_cell_size = 1.0 / cell_size;
+  ipos->x = -1;
   if (x.x > domain_min.x && x.y > domain_min.y && x.z > domain_min.z &&
       domain_max.x > x.x && domain_max.y > x.y && domain_max.z > x.z) {
     *ipos = make_int3((x - domain_min) * (inv_cell_size));
     *ipos = min(*ipos, make_int3(resolution) - 1);
 
     sd_min = domain_min + cell_size * *ipos;
-    sd_max = sd_min + cell_size;
 
-    // TODO: replace denom with cell_size
-    denom = sd_max - sd_min;
-    *c0 = 2 / denom;
-    c1 = (sd_max + sd_min) / denom;
-    *inner_x = *c0 * x - c1;
+    *inner_x = 2 * (x - sd_min) * inv_cell_size - 1;
   }
 }
 
@@ -735,15 +728,14 @@ __device__ TF interpolate(Variable<1, TF>* nodes, U node_offset, U* cells,
 template <typename TF3, typename TF>
 __device__ TF interpolate_distance_without_intermediates(
     Variable<1, TF>* nodes, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, TF3 inv_cell_size, U node_offset, TF3 x) {
+    TF3 cell_size, U node_offset, TF3 x) {
   I3 ipos;
-  TF3 inner_x, c0;
+  TF3 inner_x;
   TF N[32];
   U cells[32];
   TF d = kFMax;
-  resolve(domain_min, domain_max, resolution, cell_size, inv_cell_size, x,
-          &ipos, &inner_x, &c0);
-  if (c0.x != 0.0) {
+  resolve(domain_min, domain_max, resolution, cell_size, x, &ipos, &inner_x);
+  if (ipos.x >= 0) {
     get_shape_function(inner_x, N);
     get_cells(resolution, ipos, cells);
     d = interpolate(nodes, node_offset, cells, N);
@@ -760,8 +752,7 @@ template <typename TF3, typename TF>
 __global__ void update_volume_field(Variable<1, TF> volume_nodes,
                                     Variable<1, TF> distance_nodes,
                                     TF3 domain_min, TF3 domain_max,
-                                    U3 resolution, TF3 cell_size,
-                                    TF3 inv_cell_size, U num_nodes,
+                                    U3 resolution, TF3 cell_size, U num_nodes,
                                     U node_offset, TF sign, TF thickness) {
   forThreadMappedToElement(num_nodes, [&](U l) {
     for (U i = 0; i < kGridN; ++i) {
@@ -777,7 +768,7 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
                                                      cnst::kGridAbscissae[k]);
           TF dist_in_integrand = interpolate_distance_without_intermediates(
               &distance_nodes, domain_min, domain_max, resolution, cell_size,
-              inv_cell_size, node_offset, x + integrand_parameter);
+              node_offset, x + integrand_parameter);
           TF res_in_integrand = 0.0;
           if (dist != kFMax) {
             TF distance_modified =
@@ -814,17 +805,16 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
 template <typename TQ, typename TF3, typename TF>
 __device__ TF compute_volume_and_boundary_x(
     Variable<1, TF>* volume_nodes, Variable<1, TF>* distance_nodes,
-    TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size,
-    TF3 inv_cell_size, U num_nodes, U node_offset, TF sign, TF thickness,
-    TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj, TF* d,
-    TF3* normal) {
+    TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes,
+    U node_offset, TF sign, TF thickness, TF3& x, TF3& rigid_x, TQ& rigid_q,
+    TF dt, TF3* boundary_xj, TF* d, TF3* normal) {
   TF boundary_volume = 0.0;
   TF3 shifted = x - rigid_x;
   TF3 local_xi =
       rotate_using_quaternion(shifted, quaternion_conjugate(rigid_q));
   // for resolve
   I3 ipos;
-  TF3 inner_x, c0;
+  TF3 inner_x;
   // for get_shape_function_and_gradient
   TF N[32];
   TF dN0[32];
@@ -840,13 +830,13 @@ __device__ TF compute_volume_and_boundary_x(
   *d = 0.0;
   *normal = make_zeros<TF3>();
 
-  resolve(domain_min, domain_max, resolution, cell_size, inv_cell_size,
-          local_xi, &ipos, &inner_x, &c0);
-  if (c0.x != 0.0) {
+  resolve(domain_min, domain_max, resolution, cell_size, local_xi, &ipos,
+          &inner_x);
+  if (ipos.x >= 0) {
     get_shape_function_and_gradient(inner_x, N, dN0, dN1, dN2);
     get_cells(resolution, ipos, cells);
-    dist = interpolate_and_derive(distance_nodes, node_offset, cells, c0, N,
-                                  dN0, dN1, dN2, normal);
+    dist = interpolate_and_derive(distance_nodes, node_offset, &cell_size,
+                                  cells, N, dN0, dN1, dN2, normal);
     *normal *= sign;
     dist = (dist - cnst::particle_radius * 0.5 - thickness) * sign;
     *normal = rotate_using_quaternion(*normal, rigid_q);
@@ -868,8 +858,8 @@ __device__ TF compute_volume_and_boundary_x(
 // gradient must be initialized to zero
 template <typename TF3, typename TF>
 __device__ TF interpolate_and_derive(Variable<1, TF>* nodes, U node_offset,
-                                     U* cells, TF3 c0, F* N, TF* dN0, TF* dN1,
-                                     TF* dN2, TF3* gradient) {
+                                     TF3* cell_size, U* cells, F* N, TF* dN0,
+                                     TF* dN1, TF* dN2, TF3* gradient) {
   TF phi = 0.0;
   bool max_encountered = false;
   for (U j = 0; j < 32; ++j) {
@@ -880,9 +870,9 @@ __device__ TF interpolate_and_derive(Variable<1, TF>* nodes, U node_offset,
     gradient->y += (not max_encountered) * c * dN1[j];
     gradient->z += (not max_encountered) * c * dN2[j];
   }
-  gradient->x *= (not max_encountered) * c0.x;
-  gradient->y *= (not max_encountered) * c0.y;
-  gradient->z *= (not max_encountered) * c0.z;
+  gradient->x *= (not max_encountered) * 2 / cell_size->x;
+  gradient->y *= (not max_encountered) * 2 / cell_size->y;
+  gradient->z *= (not max_encountered) * 2 / cell_size->z;
   phi = max((max_encountered * 2 - 1) * kFMax, phi);
   return phi;
 }
@@ -891,12 +881,11 @@ template <typename TF3, typename TF>
 __device__ TF collision_find_dist_normal(Variable<1, TF> distance_nodes,
                                          TF3 domain_min, TF3 domain_max,
                                          U3 resolution, TF3 cell_size,
-                                         TF3 inv_cell_size, U node_offset,
-                                         TF sign, TF tolerance, TF3 x,
-                                         TF3* normal) {
+                                         U node_offset, TF sign, TF tolerance,
+                                         TF3 x, TF3* normal) {
   TF dist = 0.0;
   I3 ipos;
-  TF3 inner_x, c0;
+  TF3 inner_x;
   TF N[32];
   TF dN0[32];
   TF dN1[32];
@@ -906,13 +895,12 @@ __device__ TF collision_find_dist_normal(Variable<1, TF> distance_nodes,
   TF3 normal_tmp = make_zeros<TF3>();
   *normal = make_zeros<TF3>();
 
-  resolve(domain_min, domain_max, resolution, cell_size, inv_cell_size, x,
-          &ipos, &inner_x, &c0);
-  if (c0.x != 0.0) {
+  resolve(domain_min, domain_max, resolution, cell_size, x, &ipos, &inner_x);
+  if (ipos.x >= 0) {
     get_shape_function_and_gradient(inner_x, N, dN0, dN1, dN2);
     get_cells(resolution, ipos, cells);
-    d = interpolate_and_derive(distance_nodes, node_offset, cells, c0, N, dN0,
-                               dN1, dN2, normal_tmp);
+    d = interpolate_and_derive(distance_nodes, node_offset, &cell_size, cells,
+                               N, dN0, dN1, dN2, normal_tmp);
   }
   if (d != kFMax) {
     dist = sign * d - tolerance;
@@ -1008,9 +996,9 @@ template <typename TQ, typename TF3, typename TF>
 __global__ void compute_particle_boundary(
     Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, TF3 inv_cell_size, U num_nodes, U node_offset, TF sign,
-    TF thickness, TF dt, Variable<1, TF3> particle_x,
-    Variable<1, TF3> particle_v, Variable<2, TF3> particle_boundary_xj,
+    TF3 cell_size, U num_nodes, U node_offset, TF sign, TF thickness, TF dt,
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, normal;
@@ -1018,8 +1006,8 @@ __global__ void compute_particle_boundary(
     bool penetrated;
     TF boundary_volume = compute_volume_and_boundary_x(
         &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
-        cell_size, inv_cell_size, num_nodes, node_offset, sign, thickness,
-        particle_x(p_i), rigid_x, rigid_q, dt, &boundary_xj, &d, &normal);
+        cell_size, num_nodes, node_offset, sign, thickness, particle_x(p_i),
+        rigid_x, rigid_q, dt, &boundary_xj, &d, &normal);
     particle_boundary_xj(boundary_id, p_i) = boundary_xj;
     particle_boundary_volume(boundary_id, p_i) = boundary_volume;
     penetrated = (d != 0.0);

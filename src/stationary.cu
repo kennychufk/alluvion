@@ -72,10 +72,6 @@ int main(void) {
   F3 cell_size = make_vector<F3>(distance_grid_prerequisite.cellSize()(0),
                                  distance_grid_prerequisite.cellSize()(1),
                                  distance_grid_prerequisite.cellSize()(2));
-  F3 inv_cell_size =
-      make_vector<F3>(distance_grid_prerequisite.invCellSize()(0),
-                      distance_grid_prerequisite.invCellSize()(1),
-                      distance_grid_prerequisite.invCellSize()(2));
   Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});
   Variable<1, F> volume_nodes = store.create<1, F>({num_nodes});
   distance_nodes.set_bytes(distance_grid_prerequisite.node_data()[0].data());
@@ -86,7 +82,7 @@ int main(void) {
   Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
     update_volume_field<<<grid_size, block_size>>>(
         volume_nodes, distance_nodes, domain_min, domain_max, resolution,
-        cell_size, inv_cell_size, num_nodes, 0, sign, map_thickness);
+        cell_size, num_nodes, 0, sign, map_thickness);
   });
 
   // particles
@@ -158,9 +154,9 @@ int main(void) {
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
           compute_particle_boundary<<<grid_size, block_size>>>(
               volume_nodes, distance_nodes, F3{0, 0, 0}, Q{0, 0, 0, 1}, 0,
-              domain_min, domain_max, resolution, cell_size, inv_cell_size,
-              num_nodes, 0, sign, map_thickness, dt, particle_x, particle_v,
-              particle_boundary_xj, particle_boundary_volume, num_particles);
+              domain_min, domain_max, resolution, cell_size, num_nodes, 0, sign,
+              map_thickness, dt, particle_x, particle_v, particle_boundary_xj,
+              particle_boundary_volume, num_particles);
         });
         Runner::launch(num_grid_cells, 256, [&](U grid_size, U block_size) {
           clear_particle_grid<<<grid_size, block_size>>>(pid_length,

@@ -76,10 +76,6 @@ SCENARIO("testing volume field generation") {
       F3 cell_size = make_vector<F3>(distance_grid_prerequisite.cellSize()(0),
                                      distance_grid_prerequisite.cellSize()(1),
                                      distance_grid_prerequisite.cellSize()(2));
-      F3 inv_cell_size =
-          make_vector<F3>(distance_grid_prerequisite.invCellSize()(0),
-                          distance_grid_prerequisite.invCellSize()(1),
-                          distance_grid_prerequisite.invCellSize()(2));
       // allocate device memory
       Store store;
       Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});
@@ -95,7 +91,7 @@ SCENARIO("testing volume field generation") {
       Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(
             volume_nodes, distance_nodes, domain_min, domain_max, resolution,
-            cell_size, inv_cell_size, num_nodes, 0, sign, map_thickness);
+            cell_size, num_nodes, 0, sign, map_thickness);
       });
 
       std::vector<F> device_volume_nodes_copied(num_nodes);
