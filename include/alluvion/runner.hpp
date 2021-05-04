@@ -1635,12 +1635,9 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
                                       Variable<1, TF3> particle_pressure_accel,
                                       TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     v += particle_pressure_accel(p_i) * dt;
-    x_i += v * dt;
-    // TODO: refactor into particle_x(p_i)+= v * dt;
-    particle_x(p_i) = x_i;
+    particle_x(p_i) += v * dt;
     particle_v(p_i) = v;
   });
 }
