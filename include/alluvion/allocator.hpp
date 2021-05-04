@@ -21,10 +21,8 @@ class Allocator {
     abort_if_error(cudaMalloc(ptr, num_elements * sizeof(M)));
   };
   static void free(void**);
-  static void copy_to_host(void* dst, void const* src, unsigned int num_bytes);
-  static void copy_to_device(void* dst, void const* src,
-                             unsigned int num_bytes);
-  static void set_device(void* dst, unsigned int num_bytes, int value = 0);
+  static void copy(void* dst, void const* src, unsigned int num_bytes);
+  static void set(void* dst, unsigned int num_bytes, int value = 0);
   static void abort_if_error(cudaError_t err);
 };
 }  // namespace alluvion

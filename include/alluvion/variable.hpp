@@ -62,7 +62,7 @@ class Variable : public BaseVariable {
       std::cerr << "retrieving more than allocated" << std::endl;
       abort();
     }
-    Allocator::copy_to_host(dst, ptr_, num_bytes);
+    Allocator::copy(dst, ptr_, num_bytes);
   }
   void get_bytes(void* dst) const { get_bytes(dst, get_num_bytes()); }
   void set_bytes(void const* src, U num_bytes) {
@@ -72,10 +72,10 @@ class Variable : public BaseVariable {
                 << get_num_bytes() << std::endl;
       abort();
     }
-    Allocator::copy_to_device(ptr_, src, num_bytes);
+    Allocator::copy(ptr_, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
-  void set_zero() { Allocator::set_device(ptr_, get_num_bytes()); }
+  void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
 
   constexpr __device__ M& operator()(U i) {
     return *(static_cast<M*>(ptr_) + i);
