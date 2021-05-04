@@ -170,10 +170,10 @@ inline __device__ TF distance_adhesion_kernel(TF r2) {
   TF result = 0.0;
   TF r = sqrt(r2);
   if (r2 < cnst::kernel_radius_sqr && r > 0.5 * cnst::kernel_radius) {
-    // TODO:test sqrt(sqrt())
-    result = cnst::adhesion_kernel_k * pow(-4 * r2 / cnst::kernel_radius +
-                                               6 * r - 2 * cnst::kernel_radius,
-                                           0.25);
+    // https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#exponentiation-small-fractions
+    result = cnst::adhesion_kernel_k *
+             rsqrt(rsqrt((-4 * r2 / cnst::kernel_radius + 6 * r -
+                          2 * cnst::kernel_radius)));
   }
   return result;
 }
@@ -1296,7 +1296,7 @@ __global__ void compute_surface_tension_fluid(
       TF3 accel = make_zeros<TF3>();
       if (length2 > 1e-9) {
         accel = -cnst::surface_tension_coeff * cnst::particle_mass *
-                displacement_cohesion_kernel(xixj) / sqrt(length2) * xixj;
+                displacement_cohesion_kernel(xixj) * rsqrt(length2) * xixj;
       }
       accel -= cnst::surface_tension_coeff * (ni - particle_normal(p_j));
       da += k_ij * accel;
@@ -1324,7 +1324,7 @@ __global__ void compute_surface_tension_boundary(
       TF length2 = length_sqr(xixj);
       if (length2 > 1e-9) {
         da -= cnst::surface_tension_boundary_coeff * vj * cnst::density0 *
-              displacement_adhesion_kernel(xixj) / sqrt(length2) * xixj;
+              displacement_adhesion_kernel(xixj) * rsqrt(length2) * xixj;
       }
     }
     particle_a(p_i) += da;
