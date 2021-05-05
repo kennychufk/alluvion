@@ -3,6 +3,7 @@
 
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
+#include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
 
@@ -40,50 +41,10 @@ int main(void) {
   cnst::set_max_num_neighbors_per_particle(max_num_neighbors_per_particle);
 
   // rigids
-  std::array<unsigned int, 3> resolution_array{20, 20, 20};
-  U num_rigids = 1;
-  F sphere_radius = 9.0;
-  F map_thickness = 2.0;
-  F sign = -1.0;
-  F margin = 4 * kernel_radius + map_thickness;
-  Vector3r domain_min_eigen(-sphere_radius - margin, -sphere_radius - margin,
-                            -sphere_radius - margin);
-  Vector3r domain_max_eigen(sphere_radius + margin, sphere_radius + margin,
-                            sphere_radius + margin);
-  AlignedBox3r domain(domain_min_eigen, domain_max_eigen);
-  CubicLagrangeDiscreteGrid distance_grid_prerequisite(domain,
-                                                       resolution_array);
-  distance_grid_prerequisite.addFunction([sphere_radius](Vector3r const& xi) {
-    F signed_distance_from_sphere = xi.norm() - sphere_radius;
-    return signed_distance_from_sphere;
-    // Vector3r q =
-    //     xi.cwiseAbs() - Vector3r({sphere_radius, sphere_radius,
-    //     sphere_radius});
-    // return q.cwiseMax(0).norm() + min(q.maxCoeff(), 0.0);
-  });
-  // rigid map: copy attributes
-  U num_nodes = distance_grid_prerequisite.node_data()[0].size();
-  F3 domain_min =
-      make_vector<F3>(domain.min()(0), domain.min()(1), domain.min()(2));
-  F3 domain_max =
-      make_vector<F3>(domain.max()(0), domain.max()(1), domain.max()(2));
-  U3 resolution =
-      make_uint3(resolution_array[0], resolution_array[1], resolution_array[2]);
-  F3 cell_size = make_vector<F3>(distance_grid_prerequisite.cellSize()(0),
-                                 distance_grid_prerequisite.cellSize()(1),
-                                 distance_grid_prerequisite.cellSize()(2));
-  Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});
-  Variable<1, F> volume_nodes = store.create<1, F>({num_nodes});
-  distance_nodes.set_bytes(distance_grid_prerequisite.node_data()[0].data());
-
-  Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
-    clear_volume_field<<<grid_size, block_size>>>(volume_nodes, num_nodes);
-  });
-  Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
-    update_volume_field<<<grid_size, block_size>>>(
-        volume_nodes, distance_nodes, domain_min, domain_max, resolution,
-        cell_size, num_nodes, 0, sign, map_thickness);
-  });
+  Pile pile(store);
+  pile.add("cube.obj", U3{50, 50, 50}, -1.0_F, 0, nullptr, 1, 1, 0, 0.2,
+           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, nullptr);
+  pile.build_grids(4 * kernel_radius);
 
   // particles
   GraphicalVariable<1, F3> particle_x =
@@ -94,13 +55,13 @@ int main(void) {
   Variable<1, F> particle_pressure = store.create<1, F>({num_particles});
   Variable<1, F> particle_last_pressure = store.create<1, F>({num_particles});
   Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({num_rigids, num_particles});
+      store.create<2, F3>({pile.get_size(), num_particles});
   Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({num_rigids, num_particles});
+      store.create<2, F>({pile.get_size(), num_particles});
   Variable<2, F3> particle_force =
-      store.create<2, F3>({num_rigids, num_particles});
+      store.create<2, F3>({pile.get_size(), num_particles});
   Variable<2, F3> particle_torque =
-      store.create<2, F3>({num_rigids, num_particles});
+      store.create<2, F3>({pile.get_size(), num_particles});
   Variable<1, F> particle_aii = store.create<1, F>({num_particles});
   Variable<1, F3> particle_dii = store.create<1, F3>({num_particles});
   Variable<1, F3> particle_dij_pj = store.create<1, F3>({num_particles});
@@ -108,11 +69,6 @@ int main(void) {
   Variable<1, F> particle_adv_density = store.create<1, F>({num_particles});
   Variable<1, F3> particle_pressure_accel =
       store.create<1, F3>({num_particles});
-  // rigids
-  Variable<1, F3> rigid_x = store.create<1, F3>({num_rigids});
-  Variable<1, F3> rigid_v = store.create<1, F3>({num_rigids});
-  Variable<1, F3> rigid_omega = store.create<1, F3>({num_rigids});
-  Variable<1, F> boundary_viscosity = store.create<1, F>({num_rigids});
 
   // grid
   Variable<4, U> pid = store.create<4, U>(
@@ -130,13 +86,6 @@ int main(void) {
         <<<grid_size, block_size>>>(particle_x, num_particles, 0, 1,
                                     F3{-5.0, -5.0, -5.0}, F3{5.0, 5.0, 5.0});
   });
-  rigid_x.set_zero();
-  rigid_v.set_zero();
-  rigid_omega.set_zero();
-  {
-    std::vector<F> host_boundary_vis(num_rigids, 0.1);
-    boundary_viscosity.set_bytes(host_boundary_vis.data());
-  }
 
   store.unmap_graphical_pointers();
 
@@ -147,16 +96,25 @@ int main(void) {
 
         store.map_graphical_pointers();
         // start of simulation loop
+        pile.copy_kinematics_to_device();
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
           clear_acceleration<<<grid_size, block_size>>>(particle_a,
                                                         num_particles);
         });
-        Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-          compute_particle_boundary<<<grid_size, block_size>>>(
-              volume_nodes, distance_nodes, F3{0, 0, 0}, Q{0, 0, 0, 1}, 0,
-              domain_min, domain_max, resolution, cell_size, num_nodes, 0, sign,
-              map_thickness, dt, particle_x, particle_v, particle_boundary_xj,
-              particle_boundary_volume, num_particles);
+        pile.for_each_rigid([&](U boundary_id,
+                                Variable<1, F> const& distance_grid,
+                                Variable<1, F> const& volume_grid,
+                                F3 const& rigid_x, Q const& rigid_q,
+                                F3 const& domain_min, F3 const& domain_max,
+                                U3 const& resolution, F3 const& cell_size,
+                                U num_nodes, F sign, F thickness) {
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            compute_particle_boundary<<<grid_size, block_size>>>(
+                volume_grid, distance_grid, rigid_x, rigid_q, boundary_id,
+                domain_min, domain_max, resolution, cell_size, num_nodes, 0,
+                sign, thickness, dt, particle_x, particle_v,
+                particle_boundary_xj, particle_boundary_volume, num_particles);
+          });
         });
         Runner::launch(num_grid_cells, 256, [&](U grid_size, U block_size) {
           clear_particle_grid<<<grid_size, block_size>>>(pid_length,
@@ -194,7 +152,8 @@ int main(void) {
           compute_viscosity_boundary<<<grid_size, block_size>>>(
               particle_x, particle_v, particle_a, particle_force,
               particle_torque, particle_boundary_xj, particle_boundary_volume,
-              rigid_x, rigid_v, rigid_omega, boundary_viscosity, num_particles);
+              pile.x_device_, pile.v_device_, pile.omega_device_,
+              pile.boundary_viscosity_device_, num_particles);
         });
 
         // reset_angular_acceleration
@@ -233,8 +192,8 @@ int main(void) {
           predict_advection1_boundary<<<grid_size, block_size>>>(
               particle_x, particle_v, particle_density, particle_dii,
               particle_adv_density, particle_aii, particle_boundary_xj,
-              particle_boundary_volume, rigid_x, rigid_v, rigid_omega, dt,
-              num_particles);
+              particle_boundary_volume, pile.x_device_, pile.v_device_,
+              pile.omega_device_, dt, num_particles);
         });
 
         for (U p_solve_iteration = 0; p_solve_iteration < 5;
@@ -273,7 +232,7 @@ int main(void) {
           compute_pressure_accels_boundary<<<grid_size, block_size>>>(
               particle_x, particle_density, particle_pressure,
               particle_pressure_accel, particle_force, particle_torque,
-              particle_boundary_xj, particle_boundary_volume, rigid_x,
+              particle_boundary_xj, particle_boundary_volume, pile.x_device_,
               num_particles);
         });
         Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {

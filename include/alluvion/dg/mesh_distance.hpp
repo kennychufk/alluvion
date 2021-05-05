@@ -84,7 +84,7 @@ class MeshDistance {
                  dg::Vector3r const& x, F& dist) const;
 
  private:
-  TriangleMesh const& m_mesh;
+  TriangleMesh m_mesh;
   TriangleMeshBSH m_bsh;
 
   using FunctionValueCache = LRUCache<dg::Vector3r, F>;

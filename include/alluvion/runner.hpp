@@ -97,6 +97,31 @@ inline __device__ int3 make_zeros<int3>() {
   return make_int3(0);
 }
 
+template <typename T>
+inline __host__ T from_string(std::string const& s0) = delete;
+
+template <>
+inline __host__ U from_string(std::string const& s0) {
+  return stoul(s0);
+}
+
+template <typename T3>
+inline __host__ T3 from_string(std::string const& s0, std::string const& s1,
+                               std::string const& s2) = delete;
+
+template <>
+inline __host__ float3 from_string(std::string const& s0, std::string const& s1,
+                                   std::string const& s2) {
+  return float3{stof(s0), stof(s1), stof(s2)};
+}
+
+template <>
+inline __host__ double3 from_string(std::string const& s0,
+                                    std::string const& s1,
+                                    std::string const& s2) {
+  return double3{stod(s0), stod(s1), stod(s2)};
+}
+
 template <typename TQ>
 inline __device__ TQ quaternion_conjugate(TQ q) {
   q.x *= -1._F;
@@ -745,11 +770,6 @@ __device__ TF interpolate_distance_without_intermediates(
     d = interpolate(nodes, node_offset, cells, N);
   }
   return d;
-}
-
-template <typename TF>
-__global__ void clear_volume_field(Variable<1, TF> volume_nodes, U num_nodes) {
-  forThreadMappedToElement(num_nodes, [&](U l) { volume_nodes(l) = 0; });
 }
 
 template <typename TF3, typename TF>

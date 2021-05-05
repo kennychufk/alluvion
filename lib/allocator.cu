@@ -9,6 +9,7 @@ Allocator::Allocator() {}
 Allocator::~Allocator() {}
 
 void Allocator::free(void** ptr) {
+  if (ptr == nullptr) return;
   abort_if_error(cudaFree(*ptr));
   *ptr = nullptr;
 }

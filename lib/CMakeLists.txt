@@ -4,6 +4,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/unique_graphical_resource.cu
   ${CMAKE_CURRENT_LIST_DIR}/allocator.cu
   ${CMAKE_CURRENT_LIST_DIR}/graphical_allocator.cu
+  ${CMAKE_CURRENT_LIST_DIR}/pile.cu
   ${CMAKE_CURRENT_LIST_DIR}/constants.cu
   ${CMAKE_CURRENT_LIST_DIR}/display.cu
   ${CMAKE_CURRENT_LIST_DIR}/shading_program.cu

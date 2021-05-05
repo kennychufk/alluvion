@@ -31,10 +31,20 @@ class Store {
   template <unsigned int D, typename M>
   Variable<D, M> create(std::array<unsigned int, D> const& shape) {
     Variable<D, M> var(shape);
-    pointer_dict.emplace(std::piecewise_construct,
-                         std::forward_as_tuple(var.ptr_),
-                         std::forward_as_tuple(var.ptr_));
+    if (var.ptr_) {
+      pointer_dict.emplace(std::piecewise_construct,
+                           std::forward_as_tuple(var.ptr_),
+                           std::forward_as_tuple(var.ptr_));
+    }
     return var;
+  }
+
+  template <unsigned int D, typename M>
+  void remove(Variable<D, M>& var) {
+    if (var.ptr_) {
+      pointer_dict.erase(var.ptr_);
+    }
+    var.ptr_ = nullptr;
   }
 
   template <unsigned int D, typename M>
