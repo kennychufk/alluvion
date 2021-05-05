@@ -1,6 +1,8 @@
 #ifndef ALLUVION_PILE_HPP
 #define ALLUVION_PILE_HPP
 
+#include <memory>
+
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
 #include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/store.hpp"
@@ -12,11 +14,11 @@ class Pile {
   using FaceList = std::vector<U3>;
 
  private:
-  static dg::MeshDistance construct_mesh_distance(VertexList const& vertices,
-                                                  FaceList const& faces,
-                                                  F3& aabb_min, F3& aabb_max);
+  static dg::MeshDistance* construct_mesh_distance(VertexList const& vertices,
+                                                   FaceList const& faces,
+                                                   F3& aabb_min, F3& aabb_max);
   static std::vector<F> construct_distance_grid(
-      dg::MeshDistance const& mesh_distance, U3 const& resolution,
+      dg::Distance const& mesh_distance, U3 const& resolution,
       F3 const& aabb_min, F3 const& aabb_max, F margin, F sign, F thickness,
       F3& domain_min, F3& domain_max, U& grid_size, F3& cell_size);
   static F find_max_distance(VertexList const& vertices);
@@ -45,7 +47,7 @@ class Pile {
 
   std::vector<F3> aabb_min_list_;
   std::vector<F3> aabb_max_list_;
-  std::vector<dg::MeshDistance> mesh_distance_list_;
+  std::vector<std::unique_ptr<dg::Distance>> distance_list_;
   std::vector<U3> resolution_list_;
   std::vector<F> sign_list_;
   std::vector<F> thickness_list_;

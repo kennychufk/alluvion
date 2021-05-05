@@ -45,7 +45,7 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
 
   F3 aabb_min;
   F3 aabb_max;
-  mesh_distance_list_.push_back(
+  distance_list_.emplace_back(
       construct_mesh_distance(field_vertices, field_faces, aabb_min, aabb_max));
   aabb_min_list_.push_back(aabb_min);
   aabb_max_list_.push_back(aabb_max);
@@ -114,7 +114,7 @@ void Pile::build_grids(F margin) {
     F3& domain_min = domain_min_list_[i];
     F3& domain_max = domain_max_list_[i];
     std::vector<F> nodes_host = construct_distance_grid(
-        mesh_distance_list_[i], resolution_list_[i], aabb_min_list_[i],
+        *distance_list_[i], resolution_list_[i], aabb_min_list_[i],
         aabb_max_list_[i], margin, sign_list_[i], thickness_list_[i],
         domain_min, domain_max, num_nodes, cell_size);
 
@@ -145,7 +145,7 @@ void Pile::copy_kinematics_to_device() {
 glm::mat4 Pile::get_matrix(U i) const {
   Q const& q = q_[i];
   F3 const& translation = x_[i];
-  float column_major_transformation[16] = {1.0 - 2 * (q.y * q.y + q.z * q.z),
+  float column_major_transformation[16] = {1 - 2 * (q.y * q.y + q.z * q.z),
                                            2 * (q.x * q.y + q.z * q.w),
                                            2 * (q.x * q.z - q.y * q.w),
                                            0,
@@ -175,9 +175,9 @@ F Pile::find_max_distance(VertexList const& vertices) {
   return sqrt(max_distance2);
 }
 
-dg::MeshDistance Pile::construct_mesh_distance(VertexList const& vertices,
-                                               FaceList const& faces,
-                                               F3& aabb_min, F3& aabb_max) {
+dg::MeshDistance* Pile::construct_mesh_distance(VertexList const& vertices,
+                                                FaceList const& faces,
+                                                F3& aabb_min, F3& aabb_max) {
   std::vector<dg::Vector3r> dg_vertices;
   std::vector<std::array<unsigned int, 3>> dg_faces;
   dg_vertices.reserve(vertices.size());
@@ -196,22 +196,22 @@ dg::MeshDistance Pile::construct_mesh_distance(VertexList const& vertices,
   for (U3 const& face : faces) {
     dg_faces.push_back({face.x, face.y, face.z});
   }
-  return dg::MeshDistance(dg::TriangleMesh(dg_vertices, dg_faces));
+  return new dg::MeshDistance(dg::TriangleMesh(dg_vertices, dg_faces));
 }
 
 std::vector<F> Pile::construct_distance_grid(
-    dg::MeshDistance const& mesh_distance, U3 const& resolution,
-    F3 const& aabb_min, F3 const& aabb_max, F margin, F sign, F thickness,
-    F3& domain_min, F3& domain_max, U& grid_size, F3& cell_size) {
+    dg::Distance const& distance, U3 const& resolution, F3 const& aabb_min,
+    F3 const& aabb_max, F margin, F sign, F thickness, F3& domain_min,
+    F3& domain_max, U& grid_size, F3& cell_size) {
   domain_min = aabb_min - margin;
   domain_max = aabb_max + margin;
   dg::CubicLagrangeDiscreteGrid grid_host(
       dg::AlignedBox3r(dg::Vector3r(domain_min.x, domain_min.y, domain_min.z),
                        dg::Vector3r(domain_max.x, domain_max.y, domain_max.z)),
       {resolution.x, resolution.y, resolution.z});
-  grid_host.addFunction([&mesh_distance](dg::Vector3r const& xi) {
+  grid_host.addFunction([&distance](dg::Vector3r const& xi) {
     // signedDistanceCached failed for unknown reasons
-    return mesh_distance.signedDistance(xi);
+    return distance.signedDistance(xi);
   });
   std::vector<F>& nodes = grid_host.node_data()[0];
   grid_size = nodes.size();

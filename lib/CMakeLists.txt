@@ -16,6 +16,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/dg/triangle_mesh.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/entity_iterators.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/entity_containers.cu
+  ${CMAKE_CURRENT_LIST_DIR}/dg/sphere_distance.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/mesh_distance.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/point_triangle_distance.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/discrete_grid.cu

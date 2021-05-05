@@ -39,6 +39,7 @@ struct less<alluvion::dg::Vector3r> {
 #include <vector>
 
 #include "alluvion/dg/bounding_sphere_hierarchy.hpp"
+#include "alluvion/dg/distance.hpp"
 #include "alluvion/dg/lru_cache.hpp"
 
 namespace alluvion {
@@ -47,7 +48,7 @@ namespace dg {
 enum class NearestEntity;
 class TriangleMesh;
 class Halfedge;
-class MeshDistance {
+class MeshDistance : public Distance {
   struct Candidate {
     bool operator<(Candidate const& other) const { return b < other.b; }
     unsigned int node_index;
@@ -66,7 +67,7 @@ class MeshDistance {
 
   // Requires a closed two-manifold mesh as input data.
   // Thread-safe function.
-  F signedDistance(dg::Vector3r const& x) const;
+  F signedDistance(dg::Vector3r const& x) const override;
   F signedDistanceCached(dg::Vector3r const& x) const;
 
   F unsignedDistance(dg::Vector3r const& x) const;
