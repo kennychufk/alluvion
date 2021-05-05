@@ -43,7 +43,7 @@ int main(void) {
   // rigids
   Pile pile(store);
   pile.add("cube.obj", U3{50, 50, 50}, -1.0_F, 0, nullptr, 1, 1, 0, 0.2,
-           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, nullptr);
+           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, "cube.obj");
   pile.build_grids(4 * kernel_radius);
 
   // particles
@@ -309,6 +309,58 @@ void main() {
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glDrawArrays(GL_POINTS, 0, num_particles);
+        glDisableVertexAttribArray(0);
+      }));
+
+  // rigid mesh shader
+  display->add_shading_program(new ShadingProgram(
+      R"CODE(
+#version 330 core
+layout(location = 0) in vec3 x;
+uniform mat4 model_matrix;
+uniform mat4 view_matrix;
+uniform mat4 clip_matrix;
+
+void main() {
+  gl_Position = clip_matrix * view_matrix * model_matrix * vec4(x, 1.0);
+}
+)CODE",
+      R"CODE(
+#version 330 core
+uniform vec4 base_color;
+
+out vec4 output_color;
+
+void main() {
+  output_color = base_color;
+}
+)CODE",
+      {"model_matrix", "view_matrix", "clip_matrix", "base_color"},
+      [&pile](ShadingProgram& program, Display& display) {
+        glm::mat4 clip_matrix = glm::perspective(
+            glm::radians(45.0f),
+            display.width_ / static_cast<GLfloat>(display.height_), .01f,
+            100.f);
+
+        glm::mat4 model_matrix = pile.get_matrix(0);
+        glUniformMatrix4fv(program.get_uniform_location("model_matrix"), 1,
+                           GL_FALSE, glm::value_ptr(model_matrix));
+        glUniformMatrix4fv(program.get_uniform_location("view_matrix"), 1,
+                           GL_FALSE,
+                           glm::value_ptr(display.camera_.getMatrix()));
+        glUniformMatrix4fv(program.get_uniform_location("clip_matrix"), 1,
+                           GL_FALSE, glm::value_ptr(clip_matrix));
+        glUniform4f(program.get_uniform_location("base_color"), 0.9, 0.3, 0.4,
+                    1.0);
+
+        MeshBuffer const& mesh_buffer = pile.mesh_buffer_list_[0];
+        glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
+        glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices, GL_UNSIGNED_INT,
+                       0);
+        glDisableVertexAttribArray(0);
       }));
   display->run();
   // }}}

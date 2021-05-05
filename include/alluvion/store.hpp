@@ -10,15 +10,17 @@
 #include "alluvion/graphical_variable.hpp"
 #include "alluvion/unique_device_pointer.hpp"
 #include "alluvion/unique_graphical_resource.hpp"
+#include "alluvion/unique_mesh_buffer.hpp"
 #include "alluvion/variable.hpp"
 namespace alluvion {
 class Store {
  private:
-  std::unordered_map<void*, UniqueDevicePointer> pointer_dict;
+  std::unordered_map<void*, UniqueDevicePointer> pointer_dict_;
   // NOTE: GraphicalVariable should be destructed before Display
   std::unique_ptr<Display> display_;
   std::unordered_map<GLuint, UniqueGraphicalResource> graphical_resource_dict_;
   std::vector<cudaGraphicsResource*> resource_array_;
+  std::unordered_map<GLuint, UniqueMeshBuffer> mesh_dict_;
 
   void update_resource_array();
 
@@ -27,14 +29,16 @@ class Store {
   virtual ~Store();
 
   Display* create_display(int width, int height, const char* title);
+  Display* get_display() const;
+  bool has_display() const;
 
   template <unsigned int D, typename M>
   Variable<D, M> create(std::array<unsigned int, D> const& shape) {
     Variable<D, M> var(shape);
     if (var.ptr_) {
-      pointer_dict.emplace(std::piecewise_construct,
-                           std::forward_as_tuple(var.ptr_),
-                           std::forward_as_tuple(var.ptr_));
+      pointer_dict_.emplace(std::piecewise_construct,
+                            std::forward_as_tuple(var.ptr_),
+                            std::forward_as_tuple(var.ptr_));
     }
     return var;
   }
@@ -42,7 +46,7 @@ class Store {
   template <unsigned int D, typename M>
   void remove(Variable<D, M>& var) {
     if (var.ptr_) {
-      pointer_dict.erase(var.ptr_);
+      pointer_dict_.erase(var.ptr_);
     }
     var.ptr_ = nullptr;
   }
@@ -61,6 +65,8 @@ class Store {
     update_resource_array();
     return var;
   }
+
+  MeshBuffer create_mesh_buffer(U num_vertices, U num_faces);
 
   void map_graphical_pointers();
   void unmap_graphical_pointers();

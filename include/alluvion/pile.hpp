@@ -56,9 +56,8 @@ class Pile {
   std::vector<U> grid_size_list_;
   std::vector<F3> cell_size_list_;
 
-  std::vector<VertexList> display_vertex_lists_;
-  std::vector<FaceList> display_face_lists_;
-  std::vector<Variable<1, F3>> collision_vertex_lists_;
+  std::vector<MeshBuffer> mesh_buffer_list_;
+  std::vector<Variable<1, F3>> collision_vertex_list_;
 
   Variable<1, F3> x_device_;
   Variable<1, F3> v_device_;
@@ -83,6 +82,7 @@ class Pile {
   U get_size() const;
   void build_grids(F margin);
   void copy_kinematics_to_device();
+  glm::mat4 get_matrix(U i) const;
 
   static void read_obj(const char* filename, VertexList* vertices,
                        FaceList* faces);

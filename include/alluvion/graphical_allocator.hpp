@@ -28,24 +28,46 @@ class GraphicalAllocator {
     if (num_elements == 0) {
       return;
     }
-    std::cout << "glGenBuffers" << std::endl;
     glGenBuffers(1, vbo);
-    std::cout << "glBindBuffer" << std::endl;
     glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-    std::cout << "glBufferData" << std::endl;
     glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), nullptr,
                  GL_DYNAMIC_DRAW);
-    std::cout << "glBindBuffer" << std::endl;
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    std::cout << "cudaGraphicsRegisterFlagsNone" << std::endl;
     Allocator::abort_if_error(
         cudaGraphicsGLRegisterBuffer(res, *vbo, cudaGraphicsRegisterFlagsNone));
   };
+  template <typename M>
+  static GLuint allocate_static_array_buffer(U num_elements) {
+    if (num_elements == 0) {
+      return 0;
+    }
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), nullptr,
+                 GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    return buffer;
+  }
+  template <typename M>
+  static GLuint allocate_element_array_buffer(U num_elements) {
+    if (num_elements == 0) {
+      return 0;
+    }
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, num_elements * sizeof(M), nullptr,
+                 GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    return buffer;
+  }
 
   static void map(std::vector<cudaGraphicsResource*>& resources);
   static void* get_mapped_pointer(cudaGraphicsResource* res);
   static void unmap(std::vector<cudaGraphicsResource*>& resources);
   static void free(GLuint* vbo, cudaGraphicsResource** res);
+  static void free_buffer(GLuint* vbo);
 };
 }  // namespace alluvion
 

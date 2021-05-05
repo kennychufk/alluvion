@@ -1,4 +1,5 @@
 #include <fstream>
+#include <glm/gtc/type_ptr.hpp>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -48,10 +49,6 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
       construct_mesh_distance(field_vertices, field_faces, aabb_min, aabb_max));
   aabb_min_list_.push_back(aabb_min);
   aabb_max_list_.push_back(aabb_max);
-  std::cout << "aabb_min = " << aabb_min.x << " " << aabb_min.y << " "
-            << aabb_min.z << std::endl;
-  std::cout << "aabb_max = " << aabb_max.x << " " << aabb_max.y << " "
-            << aabb_max.z << std::endl;
 
   resolution_list_.push_back(resolution);
   sign_list_.push_back(sign);
@@ -65,11 +62,18 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
   grid_size_list_.push_back(0);
   cell_size_list_.push_back(F3{0, 0, 0});
 
-  display_vertex_lists_.push_back(display_vertices);
-  display_face_lists_.push_back(display_faces);
+  MeshBuffer mesh_buffer;
+  if (store_.has_display()) {
+    mesh_buffer = store_.create_mesh_buffer(display_vertices.size(),
+                                            display_faces.size());
+    mesh_buffer.set_vertices(display_vertices.data());
+    mesh_buffer.set_indices(display_faces.data());
+  }
+  mesh_buffer_list_.push_back(mesh_buffer);
+
   Variable<1, F3> collision_vertices_var =
       store_.create<1, F3>({static_cast<U>(collision_vertices.size())});
-  collision_vertex_lists_.push_back(collision_vertices_var);
+  collision_vertex_list_.push_back(collision_vertices_var);
   collision_vertices_var.set_bytes(collision_vertices.data());
 
   store_.remove(x_device_);
@@ -114,9 +118,7 @@ void Pile::build_grids(F margin) {
         aabb_max_list_[i], margin, sign_list_[i], thickness_list_[i],
         domain_min, domain_max, num_nodes, cell_size);
 
-    std::cout << "removing distance grids" << std::endl;
     store_.remove(distance_grids_[i]);
-    std::cout << "removed distance grids" << std::endl;
     store_.remove(volume_grids_[i]);
     Variable<1, F> distance_grid = store_.create<1, F>({num_nodes});
     Variable<1, F> volume_grid = store_.create<1, F>({num_nodes});
@@ -138,6 +140,28 @@ void Pile::copy_kinematics_to_device() {
   x_device_.set_bytes(x_.data());
   v_device_.set_bytes(v_.data());
   omega_device_.set_bytes(omega_.data());
+}
+
+glm::mat4 Pile::get_matrix(U i) const {
+  Q const& q = q_[i];
+  F3 const& translation = x_[i];
+  float column_major_transformation[16] = {1.0 - 2 * (q.y * q.y + q.z * q.z),
+                                           2 * (q.x * q.y + q.z * q.w),
+                                           2 * (q.x * q.z - q.y * q.w),
+                                           0,
+                                           2 * (q.x * q.y - q.z * q.w),
+                                           1 - 2 * (q.x * q.x + q.z * q.z),
+                                           2 * (q.y * q.z + q.x * q.w),
+                                           0,
+                                           2 * (q.x * q.z + q.y * q.w),
+                                           2 * (q.y * q.z - q.x * q.w),
+                                           1 - 2 * (q.x * q.x + q.y * q.y),
+                                           0,
+                                           translation.x,
+                                           translation.y,
+                                           translation.z,
+                                           1};
+  return glm::make_mat4(column_major_transformation);
 }
 
 F Pile::find_max_distance(VertexList const& vertices) {
@@ -181,17 +205,14 @@ std::vector<F> Pile::construct_distance_grid(
     F3& domain_min, F3& domain_max, U& grid_size, F3& cell_size) {
   domain_min = aabb_min - margin;
   domain_max = aabb_max + margin;
-  std::cout << "constructing grid_host" << std::endl;
   dg::CubicLagrangeDiscreteGrid grid_host(
       dg::AlignedBox3r(dg::Vector3r(domain_min.x, domain_min.y, domain_min.z),
                        dg::Vector3r(domain_max.x, domain_max.y, domain_max.z)),
       {resolution.x, resolution.y, resolution.z});
-  std::cout << "constructed grid_host" << std::endl;
   grid_host.addFunction([&mesh_distance](dg::Vector3r const& xi) {
     // signedDistanceCached failed for unknown reasons
     return mesh_distance.signedDistance(xi);
   });
-  std::cout << "added mesh distance grid" << std::endl;
   std::vector<F>& nodes = grid_host.node_data()[0];
   grid_size = nodes.size();
   dg::Vector3r dg_cell_size = grid_host.cellSize();

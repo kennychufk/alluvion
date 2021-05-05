@@ -18,6 +18,26 @@ Display* Store::create_display(int width, int height, const char* title) {
   display_.reset(new Display(width, height, title));
   return display_.get();
 }
+Display* Store::get_display() const { return display_.get(); }
+bool Store::has_display() const { return static_cast<bool>(display_); }
+MeshBuffer Store::create_mesh_buffer(U num_vertices, U num_faces) {
+  if (!display_) {
+    std::cerr << "Display not created" << std::endl;
+    abort();
+  }
+  MeshBuffer mesh_buffer;
+  mesh_buffer.num_vertices = num_vertices;
+  mesh_buffer.num_indices = num_faces * 3;
+  mesh_buffer.vertex =
+      GraphicalAllocator::allocate_static_array_buffer<float3>(num_faces);
+  mesh_buffer.index =
+      GraphicalAllocator::allocate_element_array_buffer<unsigned int>(
+          mesh_buffer.num_indices);
+  mesh_dict_.emplace(std::piecewise_construct,
+                     std::forward_as_tuple(mesh_buffer.vertex),
+                     std::forward_as_tuple(mesh_buffer));
+  return mesh_buffer;
+}
 void Store::map_graphical_pointers() {
   GraphicalAllocator::map(resource_array_);
 

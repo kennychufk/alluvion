@@ -13,6 +13,12 @@ void GraphicalAllocator::free(GLuint* vbo, cudaGraphicsResource** res) {
   *vbo = 0;
 }
 
+void GraphicalAllocator::free_buffer(GLuint* vbo) {
+  if (*vbo == 0) return;
+  glDeleteBuffers(1, vbo);
+  *vbo = 0;
+}
+
 void GraphicalAllocator::map(std::vector<cudaGraphicsResource*>& resources) {
   Allocator::abort_if_error(
       cudaGraphicsMapResources(resources.size(), resources.data()));
