@@ -6,6 +6,8 @@ UniqueMeshBuffer::UniqueMeshBuffer(MeshBuffer buffer) : mesh_buffer_(buffer) {}
 
 UniqueMeshBuffer::~UniqueMeshBuffer() {
   GraphicalAllocator::free_buffer(&mesh_buffer_.vertex);
+  GraphicalAllocator::free_buffer(&mesh_buffer_.normal);
+  GraphicalAllocator::free_buffer(&mesh_buffer_.texcoord);
   GraphicalAllocator::free_buffer(&mesh_buffer_.index);
 }
 }  // namespace alluvion

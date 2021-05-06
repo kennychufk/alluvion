@@ -8,12 +8,13 @@
 namespace alluvion {
 struct MeshBuffer {
   GLuint vertex;
+  GLuint normal;
+  GLuint texcoord;
   GLuint index;
-  U num_vertices;
   U num_indices;
   MeshBuffer();
-  void set_vertices(void const* src);
-  void set_indices(void const* src);
+  MeshBuffer(GLuint vertex_arg, GLuint normal_arg, GLuint texcoord_arg,
+             GLuint index_arg, GLuint num_indices_arg);
 };
 }  // namespace alluvion
 

@@ -1,9 +1,7 @@
-#include <fstream>
 #include <glm/gtc/type_ptr.hpp>
-#include <sstream>
-#include <string>
 #include <vector>
 
+#include "alluvion/mesh.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 
@@ -16,41 +14,19 @@ Pile::Pile(Store& store)
       boundary_viscosity_device_(store.create<1, F>({0})) {}
 Pile::~Pile() {}
 
-void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
-               U3 const& resolution, F sign, F thickness,
-               VertexList const& collision_vertices, F mass, F restitution,
+void Pile::add(Mesh const& field_mesh, U3 const& resolution, F sign,
+               F thickness, Mesh const& collision_mesh, F mass, F restitution,
                F friction, F boundary_viscosity, F3 const& inertia_tensor,
-               F3 const& x, Q const& q, VertexList const& display_vertices,
-               FaceList const& display_faces) {
-  add(construct_mesh_distance(field_vertices, field_faces), resolution, sign,
-      thickness, collision_vertices, mass, restitution, friction,
-      boundary_viscosity, inertia_tensor, x, q, display_vertices,
-      display_faces);
-}
-
-void Pile::add(const char* field_mesh_filename, U3 const& resolution, F sign,
-               F thickness, const char* collision_mesh_filename, F mass,
-               F restitution, F friction, F boundary_viscosity,
-               F3 const& inertia_tensor, F3 const& x, Q const& q,
-               const char* display_mesh_filename) {
-  VertexList field_vertices, collision_vertices, display_vertices;
-  FaceList field_faces, display_faces;
-  read_obj(field_mesh_filename, &field_vertices, &field_faces);
-  if (collision_mesh_filename)
-    read_obj(collision_mesh_filename, &collision_vertices, nullptr);
-  if (display_mesh_filename)
-    read_obj(display_mesh_filename, &display_vertices, &display_faces);
-  add(field_vertices, field_faces, resolution, sign, thickness,
-      collision_vertices, mass, restitution, friction, boundary_viscosity,
-      inertia_tensor, x, q, display_vertices, display_faces);
+               F3 const& x, Q const& q, Mesh const& display_mesh) {
+  add(construct_mesh_distance(field_mesh.vertices, field_mesh.faces),
+      resolution, sign, thickness, collision_mesh, mass, restitution, friction,
+      boundary_viscosity, inertia_tensor, x, q, display_mesh);
 }
 
 void Pile::add(dg::Distance* distance, U3 const& resolution, F sign,
-               F thickness, VertexList const& collision_vertices, F mass,
-               F restitution, F friction, F boundary_viscosity,
-               F3 const& inertia_tensor, F3 const& x, Q const& q,
-               VertexList const& display_vertices,
-               FaceList const& display_faces) {
+               F thickness, Mesh const& collision_mesh, F mass, F restitution,
+               F friction, F boundary_viscosity, F3 const& inertia_tensor,
+               F3 const& x, Q const& q, Mesh const& display_mesh) {
   mass_.push_back(mass);
   restitution_.push_back(restitution);
   friction_.push_back(friction);
@@ -87,17 +63,14 @@ void Pile::add(dg::Distance* distance, U3 const& resolution, F sign,
 
   MeshBuffer mesh_buffer;
   if (store_.has_display()) {
-    mesh_buffer = store_.create_mesh_buffer(display_vertices.size(),
-                                            display_faces.size());
-    mesh_buffer.set_vertices(display_vertices.data());
-    mesh_buffer.set_indices(display_faces.data());
+    mesh_buffer = store_.create_mesh_buffer(display_mesh);
   }
   mesh_buffer_list_.push_back(mesh_buffer);
 
   Variable<1, F3> collision_vertices_var =
-      store_.create<1, F3>({static_cast<U>(collision_vertices.size())});
+      store_.create<1, F3>({static_cast<U>(collision_mesh.vertices.size())});
   collision_vertex_list_.push_back(collision_vertices_var);
-  collision_vertices_var.set_bytes(collision_vertices.data());
+  collision_vertices_var.set_bytes(collision_mesh.vertices.data());
 }
 
 void Pile::build_grids(F margin) {
@@ -209,64 +182,4 @@ std::vector<F> Pile::construct_distance_grid(dg::Distance const& distance,
   return nodes;
 }
 
-void Pile::read_obj(const char* filename, VertexList* vertices,
-                    FaceList* faces) {
-  std::ifstream file_stream(filename);
-  std::stringstream line_stream;
-  std::string line;
-  std::array<std::string, 4> tokens;
-  std::stringstream face_entry_stream;
-  std::array<std::string, 3> face_entry_tokens;
-  U3 face, tex_face, normal_face;
-  int num_tokens;
-  int face_token_id;
-  file_stream.exceptions(std::ios_base::badbit);
-  while (std::getline(file_stream, line)) {
-    num_tokens = 0;
-    line_stream.clear();
-    line_stream.str(line);
-    while (num_tokens < 4 &&
-           std::getline(line_stream, tokens[num_tokens], ' ')) {
-      ++num_tokens;
-    }
-    if (num_tokens == 0) continue;
-    if (tokens[0] == "v" && vertices) {
-      vertices->push_back(from_string<F3>(tokens[1], tokens[2], tokens[3]));
-    } else if (tokens[0] == "f" && faces) {
-      for (U face_entry_id = 1; face_entry_id <= 3; ++face_entry_id) {
-        face_token_id = 0;
-        face_entry_stream.clear();
-        face_entry_stream.str(tokens[face_entry_id]);
-        while (
-            face_token_id < 3 &&
-            std::getline(face_entry_stream, face_entry_tokens[face_token_id])) {
-          if (face_token_id == 0) {
-            if (face_entry_id == 1)
-              face.x = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 2)
-              face.y = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 3)
-              face.z = from_string<U>(face_entry_tokens[face_token_id]);
-          } else if (face_token_id == 1) {
-            if (face_entry_id == 1)
-              tex_face.x = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 2)
-              tex_face.y = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 3)
-              tex_face.z = from_string<U>(face_entry_tokens[face_token_id]);
-          } else if (face_token_id == 2) {
-            if (face_entry_id == 1)
-              normal_face.x = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 2)
-              normal_face.y = from_string<U>(face_entry_tokens[face_token_id]);
-            if (face_entry_id == 3)
-              normal_face.z = from_string<U>(face_entry_tokens[face_token_id]);
-          }
-          face_token_id += 1;
-        }
-      }
-      faces->push_back(face - 1);  // OBJ vertex: one-based indexing
-    }
-  }
-}
 }  // namespace alluvion

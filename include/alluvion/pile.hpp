@@ -9,10 +9,6 @@
 
 namespace alluvion {
 class Pile {
- public:
-  using VertexList = std::vector<F3>;
-  using FaceList = std::vector<U3>;
-
  private:
   static dg::MeshDistance* construct_mesh_distance(VertexList const& vertices,
                                                    FaceList const& faces);
@@ -66,30 +62,20 @@ class Pile {
 
   Pile(Store& store);
   virtual ~Pile();
-  void add(VertexList const& field_vertices, FaceList const& field_faces,
-           U3 const& resolution, F sign, F thickness,
-           VertexList const& collision_vertices, F mass, F restitution,
-           F friction, F boundary_viscosity, F3 const& inertia_tensor,
-           F3 const& x, Q const& q, VertexList const& display_vertices,
-           FaceList const& display_faces);
-  void add(const char* field_mesh_filename, U3 const& resolution, F sign,
-           F thickness, const char* collision_mesh_filename, F mass,
-           F restitution, F friction, F boundary_viscosity,
-           F3 const& inertia_tensor, F3 const& x, Q const& q,
-           const char* display_mesh_filename);
+  void add(Mesh const& field_mesh, U3 const& resolution, F sign, F thickness,
+           Mesh const& collision_mesh, F mass, F restitution, F friction,
+           F boundary_viscosity, F3 const& inertia_tensor, F3 const& x,
+           Q const& q, Mesh const& display_mesh);
   void add(dg::Distance* distance, U3 const& resolution, F sign, F thickness,
-           VertexList const& collision_vertices, F mass, F restitution,
-           F friction, F boundary_viscosity, F3 const& inertia_tensor,
-           F3 const& x, Q const& q, VertexList const& display_vertices,
-           FaceList const& display_faces);
+           Mesh const& collision_mesh, F mass, F restitution, F friction,
+           F boundary_viscosity, F3 const& inertia_tensor, F3 const& x,
+           Q const& q, Mesh const& display_mesh);
   void build_grids(F margin);
   void reallocate_kinematics_on_device();
   void copy_kinematics_to_device();
   U get_size() const;
   glm::mat4 get_matrix(U i) const;
 
-  static void read_obj(const char* filename, VertexList* vertices,
-                       FaceList* faces);
   template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {

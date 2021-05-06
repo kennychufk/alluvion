@@ -8,6 +8,7 @@
 
 #include "alluvion/display.hpp"
 #include "alluvion/graphical_variable.hpp"
+#include "alluvion/mesh.hpp"
 #include "alluvion/unique_device_pointer.hpp"
 #include "alluvion/unique_graphical_resource.hpp"
 #include "alluvion/unique_mesh_buffer.hpp"
@@ -66,7 +67,7 @@ class Store {
     return var;
   }
 
-  MeshBuffer create_mesh_buffer(U num_vertices, U num_faces);
+  MeshBuffer create_mesh_buffer(Mesh const& mesh);
 
   void map_graphical_pointers();
   void unmap_graphical_pointers();

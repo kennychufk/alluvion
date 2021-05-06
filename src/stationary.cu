@@ -42,10 +42,14 @@ int main(void) {
 
   // rigids
   Pile pile(store);
-  pile.add("cube.obj", U3{50, 50, 50}, -1.0_F, 0, nullptr, 1, 1, 0, 0.2,
-           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, nullptr);
-  pile.add(new SphereDistance(3.0_F), U3{50, 50, 50}, 1.0_F, 0, {}, 1, 1, 0,
-           0.2, F3{1, 1, 1}, F3{-6, -6, -6}, Q{0, 0, 0, 1}, {}, {});
+  Mesh cube_mesh;
+  cube_mesh.set_obj("cube.obj");
+  Mesh sphere_mesh;
+  sphere_mesh.set_uv_sphere(3, 24, 24);
+  pile.add(cube_mesh, U3{50, 50, 50}, -1.0_F, 0, cube_mesh, 1, 1, 0, 0.2,
+           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
+  pile.add(new SphereDistance(3.0_F), U3{50, 50, 50}, 1.0_F, 0, sphere_mesh, 1,
+           1, 0, 0.2, F3{1, 1, 1}, F3{-6, -6, -6}, Q{0, 0, 0, 1}, sphere_mesh);
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
 
@@ -344,26 +348,30 @@ void main() {
             glm::radians(45.0f),
             display.width_ / static_cast<GLfloat>(display.height_), .01f,
             100.f);
-
-        glm::mat4 model_matrix = pile.get_matrix(0);
-        glUniformMatrix4fv(program.get_uniform_location("model_matrix"), 1,
-                           GL_FALSE, glm::value_ptr(model_matrix));
         glUniformMatrix4fv(program.get_uniform_location("view_matrix"), 1,
                            GL_FALSE,
                            glm::value_ptr(display.camera_.getMatrix()));
         glUniformMatrix4fv(program.get_uniform_location("clip_matrix"), 1,
                            GL_FALSE, glm::value_ptr(clip_matrix));
-        glUniform4f(program.get_uniform_location("base_color"), 0.9, 0.3, 0.4,
-                    1.0);
 
-        MeshBuffer const& mesh_buffer = pile.mesh_buffer_list_[0];
-        glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
-        glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices, GL_UNSIGNED_INT,
-                       0);
-        glDisableVertexAttribArray(0);
+        for (U i = 0; i < pile.get_size(); ++i) {
+          MeshBuffer const& mesh_buffer = pile.mesh_buffer_list_[i];
+          if (mesh_buffer.vertex != 0 && mesh_buffer.index != 0) {
+            glm::mat4 model_matrix = pile.get_matrix(i);
+            glUniformMatrix4fv(program.get_uniform_location("model_matrix"), 1,
+                               GL_FALSE, glm::value_ptr(model_matrix));
+            glUniform4f(program.get_uniform_location("base_color"), 0.9, 0.3,
+                        0.4, 1.0);
+
+            glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
+            glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices,
+                           GL_UNSIGNED_INT, 0);
+            glDisableVertexAttribArray(0);
+          }
+        }
       }));
   display->run();
   // }}}

@@ -37,27 +37,27 @@ class GraphicalAllocator {
         cudaGraphicsGLRegisterBuffer(res, *vbo, cudaGraphicsRegisterFlagsNone));
   };
   template <typename M>
-  static GLuint allocate_static_array_buffer(U num_elements) {
+  static GLuint allocate_static_array_buffer(U num_elements, void const* src) {
     if (num_elements == 0) {
       return 0;
     }
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), nullptr,
+    glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), src,
                  GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return buffer;
   }
   template <typename M>
-  static GLuint allocate_element_array_buffer(U num_elements) {
+  static GLuint allocate_element_array_buffer(U num_elements, void const* src) {
     if (num_elements == 0) {
       return 0;
     }
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, num_elements * sizeof(M), nullptr,
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, num_elements * sizeof(M), src,
                  GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     return buffer;
