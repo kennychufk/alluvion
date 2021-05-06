@@ -15,13 +15,12 @@ class Pile {
 
  private:
   static dg::MeshDistance* construct_mesh_distance(VertexList const& vertices,
-                                                   FaceList const& faces,
-                                                   F3& aabb_min, F3& aabb_max);
-  static std::vector<F> construct_distance_grid(
-      dg::Distance const& mesh_distance, U3 const& resolution,
-      F3 const& aabb_min, F3 const& aabb_max, F margin, F sign, F thickness,
-      F3& domain_min, F3& domain_max, U& grid_size, F3& cell_size);
-  static F find_max_distance(VertexList const& vertices);
+                                                   FaceList const& faces);
+  static std::vector<F> construct_distance_grid(dg::Distance const& distance,
+                                                U3 const& resolution, F margin,
+                                                F sign, F thickness,
+                                                F3& domain_min, F3& domain_max,
+                                                U& grid_size, F3& cell_size);
 
  public:
   std::vector<F> mass_;
@@ -30,7 +29,6 @@ class Pile {
   std::vector<F> boundary_viscosity_;
   std::vector<F3> inertia_tensor_;
 
-  std::vector<F> max_dist_;
   std::vector<F3> x_mat_;
   std::vector<Q> q_mat_;
   std::vector<Q> q_initial_;
@@ -45,8 +43,6 @@ class Pile {
   std::vector<F3> omega_;
   std::vector<F3> torque_;
 
-  std::vector<F3> aabb_min_list_;
-  std::vector<F3> aabb_max_list_;
   std::vector<std::unique_ptr<dg::Distance>> distance_list_;
   std::vector<U3> resolution_list_;
   std::vector<F> sign_list_;
@@ -81,9 +77,15 @@ class Pile {
            F restitution, F friction, F boundary_viscosity,
            F3 const& inertia_tensor, F3 const& x, Q const& q,
            const char* display_mesh_filename);
-  U get_size() const;
+  void add(dg::Distance* distance, U3 const& resolution, F sign, F thickness,
+           VertexList const& collision_vertices, F mass, F restitution,
+           F friction, F boundary_viscosity, F3 const& inertia_tensor,
+           F3 const& x, Q const& q, VertexList const& display_vertices,
+           FaceList const& display_faces);
   void build_grids(F margin);
+  void reallocate_kinematics_on_device();
   void copy_kinematics_to_device();
+  U get_size() const;
   glm::mat4 get_matrix(U i) const;
 
   static void read_obj(const char* filename, VertexList* vertices,

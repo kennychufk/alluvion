@@ -56,6 +56,20 @@ MeshDistance::MeshDistance(TriangleMesh const& mesh, bool precompute_normals)
           return n;
         });
   }
+  aabb_min_.x = aabb_min_.y = aabb_min_.z = std::numeric_limits<F>::max();
+  aabb_max_.x = aabb_max_.y = aabb_max_.z = std::numeric_limits<F>::lowest();
+  F max_distance2 = 0;
+  for (dg::Vector3r const& vertex : m_mesh.vertex_data()) {
+    if (vertex(0) < aabb_min_.x) aabb_min_.x = vertex(0);
+    if (vertex(1) < aabb_min_.y) aabb_min_.y = vertex(1);
+    if (vertex(2) < aabb_min_.z) aabb_min_.z = vertex(2);
+    if (vertex(0) > aabb_max_.x) aabb_max_.x = vertex(0);
+    if (vertex(1) > aabb_max_.y) aabb_max_.y = vertex(1);
+    if (vertex(2) > aabb_max_.z) aabb_max_.z = vertex(2);
+    F distance2 = vertex.dot(vertex);
+    if (distance2 > max_distance2) max_distance2 = distance2;
+  }
+  max_distance_ = sqrt(max_distance2);
 }
 
 // Thread-safe.

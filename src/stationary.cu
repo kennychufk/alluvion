@@ -2,7 +2,7 @@
 #include <iostream>
 
 #include "alluvion/constants.hpp"
-#include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
+#include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
@@ -43,8 +43,11 @@ int main(void) {
   // rigids
   Pile pile(store);
   pile.add("cube.obj", U3{50, 50, 50}, -1.0_F, 0, nullptr, 1, 1, 0, 0.2,
-           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, "cube.obj");
+           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, nullptr);
+  pile.add(new SphereDistance(3.0_F), U3{50, 50, 50}, 1.0_F, 0, {}, 1, 1, 0,
+           0.2, F3{1, 1, 1}, F3{-6, -6, -6}, Q{0, 0, 0, 1}, {}, {});
   pile.build_grids(4 * kernel_radius);
+  pile.reallocate_kinematics_on_device();
 
   // particles
   GraphicalVariable<1, F3> particle_x =

@@ -1,6 +1,5 @@
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
-#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -16,11 +15,41 @@ Pile::Pile(Store& store)
       omega_device_(store.create<1, F3>({0})),
       boundary_viscosity_device_(store.create<1, F>({0})) {}
 Pile::~Pile() {}
+
 void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
                U3 const& resolution, F sign, F thickness,
                VertexList const& collision_vertices, F mass, F restitution,
                F friction, F boundary_viscosity, F3 const& inertia_tensor,
                F3 const& x, Q const& q, VertexList const& display_vertices,
+               FaceList const& display_faces) {
+  add(construct_mesh_distance(field_vertices, field_faces), resolution, sign,
+      thickness, collision_vertices, mass, restitution, friction,
+      boundary_viscosity, inertia_tensor, x, q, display_vertices,
+      display_faces);
+}
+
+void Pile::add(const char* field_mesh_filename, U3 const& resolution, F sign,
+               F thickness, const char* collision_mesh_filename, F mass,
+               F restitution, F friction, F boundary_viscosity,
+               F3 const& inertia_tensor, F3 const& x, Q const& q,
+               const char* display_mesh_filename) {
+  VertexList field_vertices, collision_vertices, display_vertices;
+  FaceList field_faces, display_faces;
+  read_obj(field_mesh_filename, &field_vertices, &field_faces);
+  if (collision_mesh_filename)
+    read_obj(collision_mesh_filename, &collision_vertices, nullptr);
+  if (display_mesh_filename)
+    read_obj(display_mesh_filename, &display_vertices, &display_faces);
+  add(field_vertices, field_faces, resolution, sign, thickness,
+      collision_vertices, mass, restitution, friction, boundary_viscosity,
+      inertia_tensor, x, q, display_vertices, display_faces);
+}
+
+void Pile::add(dg::Distance* distance, U3 const& resolution, F sign,
+               F thickness, VertexList const& collision_vertices, F mass,
+               F restitution, F friction, F boundary_viscosity,
+               F3 const& inertia_tensor, F3 const& x, Q const& q,
+               VertexList const& display_vertices,
                FaceList const& display_faces) {
   mass_.push_back(mass);
   restitution_.push_back(restitution);
@@ -28,7 +57,6 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
   boundary_viscosity_.push_back(boundary_viscosity);
   inertia_tensor_.push_back(inertia_tensor);
 
-  max_dist_.push_back(find_max_distance(field_vertices));
   x_mat_.push_back(F3{0, 0, 0});
   q_mat_.push_back(Q{0, 0, 0, 1});
   q_initial_.push_back(Q{0, 0, 0, 1});
@@ -43,12 +71,7 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
   omega_.push_back(F3{0, 0, 0});
   torque_.push_back(F3{0, 0, 0});
 
-  F3 aabb_min;
-  F3 aabb_max;
-  distance_list_.emplace_back(
-      construct_mesh_distance(field_vertices, field_faces, aabb_min, aabb_max));
-  aabb_min_list_.push_back(aabb_min);
-  aabb_max_list_.push_back(aabb_max);
+  distance_list_.emplace_back(distance);
 
   resolution_list_.push_back(resolution);
   sign_list_.push_back(sign);
@@ -75,37 +98,7 @@ void Pile::add(VertexList const& field_vertices, FaceList const& field_faces,
       store_.create<1, F3>({static_cast<U>(collision_vertices.size())});
   collision_vertex_list_.push_back(collision_vertices_var);
   collision_vertices_var.set_bytes(collision_vertices.data());
-
-  store_.remove(x_device_);
-  store_.remove(v_device_);
-  store_.remove(omega_device_);
-  store_.remove(boundary_viscosity_device_);
-  x_device_ = store_.create<1, F3>({get_size()});
-  v_device_ = store_.create<1, F3>({get_size()});
-  omega_device_ = store_.create<1, F3>({get_size()});
-  boundary_viscosity_device_ = store_.create<1, F>({get_size()});
-
-  boundary_viscosity_device_.set_bytes(boundary_viscosity_.data());
 }
-
-void Pile::add(const char* field_mesh_filename, U3 const& resolution, F sign,
-               F thickness, const char* collision_mesh_filename, F mass,
-               F restitution, F friction, F boundary_viscosity,
-               F3 const& inertia_tensor, F3 const& x, Q const& q,
-               const char* display_mesh_filename) {
-  VertexList field_vertices, collision_vertices, display_vertices;
-  FaceList field_faces, display_faces;
-  read_obj(field_mesh_filename, &field_vertices, &field_faces);
-  if (collision_mesh_filename)
-    read_obj(collision_mesh_filename, &collision_vertices, nullptr);
-  if (display_mesh_filename)
-    read_obj(display_mesh_filename, &display_vertices, &display_faces);
-  add(field_vertices, field_faces, resolution, sign, thickness,
-      collision_vertices, mass, restitution, friction, boundary_viscosity,
-      inertia_tensor, x, q, display_vertices, display_faces);
-}
-
-U Pile::get_size() const { return distance_grids_.size(); }
 
 void Pile::build_grids(F margin) {
   for (U i = 0; i < get_size(); ++i) {
@@ -114,9 +107,8 @@ void Pile::build_grids(F margin) {
     F3& domain_min = domain_min_list_[i];
     F3& domain_max = domain_max_list_[i];
     std::vector<F> nodes_host = construct_distance_grid(
-        *distance_list_[i], resolution_list_[i], aabb_min_list_[i],
-        aabb_max_list_[i], margin, sign_list_[i], thickness_list_[i],
-        domain_min, domain_max, num_nodes, cell_size);
+        *distance_list_[i], resolution_list_[i], margin, sign_list_[i],
+        thickness_list_[i], domain_min, domain_max, num_nodes, cell_size);
 
     store_.remove(distance_grids_[i]);
     store_.remove(volume_grids_[i]);
@@ -136,11 +128,26 @@ void Pile::build_grids(F margin) {
   }
 }
 
+void Pile::reallocate_kinematics_on_device() {
+  store_.remove(x_device_);
+  store_.remove(v_device_);
+  store_.remove(omega_device_);
+  store_.remove(boundary_viscosity_device_);
+  x_device_ = store_.create<1, F3>({get_size()});
+  v_device_ = store_.create<1, F3>({get_size()});
+  omega_device_ = store_.create<1, F3>({get_size()});
+  boundary_viscosity_device_ = store_.create<1, F>({get_size()});
+
+  boundary_viscosity_device_.set_bytes(boundary_viscosity_.data());
+}
+
 void Pile::copy_kinematics_to_device() {
   x_device_.set_bytes(x_.data());
   v_device_.set_bytes(v_.data());
   omega_device_.set_bytes(omega_.data());
 }
+
+U Pile::get_size() const { return distance_grids_.size(); }
 
 glm::mat4 Pile::get_matrix(U i) const {
   Q const& q = q_[i];
@@ -164,34 +171,14 @@ glm::mat4 Pile::get_matrix(U i) const {
   return glm::make_mat4(column_major_transformation);
 }
 
-F Pile::find_max_distance(VertexList const& vertices) {
-  F max_distance2 = 0;
-  for (F3 const& vertex : vertices) {
-    F distance2 = length_sqr(vertex);
-    if (distance2 > max_distance2) {
-      max_distance2 = distance2;
-    }
-  }
-  return sqrt(max_distance2);
-}
-
 dg::MeshDistance* Pile::construct_mesh_distance(VertexList const& vertices,
-                                                FaceList const& faces,
-                                                F3& aabb_min, F3& aabb_max) {
+                                                FaceList const& faces) {
   std::vector<dg::Vector3r> dg_vertices;
   std::vector<std::array<unsigned int, 3>> dg_faces;
   dg_vertices.reserve(vertices.size());
   dg_faces.reserve(faces.size());
-  aabb_min.x = aabb_min.y = aabb_min.z = std::numeric_limits<F>::max();
-  aabb_max.x = aabb_max.y = aabb_max.z = std::numeric_limits<F>::lowest();
   for (F3 const& vertex : vertices) {
     dg_vertices.push_back(dg::Vector3r(vertex.x, vertex.y, vertex.z));
-    if (vertex.x < aabb_min.x) aabb_min.x = vertex.x;
-    if (vertex.y < aabb_min.y) aabb_min.y = vertex.y;
-    if (vertex.z < aabb_min.z) aabb_min.z = vertex.z;
-    if (vertex.x > aabb_max.x) aabb_max.x = vertex.x;
-    if (vertex.y > aabb_max.y) aabb_max.y = vertex.y;
-    if (vertex.z > aabb_max.z) aabb_max.z = vertex.z;
   }
   for (U3 const& face : faces) {
     dg_faces.push_back({face.x, face.y, face.z});
@@ -199,12 +186,13 @@ dg::MeshDistance* Pile::construct_mesh_distance(VertexList const& vertices,
   return new dg::MeshDistance(dg::TriangleMesh(dg_vertices, dg_faces));
 }
 
-std::vector<F> Pile::construct_distance_grid(
-    dg::Distance const& distance, U3 const& resolution, F3 const& aabb_min,
-    F3 const& aabb_max, F margin, F sign, F thickness, F3& domain_min,
-    F3& domain_max, U& grid_size, F3& cell_size) {
-  domain_min = aabb_min - margin;
-  domain_max = aabb_max + margin;
+std::vector<F> Pile::construct_distance_grid(dg::Distance const& distance,
+                                             U3 const& resolution, F margin,
+                                             F sign, F thickness,
+                                             F3& domain_min, F3& domain_max,
+                                             U& grid_size, F3& cell_size) {
+  domain_min = distance.get_aabb_min() - margin;
+  domain_max = distance.get_aabb_max() + margin;
   dg::CubicLagrangeDiscreteGrid grid_host(
       dg::AlignedBox3r(dg::Vector3r(domain_min.x, domain_min.y, domain_min.z),
                        dg::Vector3r(domain_max.x, domain_max.y, domain_max.z)),
