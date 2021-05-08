@@ -1,6 +1,7 @@
 list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/store.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_device_pointer.cu
+  ${CMAKE_CURRENT_LIST_DIR}/unique_pinned_pointer.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_graphical_resource.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_mesh_buffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/mesh_buffer.cu

@@ -40,6 +40,8 @@ __constant__ F cell_width;
 __constant__ U max_num_neighbors_per_particle;
 
 __constant__ U num_boundaries;
+__constant__ F contact_tolerance;
+__constant__ U max_num_contacts;
 
 void set_cubic_discretization_constants() {
   Allocator::abort_if_error(
@@ -150,6 +152,14 @@ void set_gravity(F g) {
 }
 void set_num_boundaries(U n) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(num_boundaries, &n, sizeof(U)));
+}
+void set_contact_tolerance(F tolerance) {
+  Allocator::abort_if_error(
+      cudaMemcpyToSymbol(contact_tolerance, &tolerance, sizeof(F)));
+}
+void set_max_num_contacts(U n) {
+  Allocator::abort_if_error(
+      cudaMemcpyToSymbol(max_num_contacts, &n, sizeof(U)));
 }
 }  // namespace cnst
 }  // namespace alluvion

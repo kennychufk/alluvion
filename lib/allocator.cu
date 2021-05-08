@@ -14,6 +14,12 @@ void Allocator::free(void** ptr) {
   *ptr = nullptr;
 }
 
+void Allocator::free_pinned(void** ptr) {
+  if (ptr == nullptr) return;
+  abort_if_error(cudaFreeHost(*ptr));
+  *ptr = nullptr;
+}
+
 void Allocator::copy(void* dst, void const* src, unsigned int num_bytes) {
   abort_if_error(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDefault));
 }

@@ -8,8 +8,8 @@ template <U D, typename M>
 class GraphicalVariable : public Variable<D, M> {
  public:
   using Base = Variable<D, M>;
-  GraphicalVariable(std::array<U, D> const& shape)
-      : vbo_(0), res_(nullptr), Base(shape) {
+  GraphicalVariable(std::array<U, D> const& shape) : vbo_(0), res_(nullptr) {
+    std::copy(std::begin(shape), std::end(shape), std::begin(Base::shape_));
     GraphicalAllocator::allocate<M>(&vbo_, &res_, Base::get_linear_shape());
   }
 

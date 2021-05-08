@@ -50,6 +50,8 @@ extern __constant__ F cell_width;
 extern __constant__ U max_num_neighbors_per_particle;
 
 extern __constant__ U num_boundaries;
+extern __constant__ F contact_tolerance;
+extern __constant__ U max_num_contacts;
 
 void set_cubic_discretization_constants();
 void set_kernel_radius(F r);
@@ -62,6 +64,8 @@ void set_max_num_particles_per_cell(U n);
 void set_max_num_neighbors_per_particle(U n);
 void set_gravity(F g);
 void set_num_boundaries(U n);
+void set_contact_tolerance(F tolerance);
+void set_max_num_contacts(U n);
 }  // namespace cnst
 }  // namespace alluvion
 

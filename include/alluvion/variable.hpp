@@ -5,7 +5,6 @@
 #include <array>
 #include <iostream>
 #include <numeric>
-#include <vector>
 
 #include "alluvion/allocator.hpp"
 #include "alluvion/base_variable.hpp"
@@ -19,9 +18,7 @@ class Variable : public BaseVariable {
   Variable() : ptr_(nullptr) {}
   Variable(const Variable& var) = default;
   Variable(std::array<U, D> const& shape) : ptr_(nullptr) {
-    for (U i = 0; i < D; ++i) {
-      shape_[i] = shape[i];
-    }
+    std::copy(std::begin(shape), std::end(shape), std::begin(shape_));
     Allocator::allocate<M>(&ptr_, get_linear_shape());
   }
   virtual ~Variable() {}

@@ -29,14 +29,14 @@ class Pile {
   std::vector<Q> q_mat_;
   std::vector<Q> q_initial_;
 
-  std::vector<F3> x_;
+  PinnedVariable<1, F3> x_;
   std::vector<F3> oldx_;
-  std::vector<F3> v_;
+  PinnedVariable<1, F3> v_;
   std::vector<F3> a_;
   std::vector<F3> force_;
 
   std::vector<Q> q_;
-  std::vector<F3> omega_;
+  PinnedVariable<1, F3> omega_;
   std::vector<F3> torque_;
 
   std::vector<std::unique_ptr<dg::Distance>> distance_list_;
@@ -57,10 +57,14 @@ class Pile {
   Variable<1, F3> v_device_;
   Variable<1, F3> omega_device_;
   Variable<1, F> boundary_viscosity_device_;
+  Variable<1, Contact> contacts_;
+  Variable<1, U> num_contacts_;
+  PinnedVariable<1, Contact> contacts_pinned_;
+  PinnedVariable<1, U> num_contacts_pinned_;
 
   Store& store_;
 
-  Pile(Store& store);
+  Pile(Store& store, U max_num_contacts);
   virtual ~Pile();
   void add(Mesh const& field_mesh, U3 const& resolution, F sign, F thickness,
            Mesh const& collision_mesh, F mass, F restitution, F friction,
@@ -72,14 +76,17 @@ class Pile {
            Q const& q, Mesh const& display_mesh);
   void build_grids(F margin);
   void reallocate_kinematics_on_device();
+  void reallocate_kinematics_on_pinned();
   void copy_kinematics_to_device();
+  void find_contacts();
+  void solve_contacts();
   U get_size() const;
   glm::mat4 get_matrix(U i) const;
 
   template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {
-      f(i, distance_grids_[i], volume_grids_[i], x_[i], q_[i],
+      f(i, distance_grids_[i], volume_grids_[i], x_(i), q_[i],
         domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
         cell_size_list_[i], grid_size_list_[i], sign_list_[i],
         thickness_list_[i]);

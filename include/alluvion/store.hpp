@@ -9,14 +9,17 @@
 #include "alluvion/display.hpp"
 #include "alluvion/graphical_variable.hpp"
 #include "alluvion/mesh.hpp"
+#include "alluvion/pinned_variable.hpp"
 #include "alluvion/unique_device_pointer.hpp"
 #include "alluvion/unique_graphical_resource.hpp"
 #include "alluvion/unique_mesh_buffer.hpp"
+#include "alluvion/unique_pinned_pointer.hpp"
 #include "alluvion/variable.hpp"
 namespace alluvion {
 class Store {
  private:
   std::unordered_map<void*, UniqueDevicePointer> pointer_dict_;
+  std::unordered_map<void*, UniquePinnedPointer> pinned_pointer_dict_;
   // NOTE: GraphicalVariable should be destructed before Display
   std::unique_ptr<Display> display_;
   std::unordered_map<GLuint, UniqueGraphicalResource> graphical_resource_dict_;
@@ -45,9 +48,28 @@ class Store {
   }
 
   template <unsigned int D, typename M>
+  PinnedVariable<D, M> create_pinned(std::array<unsigned int, D> const& shape) {
+    PinnedVariable<D, M> var(shape);
+    if (var.ptr_) {
+      pinned_pointer_dict_.emplace(std::piecewise_construct,
+                                   std::forward_as_tuple(var.ptr_),
+                                   std::forward_as_tuple(var.ptr_));
+    }
+    return var;
+  }
+
+  template <unsigned int D, typename M>
   void remove(Variable<D, M>& var) {
     if (var.ptr_) {
       pointer_dict_.erase(var.ptr_);
+    }
+    var.ptr_ = nullptr;
+  }
+
+  template <unsigned int D, typename M>
+  void remove(PinnedVariable<D, M>& var) {
+    if (var.ptr_) {
+      pinned_pointer_dict_.erase(var.ptr_);
     }
     var.ptr_ = nullptr;
   }

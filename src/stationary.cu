@@ -28,7 +28,6 @@ int main(void) {
 
   U num_particles = 10000;
   U3 grid_res{128, 128, 128};
-  U num_grid_cells = grid_res.x * grid_res.y * grid_res.z;
   I3 grid_offset{-64, -64, -64};
   U max_num_particles_per_cell = 128;
   U max_num_neighbors_per_particle = 128;
@@ -42,18 +41,21 @@ int main(void) {
   cnst::set_max_num_neighbors_per_particle(max_num_neighbors_per_particle);
 
   // rigids
-  Pile pile(store);
+  U max_num_contacts = 512;
+  Pile pile(store, max_num_contacts);
   Mesh cube_mesh;
   cube_mesh.set_obj("cube.obj");
   Mesh sphere_mesh;
   sphere_mesh.set_uv_sphere(3, 24, 24);
-  pile.add(cube_mesh, U3{20, 20, 20}, -1.0_F, 0, cube_mesh, 1, 1, 0, 0.1,
+  pile.add(cube_mesh, U3{20, 20, 20}, -1._F, 0, cube_mesh, 0._F, 1, 0, 0.1,
            F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
-  pile.add(new SphereDistance(3.0_F), U3{50, 50, 50}, 1.0_F, 0, sphere_mesh, 1,
-           1, 0, 0.2, F3{1, 1, 1}, F3{-6, -6, -6}, Q{0, 0, 0, 1}, sphere_mesh);
+  pile.add(new SphereDistance(2.5_F), U3{50, 50, 50}, 1._F, 0, sphere_mesh,
+           300._F, 1, 0, 0.2, F3{1, 1, 1}, F3{-5, -5, -5}, Q{0, 0, 0, 1},
+           sphere_mesh);
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
   cnst::set_num_boundaries(pile.get_size());
+  cnst::set_contact_tolerance(0.05);
 
   // particles
   GraphicalVariable<1, F3> particle_x =
@@ -105,7 +107,9 @@ int main(void) {
 
         store.map_graphical_pointers();
         // start of simulation loop
-        for (U frame_interstep = 0; frame_interstep < 15; ++frame_interstep) {
+        for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
+          particle_force.set_zero();
+          particle_torque.set_zero();
           pile.copy_kinematics_to_device();
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             clear_acceleration<<<grid_size, block_size>>>(particle_a,
@@ -127,10 +131,7 @@ int main(void) {
                   num_particles);
             });
           });
-          Runner::launch(num_grid_cells, 256, [&](U grid_size, U block_size) {
-            clear_particle_grid<<<grid_size, block_size>>>(pid_length,
-                                                           num_grid_cells);
-          });
+          pid_length.set_zero();
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             update_particle_grid<<<grid_size, block_size>>>(
                 particle_x, pid, pid_length, num_particles);
@@ -252,6 +253,38 @@ int main(void) {
                 particle_x, particle_v, particle_pressure_accel, dt,
                 num_particles);
           });
+
+          // rigids
+          for (U i = 0; i < pile.get_size(); ++i) {
+            if (pile.mass_[i] == 0._F) continue;
+            pile.force_[i] =
+                Runner::sum(particle_force, num_particles, i * num_particles);
+            pile.torque_[i] =
+                Runner::sum(particle_torque, num_particles, i * num_particles);
+          }
+
+          // apply total force by fluid
+          for (U i = 0; i < pile.get_size(); ++i) {
+            if (pile.mass_[i] == 0._F) continue;
+            pile.v_(i) += 1._F / pile.mass_[i] * pile.force_[i] * dt;
+            pile.omega_(i) +=
+                calculate_angular_acceleration(pile.inertia_tensor_[i],
+                                               pile.q_[i], pile.torque_[i]) *
+                dt;
+            // clear accleration
+            pile.a_[i] = F3{0._F, gravity, 0._F};
+          }
+          // semi_implicit_euler
+          for (U i = 0; i < pile.get_size(); ++i) {
+            if (pile.mass_[i] == 0._F) continue;
+            pile.q_[i] += dt * calculate_dq(pile.omega_(i), pile.q_[i]);
+            pile.q_[i] = normalize(pile.q_[i]);
+
+            pile.x_(i) += (pile.a_[i] * dt + pile.v_(i)) * dt;
+            pile.v_(i) += pile.a_[i] * dt;
+          }
+          pile.find_contacts();
+          pile.solve_contacts();
         }
         store.unmap_graphical_pointers();
         frame_id += 1;

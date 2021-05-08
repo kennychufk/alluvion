@@ -4,6 +4,7 @@
 #include <thrust/reduce.h>
 
 #include "alluvion/constants.hpp"
+#include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 #include "alluvion/helper_math.h"
 #include "alluvion/variable.hpp"
@@ -14,10 +15,20 @@ class Runner {
   Runner();
   virtual ~Runner();
   template <typename T>
-  static void sum(void* dst, void* ptr, U num_elements) {
-    *static_cast<T*>(dst) = thrust::reduce(
-        thrust::device_ptr<T>(static_cast<T*>(ptr)),
-        thrust::device_ptr<T>(static_cast<T*>(ptr)) + num_elements);
+  static T sum(void* ptr, U num_elements, U offset = 0) {
+    return thrust::reduce(
+        thrust::device_ptr<T>(static_cast<T*>(ptr)) + offset,
+        thrust::device_ptr<T>(static_cast<T*>(ptr)) + (offset + num_elements),
+        T{});
+  }
+
+  template <U D, typename M>
+  static M sum(Variable<D, M> var, U num_elements, U offset = 0) {
+    return thrust::reduce(
+        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
+            (offset + num_elements),
+        M{});
   }
 
   template <class Lambda>
@@ -122,6 +133,19 @@ inline __host__ double3 from_string(std::string const& s0,
   return double3{stod(s0), stod(s1), stod(s2)};
 }
 
+template <typename TF3>
+inline __device__ void get_orthogonal_vectors(TF3 vec, TF3* x, TF3* y) {
+  TF3 v{1._F, 0._F, 0._F};
+  if (fabs(dot(v, vec)) > 0.999_F) {
+    v.x = 0._F;
+    v.y = 1._F;
+  }
+  *x = cross(vec, v);
+  *y = cross(vec, *x);
+  *x = normalize(*x);
+  *y = normalize(*y);
+}
+
 template <typename TQ>
 inline __device__ TQ quaternion_conjugate(TQ q) {
   q.x *= -1._F;
@@ -145,17 +169,118 @@ inline __device__ TF3 rotate_using_quaternion(TF3 v, TQ q) {
   return rotated;
 }
 
+template <typename TQ>
+inline __device__ TQ hamilton_prod(TQ q0, TQ q1) {
+  return TQ{q0.w * q1.x + q0.x * q1.w + q0.y * q1.z - q0.z * q1.y,
+            q0.w * q1.y - q0.x * q1.z + q0.y * q1.w + q0.z * q1.x,
+            q0.w * q1.z + q0.x * q1.y - q0.y * q1.x + q0.z * q1.w,
+            q0.w * q1.w - q0.x * q1.x - q0.y * q1.y - q0.z * q1.z};
+}
+
+template <typename TF3, typename TQ>
+inline __device__ __host__ void calculate_congruent_matrix(
+    TF3 v, TQ q, TF3* congruent_diag, TF3* congruent_off_diag) {
+  F qm00 = 1._F - 2.F * (q.y * q.y + q.z * q.z);
+  F qm01 = 2._F * (q.x * q.y - q.z * q.w);
+  F qm02 = 2._F * (q.x * q.z + q.y * q.w);
+  F qm10 = 2._F * (q.x * q.y + q.z * q.w);
+  F qm11 = 1._F - 2.F * (q.x * q.x + q.z * q.z);
+  F qm12 = 2._F * (q.y * q.z - q.x * q.w);
+  F qm20 = 2._F * (q.x * q.z - q.y * q.w);
+  F qm21 = 2._F * (q.y * q.z + q.x * q.w);
+  F qm22 = 1._F - 2.F * (q.x * q.x + q.y * q.y);
+  congruent_diag->x = v.x * qm00 * qm00 + v.y * qm01 * qm01 + v.z * qm02 * qm02;
+  congruent_diag->y = v.x * qm10 * qm10 + v.y * qm11 * qm11 + v.z * qm12 * qm12;
+  congruent_diag->z = v.x * qm20 * qm20 + v.y * qm21 * qm21 + v.z * qm22 * qm22;
+  congruent_off_diag->x =
+      v.x * qm00 * qm10 + v.y * qm01 * qm11 + v.z * qm02 * qm12;
+  congruent_off_diag->y =
+      v.x * qm00 * qm20 + v.y * qm01 * qm21 + v.z * qm02 * qm22;
+  congruent_off_diag->z =
+      v.x * qm10 * qm20 + v.y * qm11 * qm21 + v.z * qm12 * qm22;
+}
+
+template <typename TF3, typename TQ>
+inline __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
+                                                   TF3 torque) {
+  TF3 inertia_inverse = 1.0_F / inertia;
+  F qm00 = 1._F - 2.F * (q.y * q.y + q.z * q.z);
+  F qm01 = 2._F * (q.x * q.y - q.z * q.w);
+  F qm02 = 2._F * (q.x * q.z + q.y * q.w);
+  F qm10 = 2._F * (q.x * q.y + q.z * q.w);
+  F qm11 = 1._F - 2.F * (q.x * q.x + q.z * q.z);
+  F qm12 = 2._F * (q.y * q.z - q.x * q.w);
+  F qm20 = 2._F * (q.x * q.z - q.y * q.w);
+  F qm21 = 2._F * (q.y * q.z + q.x * q.w);
+  F qm22 = 1._F - 2.F * (q.x * q.x + q.y * q.y);
+  F congruent0 = inertia_inverse.x * qm00 * qm00 +
+                 inertia_inverse.y * qm01 * qm01 +
+                 inertia_inverse.z * qm02 * qm02;
+  F congruent1 = inertia_inverse.x * qm10 * qm10 +
+                 inertia_inverse.y * qm11 * qm11 +
+                 inertia_inverse.z * qm12 * qm12;
+  F congruent2 = inertia_inverse.x * qm20 * qm20 +
+                 inertia_inverse.y * qm21 * qm21 +
+                 inertia_inverse.z * qm22 * qm22;
+  F congruent01 = inertia_inverse.x * qm00 * qm10 +
+                  inertia_inverse.y * qm01 * qm11 +
+                  inertia_inverse.z * qm02 * qm12;
+  F congruent02 = inertia_inverse.x * qm00 * qm20 +
+                  inertia_inverse.y * qm01 * qm21 +
+                  inertia_inverse.z * qm02 * qm22;
+  F congruent12 = inertia_inverse.x * qm10 * qm20 +
+                  inertia_inverse.y * qm11 * qm21 +
+                  inertia_inverse.z * qm12 * qm22;
+
+  return TF3{
+      torque.x * congruent0 + torque.y * congruent01 + torque.z * congruent02,
+      torque.x * congruent01 + torque.y * congruent1 + torque.z * congruent12,
+      torque.x * congruent02 + torque.y * congruent12 + torque.z * congruent2};
+}
+
+template <typename TF3, typename TQ>
+inline __host__ TQ calculate_dq(TF3 omega, TQ q) {
+  return 0.5_F * TQ{omega.x * q.y - omega.y * q.x + omega.z * q.w,
+                    -omega.x * q.x - omega.y * q.y - omega.z * q.z,
+                    omega.x * q.w + omega.y * q.z - omega.z * q.y,
+                    -omega.x * q.z + omega.y * q.w + omega.z * q.x};
+}
+
 template <typename TF3>
-inline __device__ void get_orthogonal_vectors(TF3 vec, TF3* x, TF3* y) {
-  TF3 v{1._F, 0._F, 0._F};
-  if (fabs(dot(v, vec)) > 0.999_F) {
-    v.x = 0._F;
-    v.y = 1._F;
+inline __device__ __host__ TF3 apply_congruent(TF3 v, TF3 congruent_diag,
+                                               TF3 congruent_off_diag) {
+  return TF3{v.x * congruent_diag.x + v.y * congruent_off_diag.x +
+                 v.z * congruent_off_diag.y,
+             v.x * congruent_off_diag.x + v.y * congruent_diag.y +
+                 v.z * congruent_off_diag.z,
+             v.x * congruent_off_diag.y + v.y * congruent_off_diag.z +
+                 v.z * congruent_diag.z};
+}
+
+template <typename TF3, typename TF>
+inline __device__ __host__ void calculate_congruent_k(TF3 r, TF mass,
+                                                      TF3 ii_diag,
+                                                      TF3 ii_off_diag,
+                                                      TF3* k_diag,
+                                                      TF3* k_off_diag) {
+  *k_diag = make_zeros<TF3>();
+  *k_off_diag = make_zeros<TF3>();
+  if (mass != 0._F) {
+    TF inv_mass = 1._F / mass;
+    k_diag->x = r.z * r.z * ii_diag.y - r.y * r.z * ii_off_diag.z * 2 +
+                r.y * r.y * ii_diag.z + inv_mass;
+    k_diag->y = r.z * r.z * ii_diag.x - r.x * r.z * ii_off_diag.y * 2 +
+                r.x * r.x * ii_diag.z + inv_mass;
+    k_diag->z = r.y * r.y * ii_diag.x - r.x * r.y * ii_off_diag.x * 2 +
+                r.x * r.x * ii_diag.y + inv_mass;
+
+    k_off_diag->x = -r.z * r.z * ii_off_diag.x + r.x * r.z * ii_off_diag.z +
+                    r.y * r.z * ii_off_diag.y - r.x * r.y * ii_diag.z;
+    k_off_diag->y = r.y * r.z * ii_off_diag.x - r.x * r.z * ii_diag.y -
+                    r.y * r.y * ii_off_diag.y + r.x * r.y * ii_off_diag.z;
+    k_off_diag->z = -(r.y * r.z * ii_diag.x) + r.x * r.z * ii_off_diag.x +
+                    r.x * r.y * ii_off_diag.y - r.x * r.x * ii_off_diag.z;
   }
-  *x = cross(vec, v);
-  *y = cross(vec, *x);
-  *x = normalize(*x);
-  *y = normalize(*y);
 }
 
 template <typename TF>
@@ -903,7 +1028,7 @@ __device__ TF interpolate_and_derive(Variable<1, TF>* nodes, U node_offset,
 }
 
 template <typename TF3, typename TF>
-__device__ TF collision_find_dist_normal(Variable<1, TF> distance_nodes,
+__device__ TF collision_find_dist_normal(Variable<1, TF>* distance_nodes,
                                          TF3 domain_min, TF3 domain_max,
                                          U3 resolution, TF3 cell_size,
                                          U node_offset, TF sign, TF tolerance,
@@ -925,14 +1050,14 @@ __device__ TF collision_find_dist_normal(Variable<1, TF> distance_nodes,
     get_shape_function_and_gradient(inner_x, N, dN0, dN1, dN2);
     get_cells(resolution, ipos, cells);
     d = interpolate_and_derive(distance_nodes, node_offset, &cell_size, cells,
-                               N, dN0, dN1, dN2, normal_tmp);
+                               N, dN0, dN1, dN2, &normal_tmp);
   }
   if (d != kFMax) {
     dist = sign * d - tolerance;
     normal_tmp *= sign;
   }
   if (dist < 0._F) {
-    *normal = length(normal_tmp);
+    *normal = normalize(normal_tmp);
   }
   return dist;
 }
@@ -948,12 +1073,6 @@ __device__ bool within_grid(TI3 ipos) {
   return 0 <= ipos.x and ipos.x < cnst::grid_res.x and 0 <= ipos.y and
          ipos.y < cnst::grid_res.y and 0 <= ipos.z and
          ipos.z < cnst::grid_res.z;
-}
-
-template <typename TU>
-__global__ void clear_particle_grid(Variable<3, TU> pid_length,
-                                    TU num_grid_cells) {
-  forThreadMappedToElement(num_grid_cells, [&](U i) { pid_length(i) = 0; });
 }
 
 template <typename TF3>
@@ -1179,8 +1298,8 @@ __global__ void compute_viscosity_boundary(
         TF3 torque3 = cross(x3 - r_x, f3);
         TF3 torque4 = cross(x4 - r_x, f4);
 
-        particle_force(boundary_id, p_i) = f1 + f2 + f3 + f4;
-        particle_torque(boundary_id, p_i) =
+        particle_force(boundary_id, p_i) += f1 + f2 + f3 + f4;
+        particle_torque(boundary_id, p_i) +=
             torque1 + torque2 + torque3 + torque4;
       }
     }
@@ -1646,8 +1765,8 @@ __global__ void compute_pressure_accels_boundary(
       TF3 a = vj * dpi * displacement_cubic_kernel_grad(x_i - bx_j);
       TF3 force = cnst::particle_mass * a;
       ai -= a;
-      particle_force(boundary_id, p_i) = force;
-      particle_torque(boundary_id, p_i) =
+      particle_force(boundary_id, p_i) += force;
+      particle_torque(boundary_id, p_i) +=
           cross(bx_j - rigid_x(boundary_id), force);
     }
     particle_pressure_accel(p_i) += ai;
@@ -1663,6 +1782,106 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
     v += particle_pressure_accel(p_i) * dt;
     particle_x(p_i) += v * dt;
     particle_v(p_i) = v;
+  });
+}
+
+// rigid
+template <typename TQ, typename TF3, typename TF>
+__global__ void collision_test(
+    U i, U j, Variable<1, TF3> vertices_i, Variable<1, U> num_contacts,
+    Variable<1, Contact> contacts, TF mass_i, TF3 inertia_tensor_i, TF3 x_i,
+    TF3 v_i, TQ q_i, TF3 omega_i, TF mass_j, TF3 inertia_tensor_j, TF3 x_j,
+    TF3 v_j, TQ q_j, TF3 omega_j, TQ q_initial_j, TQ q_mat_j, TF3 x0_mat_j,
+    TF restitution, TF friction,
+
+    Variable<1, TF> distance_nodes, TF3 domain_min, TF3 domain_max,
+    U3 resolution, TF3 cell_size, U node_offset, TF sign,
+
+    U num_vertices
+
+) {
+  forThreadMappedToElement(num_vertices, [&](U vertex_i) {
+    Contact contact;
+    TF3 vertex_local = vertices_i(vertex_i);
+    TQ q_initial_conjugate_j = quaternion_conjugate(q_initial_j);
+
+    TF3 v1 = -1._F * rotate_using_quaternion(x0_mat_j, q_initial_conjugate_j);
+    TF3 v2 = rotate_using_quaternion(
+                 x0_mat_j, hamilton_prod(q_j, quaternion_conjugate(q_mat_j))) +
+             x_j;
+    TQ R = hamilton_prod(hamilton_prod(q_initial_conjugate_j, q_mat_j),
+                         quaternion_conjugate(q_j));
+
+    contact.cp_i = rotate_using_quaternion(vertex_local, q_i) + x_i;
+    TF3 vertex_local_wrt_j =
+        rotate_using_quaternion(contact.cp_i - x_j, R) + v1;
+
+    TF3 n;
+    TF dist = collision_find_dist_normal(
+        &distance_nodes, domain_min, domain_max, resolution, cell_size,
+        node_offset, sign, cnst::contact_tolerance, vertex_local_wrt_j, &n);
+    TF3 cp = vertex_local_wrt_j - dist * n;
+
+    if (dist < 0.0_F) {
+      U contact_insert_index = atomicAdd(&num_contacts(0), 1);
+      if (contact_insert_index == cnst::max_num_contacts) {
+        printf("Reached the max. no. of contacts\n");
+      }
+      contact.i = i;
+      contact.j = j;
+      TQ R_conjugate = quaternion_conjugate(R);
+      contact.cp_j = rotate_using_quaternion(cp, R_conjugate) + v2;
+      contact.n = rotate_using_quaternion(n, R_conjugate);
+
+      contact.friction = friction;
+
+      TF3 r_i = contact.cp_i - x_i;
+      TF3 r_j = contact.cp_j - x_j;
+
+      TF3 u_i = v_i + cross(omega_i, r_i);
+      TF3 u_j = v_j + cross(omega_j, r_j);
+
+      TF3 u_rel = u_i - u_j;
+      TF u_rel_n = dot(contact.n, u_rel);
+
+      contact.t = u_rel - u_rel_n * contact.n;
+      TF tl2 = length_sqr(contact.t);
+      if (tl2 > 1e-6_F) {
+        contact.t = normalize(contact.t);
+      }
+
+      calculate_congruent_matrix(1 / inertia_tensor_i, q_i,
+                                 &(contact.iiwi_diag),
+                                 &(contact.iiwi_off_diag));
+      calculate_congruent_matrix(1 / inertia_tensor_j, q_j,
+                                 &(contact.iiwj_diag),
+                                 &(contact.iiwj_off_diag));
+
+      TF3 k_i_diag, k_i_off_diag;
+      TF3 k_j_diag, k_j_off_diag;
+      calculate_congruent_k(contact.cp_i - x_i, mass_i, contact.iiwi_diag,
+                            contact.iiwi_off_diag, &k_i_diag, &k_i_off_diag);
+      calculate_congruent_k(contact.cp_j - x_j, mass_j, contact.iiwj_diag,
+                            contact.iiwj_off_diag, &k_j_diag, &k_j_off_diag);
+      TF3 k_diag = k_i_diag + k_j_diag;
+      TF3 k_off_diag = k_i_off_diag + k_j_off_diag;
+
+      contact.nkninv =
+          1 / dot(contact.n, apply_congruent(contact.n, k_diag, k_off_diag));
+      contact.pmax =
+          1 / dot(contact.t, apply_congruent(contact.t, k_diag, k_off_diag)) *
+          dot(u_rel, contact.t);  // note: error-prone when the magnitude of
+                                  // tangent is small
+
+      TF goal_u_rel_n = 0._F;
+      if (u_rel_n < 0._F) {
+        goal_u_rel_n = -restitution * u_rel_n;
+      }
+
+      contact.goalu = goal_u_rel_n;
+      contact.impulse_sum = 0._F;
+      contacts(contact_insert_index) = contact;
+    }
   });
 }
 
