@@ -10,7 +10,7 @@ class GraphicalVariable : public Variable<D, M> {
   using Base = Variable<D, M>;
   GraphicalVariable(std::array<U, D> const& shape)
       : vbo_(0), res_(nullptr), Base(shape) {
-    GraphicalAllocator::allocate<M>(&vbo_, &res_, Base::get_num_elements());
+    GraphicalAllocator::allocate<M>(&vbo_, &res_, Base::get_linear_shape());
   }
 
   GLuint vbo_;

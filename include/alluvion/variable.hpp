@@ -1,6 +1,7 @@
 #ifndef ALLUVION_VARIABLE_HPP
 #define ALLUVION_VARIABLE_HPP
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <numeric>
@@ -8,6 +9,7 @@
 
 #include "alluvion/allocator.hpp"
 #include "alluvion/base_variable.hpp"
+#include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 
 namespace alluvion {
@@ -20,13 +22,11 @@ class Variable : public BaseVariable {
     for (U i = 0; i < D; ++i) {
       shape_[i] = shape[i];
     }
-    Allocator::allocate<M>(&ptr_, get_num_elements());
-    // std::cout << "constructed Variable with size " << shape_[0] << ", "
-    //           << shape_[1] << ", " << shape_[2] << " at " << ptr_ <<
-    //           std::endl;
+    Allocator::allocate<M>(&ptr_, get_linear_shape());
   }
   virtual ~Variable() {}
   virtual void set_pointer(void* ptr) override { ptr_ = ptr; }
+  // ==== numpy-related functions
   constexpr NumericType get_type() const {
     if (typeid(M) == typeid(F) || typeid(M) == typeid(F2) ||
         typeid(M) == typeid(F3) || typeid(M) == typeid(F4))
@@ -35,7 +35,7 @@ class Variable : public BaseVariable {
     if (typeid(M) == typeid(U)) return NumericType::u32;
     return NumericType::undefined;
   }
-  constexpr U get_vector_size() const {
+  constexpr U get_num_primitives_per_unit() const {
     if (typeid(M) == typeid(F)) return 1;
     if (typeid(M) == typeid(I)) return 1;
     if (typeid(M) == typeid(U)) return 1;
@@ -48,14 +48,24 @@ class Variable : public BaseVariable {
     if (typeid(M) == typeid(F4)) return 4;
     if (typeid(M) == typeid(I4)) return 4;
     if (typeid(M) == typeid(U4)) return 4;
+    if (typeid(M) == typeid(Contact)) return 0;
     return 0;
   }
-  U get_num_vectors() const {
+  U get_num_primitives() const {
+    return get_linear_shape() * get_num_primitives_per_unit();
+  }
+  std::array<U, D> get_shape() const {
+    std::array<U, D> shape_std_array;
+    std::copy(std::begin(shape_), std::end(shape_),
+              std::begin(shape_std_array));
+    return shape_std_array;
+  }
+  // ==== End of numpy-related functions
+  U get_linear_shape() const {
     return std::accumulate(std::begin(shape_), std::end(shape_), 1,
                            std::multiplies<U>());
   }
-  U get_num_elements() const { return get_num_vectors() * get_vector_size(); }
-  U get_num_bytes() const { return get_num_vectors() * sizeof(M); }
+  U get_num_bytes() const { return get_linear_shape() * sizeof(M); }
   void get_bytes(void* dst, U num_bytes) const {
     if (num_bytes == 0) return;
     if (num_bytes > get_num_bytes()) {

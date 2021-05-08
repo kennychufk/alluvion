@@ -18,12 +18,12 @@ class Variable:
             self.dtype = numeric_type
 
     def get(self):
-        dst = np.empty(self.var.get_num_elements(), self.dtype)
+        dst = np.empty(self.var.get_num_primitives(), self.dtype)
         self.var.get_bytes(dst.view(np.ubyte))
-        if self.var.get_vector_size() == 1:
-            return dst.reshape(*self.var.shape)
+        if self.var.get_num_primitives_per_unit() == 1:
+            return dst.reshape(*self.var.get_shape())
         else:
-            return dst.reshape(*self.var.shape, -1)
+            return dst.reshape(*self.var.get_shape(), -1)
 
     def set(self, src):
         if src.dtype != self.dtype:

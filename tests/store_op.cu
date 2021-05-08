@@ -12,7 +12,7 @@ SCENARIO("testing the store") {
   GIVEN("a store with a variable") {
     Store store;
     Variable<1, F3> var = store.create<1, F3>({2});
-    REQUIRE(var.get_num_elements() == 6);
+    REQUIRE(var.get_num_primitives() == 6);
     WHEN("setting from host") {
       std::vector<F> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
       var.set_bytes(v.data(), v.size() * sizeof(F));
@@ -22,9 +22,7 @@ SCENARIO("testing the store") {
         CHECK(copied == v);
       }
       THEN("gives the right sum") {
-        F result;
-        Runner::sum<F>(reinterpret_cast<void*>(&result), var.ptr_,
-                       var.get_num_elements());
+        F result = Runner::sum<F>(var.ptr_, var.get_num_primitives());
         CHECK(result == 21);
       }
     }
@@ -34,7 +32,7 @@ SCENARIO("testing the store") {
     store.create_display(800, 600, "Test: store_op");
     GraphicalVariable<1, F3> var = store.create_graphical<1, F3>({2});
     store.map_graphical_pointers();
-    REQUIRE(var.get_num_elements() == 6);
+    REQUIRE(var.get_num_primitives() == 6);
     WHEN("setting from host") {
       std::vector<F> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
       var.set_bytes(v.data(), v.size() * sizeof(F));
@@ -44,9 +42,7 @@ SCENARIO("testing the store") {
         CHECK(copied == v);
       }
       THEN("gives the right sum") {
-        F result;
-        Runner::sum<F>(reinterpret_cast<void*>(&result), var.ptr_,
-                       var.get_num_elements());
+        F result = Runner::sum<F>(var.ptr_, var.get_num_primitives());
         CHECK(result == 21);
       }
     }

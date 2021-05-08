@@ -13,7 +13,7 @@ SCENARIO("testing the runner") {
     Store store;
     U num_particles = 100;
     Variable<1, F3> var = store.create<1, F3>({num_particles});
-    REQUIRE(var.get_num_elements() == num_particles * 3);
+    REQUIRE(var.get_num_primitives() == num_particles * 3);
     WHEN("creating fluid block") {
       cnst::set_particle_attr(0.025, 0.0, 0.0);
       Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {

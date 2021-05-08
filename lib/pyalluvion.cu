@@ -28,10 +28,10 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
              variable.set_bytes(bytes.data(), bytes.size());
            })
       .def("get_type", &Class::get_type)
-      .def("get_vector_size", &Class::get_vector_size)
-      .def("get_num_vectors", &Class::get_num_vectors)
-      .def("get_num_elements", &Class::get_num_elements)
-      .def_readonly("shape", &Class::shape_);
+      .def("get_num_primitives_per_unit", &Class::get_num_primitives_per_unit)
+      .def("get_linear_shape", &Class::get_linear_shape)
+      .def("get_num_primitives", &Class::get_num_primitives)
+      .def("get_shape", &Class::get_shape);
 }
 
 PYBIND11_MODULE(_alluvion, m) {
@@ -50,7 +50,7 @@ PYBIND11_MODULE(_alluvion, m) {
   //         "sum", [](py::array_t<unsigned char> dst, Variable<D, F3>& var)
   //         {
   //           Runner::sum<F>(reinterpret_cast<void*>(dst.mutable_data()),
-  //                          var.ptr_, var.get_num_elements(), var.type_);
+  //                          var.ptr_, var.get_num_primitives(), var.type_);
   //         });
   py::enum_<NumericType>(m, "NumericType")
       .value("f32", NumericType::f32)
