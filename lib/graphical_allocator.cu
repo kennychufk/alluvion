@@ -20,6 +20,7 @@ void GraphicalAllocator::free_buffer(GLuint* vbo) {
 }
 
 void GraphicalAllocator::map(std::vector<cudaGraphicsResource*>& resources) {
+  if (resources.size() == 0) return;
   Allocator::abort_if_error(
       cudaGraphicsMapResources(resources.size(), resources.data()));
 }
@@ -33,6 +34,7 @@ void* GraphicalAllocator::get_mapped_pointer(cudaGraphicsResource* res) {
 }
 
 void GraphicalAllocator::unmap(std::vector<cudaGraphicsResource*>& resources) {
+  if (resources.size() == 0) return;
   Allocator::abort_if_error(
       cudaGraphicsUnmapResources(resources.size(), resources.data()));
 }

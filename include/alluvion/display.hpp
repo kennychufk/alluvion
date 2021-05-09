@@ -13,12 +13,12 @@
 namespace alluvion {
 class Display {
  private:
-  GLFWwindow *window_;
   Trackball trackball_;
   std::vector<std::unique_ptr<ShadingProgram>> programs_;
   GLuint vao_;
 
  public:
+  GLFWwindow *window_;
   Camera camera_;
   int width_;
   int height_;

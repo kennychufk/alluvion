@@ -33,6 +33,7 @@ class Runner {
 
   template <class Lambda>
   static void launch(U n, U desired_block_size, Lambda f) {
+    if (n == 0) return;
     U block_size = std::min(n, desired_block_size);
     U grid_size = (n + block_size - 1) / block_size;
     f(grid_size, block_size);
@@ -240,10 +241,12 @@ inline __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
 
 template <typename TF3, typename TQ>
 inline __host__ TQ calculate_dq(TF3 omega, TQ q) {
-  return 0.5_F * TQ{omega.x * q.y - omega.y * q.x + omega.z * q.w,
-                    -omega.x * q.x - omega.y * q.y - omega.z * q.z,
-                    omega.x * q.w + omega.y * q.z - omega.z * q.y,
-                    -omega.x * q.z + omega.y * q.w + omega.z * q.x};
+  return 0.5_F * TQ{
+                     omega.x * q.w + omega.y * q.z - omega.z * q.y,   // x
+                     -omega.x * q.z + omega.y * q.w + omega.z * q.x,  // y
+                     omega.x * q.y - omega.y * q.x + omega.z * q.w,   // z
+                     -omega.x * q.x - omega.y * q.y - omega.z * q.z   // w
+                 };
 }
 
 template <typename TF3>
@@ -1818,8 +1821,8 @@ __global__ void collision_test(
 
     TF3 n;
     TF dist = collision_find_dist_normal(
-        &distance_nodes, domain_min, domain_max, resolution, cell_size,
-        node_offset, sign, cnst::contact_tolerance, vertex_local_wrt_j, &n);
+        &distance_nodes, domain_min, domain_max, resolution, cell_size, 0, sign,
+        cnst::contact_tolerance, vertex_local_wrt_j, &n);
     TF3 cp = vertex_local_wrt_j - dist * n;
 
     if (dist < 0.0_F) {

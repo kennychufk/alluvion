@@ -43,8 +43,8 @@ void Pile::add(dg::Distance* distance, U3 const& resolution, F sign,
   inertia_tensor_.push_back(inertia_tensor);
 
   x_mat_.push_back(F3{0, 0, 0});
-  q_mat_.push_back(Q{0, 0, 0, 1});
-  q_initial_.push_back(Q{0, 0, 0, 1});
+  q_mat_.push_back(q);
+  q_initial_.push_back(q);
 
   oldx_.push_back(x);
   a_.push_back(F3{0, 0, 0});
@@ -157,9 +157,9 @@ void Pile::find_contacts() {
         collision_test<<<grid_size, block_size>>>(
             i, j, vertices_i, num_contacts_, contacts_, mass_[i],
             inertia_tensor_[i], x_(i), v_(i), q_[i], omega_(i), mass_[j],
-            inertia_tensor_[j], x_(j), v_(j), q_[i], omega_(j), q_initial_[j],
+            inertia_tensor_[j], x_(j), v_(j), q_[j], omega_(j), q_initial_[j],
             q_mat_[j], x_mat_[j], restitution_[i] * restitution_[j],
-            friction_[i] * friction_[j], distance_grids_[j],
+            friction_[i] + friction_[j], distance_grids_[j],
             domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
             cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
       });

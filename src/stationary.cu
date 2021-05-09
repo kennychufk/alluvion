@@ -46,13 +46,15 @@ int main(void) {
   Mesh cube_mesh;
   cube_mesh.set_obj("cube.obj");
   Mesh sphere_mesh;
-  sphere_mesh.set_uv_sphere(3, 24, 24);
+  F sphere_radius = 2.5_F;
+  sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
   pile.add(cube_mesh, U3{20, 20, 20}, -1._F, 0, cube_mesh, 0._F, 1, 0, 0.1,
            F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
-  pile.add(new SphereDistance(2.5_F), U3{50, 50, 50}, 1._F, 0, sphere_mesh,
-           300._F, 1, 0, 0.2, F3{1, 1, 1}, F3{-5, -5, -5}, Q{0, 0, 0, 1},
-           sphere_mesh);
+  pile.add(new SphereDistance(sphere_radius), U3{50, 50, 50}, 1._F, 0,
+           sphere_mesh, 65.45_F, 1, 0, 0.2, F3{1, 1, 1}, F3{-5, -5, -5},
+           Q{0, 0, 0, 1}, sphere_mesh);
   pile.build_grids(4 * kernel_radius);
+  // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
   cnst::set_num_boundaries(pile.get_size());
   cnst::set_contact_tolerance(0.05);
@@ -280,8 +282,11 @@ int main(void) {
             pile.q_[i] += dt * calculate_dq(pile.omega_(i), pile.q_[i]);
             pile.q_[i] = normalize(pile.q_[i]);
 
-            pile.x_(i) += (pile.a_[i] * dt + pile.v_(i)) * dt;
-            pile.v_(i) += pile.a_[i] * dt;
+            // pile.x_(i) += (pile.a_[i] * dt + pile.v_(i)) * dt;
+            // pile.v_(i) += pile.a_[i] * dt;
+            F3 dx = (pile.a_[i] * dt + pile.v_(i)) * dt;
+            pile.x_(i) += dx;
+            pile.v_(i) = 1 / dt * dx;
           }
           pile.find_contacts();
           pile.solve_contacts();
