@@ -18,6 +18,7 @@ struct Mesh {
   Mesh();
   void set_uv_sphere(F radius, U num_sectors, U num_stacks);
   void set_obj(const char* filename);
+  void calculate_normals();
   void clear();
 };
 }  // namespace alluvion

@@ -117,6 +117,22 @@ inline __host__ U from_string(std::string const& s0) {
   return stoul(s0);
 }
 
+template <typename T2>
+inline __host__ T2 from_string(std::string const& s0,
+                               std::string const& s1) = delete;
+
+template <>
+inline __host__ float2 from_string(std::string const& s0,
+                                   std::string const& s1) {
+  return float2{stof(s0), stof(s1)};
+}
+
+template <>
+inline __host__ double2 from_string(std::string const& s0,
+                                    std::string const& s1) {
+  return double2{stod(s0), stod(s1)};
+}
+
 template <typename T3>
 inline __host__ T3 from_string(std::string const& s0, std::string const& s1,
                                std::string const& s2) = delete;

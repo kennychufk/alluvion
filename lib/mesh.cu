@@ -82,6 +82,10 @@ void Mesh::set_uv_sphere(F radius, U num_sectors, U num_stacks) {
 
 void Mesh::set_obj(const char* filename) {
   clear();
+  std::vector<U3> tex_faces;
+  std::vector<U3> normal_faces;
+  std::vector<F2> texcoords_compact;
+  std::vector<F3> normals_compact;
   std::ifstream file_stream(filename);
   std::stringstream line_stream;
   std::string line;
@@ -103,14 +107,19 @@ void Mesh::set_obj(const char* filename) {
     if (num_tokens == 0) continue;
     if (tokens[0] == "v") {
       vertices.push_back(from_string<F3>(tokens[1], tokens[2], tokens[3]));
+    } else if (tokens[0] == "vt") {
+      texcoords_compact.push_back(from_string<F2>(tokens[1], tokens[2]));
+    } else if (tokens[0] == "vn") {
+      normals_compact.push_back(
+          from_string<F3>(tokens[1], tokens[2], tokens[3]));
     } else if (tokens[0] == "f") {
       for (U face_entry_id = 1; face_entry_id <= 3; ++face_entry_id) {
         face_token_id = 0;
         face_entry_stream.clear();
         face_entry_stream.str(tokens[face_entry_id]);
-        while (
-            face_token_id < 3 &&
-            std::getline(face_entry_stream, face_entry_tokens[face_token_id])) {
+        while (face_token_id < 3 &&
+               std::getline(face_entry_stream, face_entry_tokens[face_token_id],
+                            '/')) {
           if (face_token_id == 0) {
             if (face_entry_id == 1)
               face.x = from_string<U>(face_entry_tokens[face_token_id]);
@@ -137,7 +146,52 @@ void Mesh::set_obj(const char* filename) {
         }
       }
       faces.push_back(face - 1);  // OBJ vertex: one-based indexing
+      if (face_token_id >= 2) {
+        tex_faces.push_back(tex_face - 1);
+      }
+      if (face_token_id >= 3) {
+        normal_faces.push_back(normal_face - 1);
+      }
     }
+  }
+  if (!tex_faces.empty()) {
+    texcoords.resize(vertices.size());
+    for (U i = 0; i < faces.size(); ++i) {
+      U3 const& face = faces[i];
+      U3 const& tex_face = tex_faces[i];
+      texcoords[face.x] = texcoords_compact[tex_face.x];
+      texcoords[face.y] = texcoords_compact[tex_face.y];
+      texcoords[face.z] = texcoords_compact[tex_face.z];
+    }
+  }
+  if (!normal_faces.empty()) {
+    normals.resize(vertices.size());
+    for (U i = 0; i < faces.size(); ++i) {
+      U3 const& face = faces[i];
+      U3 const& normal_face = normal_faces[i];
+      normals[face.x] = normals_compact[normal_face.x];
+      normals[face.y] = normals_compact[normal_face.y];
+      normals[face.z] = normals_compact[normal_face.z];
+    }
+  } else {
+    calculate_normals();
+  }
+}
+void Mesh::calculate_normals() {
+  normals.resize(vertices.size());
+  memset(normals.data(), 0, normals.size() * sizeof(F3));
+  for (U3 const& face : faces) {
+    F3 const& v0 = vertices[face.x];
+    F3 const& v1 = vertices[face.y];
+    F3 const& v2 = vertices[face.z];
+    F3 normal = cross(v1 - v0, v2 - v0);
+    normal = normalize(normal);
+    normals[face.x] += normal;
+    normals[face.y] += normal;
+    normals[face.z] += normal;
+  }
+  for (F3& normal : normals) {
+    normal = normalize(normal);
   }
 }
 void Mesh::clear() {
