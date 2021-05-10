@@ -205,6 +205,8 @@ void Display::scroll_callback(GLFWwindow *window, double xpos, double ypos) {
 void Display::resize_callback(GLFWwindow *window, int width, int height) {
   Display *display = static_cast<Display *>(glfwGetWindowUserPointer(window));
   display->trackball_.setScreenSize(width, height);
+  display->camera_.setRenderSize(width, height);
+  display->camera_.update();
   display->width_ = width;
   display->height_ = height;
   glViewport(0, 0, width, height);

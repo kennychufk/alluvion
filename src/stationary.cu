@@ -294,66 +294,207 @@ int main(void) {
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));
+
   // {{{
   display->add_shading_program(new ShadingProgram(
       R"CODE(
 #version 330 core
-layout(location = 0) in vec3 x;
-uniform mat4 view_matrix;
-uniform mat4 clip_matrix;
-uniform vec2 screen_dimension;
-uniform float point_scale;
+layout(location = 0) in vec3 particle_position_worldspace;
 
-out vec3 eyePos;
-out float eyeRadius;
+uniform mat4 P;
+uniform mat4 V;
+uniform vec2 screen_dimension;
+uniform float particle_radius;
+
+out vec3 particle_center_worldspace;
 
 void main() {
-  vec4 camera_space_x4 = view_matrix * vec4(x, 1.0);
+  vec4 position_cameraspace = V * vec4(particle_position_worldspace, 1.0);
+  particle_center_worldspace = particle_position_worldspace;
 
-  eyePos = camera_space_x4.xyz;
-  eyeRadius = point_scale / -camera_space_x4.z / screen_dimension.y;
-  gl_Position = clip_matrix * camera_space_x4;
-  gl_PointSize = point_scale / -camera_space_x4.z;
+  gl_Position = P * position_cameraspace;
+  gl_PointSize = particle_radius * P[0][0] * screen_dimension.x / -position_cameraspace.z;
 }
 )CODE",
       R"CODE(
 #version 330 core
-uniform vec4 base_color;
 
-out vec4 output_color;
+in vec3 particle_center_worldspace;
+
+struct PointLight {
+    vec3 position;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+struct DirectionalLight {
+    vec3 direction;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+struct Material {
+  vec3 diffuse;
+  vec3 specular;
+  float shininess;
+};
+
+#define NUM_POINT_LIGHTS 2
+
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir);
+
+uniform float particle_radius;
+uniform mat4 V;
+uniform vec3 camera_worldspace;
+uniform Material material;
+uniform DirectionalLight directional_light;
+uniform PointLight point_lights[NUM_POINT_LIGHTS];
+
+out vec4 color;
 
 void main() {
-  const vec3 light_direction = vec3(0.577, 0.577, 0.577);
+  vec3 normal_modelspace;
+  normal_modelspace.xy = gl_PointCoord * vec2(2.0, -2.0) + vec2(-1.0, 1.0);
+  float normal_xy_length2 = dot(normal_modelspace.xy, normal_modelspace.xy);
+  if (normal_xy_length2 > 1.0) discard;
+  normal_modelspace.z = sqrt(1.0 - normal_xy_length2);
 
-  vec3 N;
-  N.xy = gl_PointCoord * vec2(2.0, -2.0) + vec2(-1.0, 1.0);
-  float N_squared = dot(N.xy, N.xy);
-  if (N_squared > 1.0) discard;
-  N.z = sqrt(1.0 - N_squared);
+  vec3 position_modelspace = normal_modelspace * particle_radius;
+  vec3 position_worldspace = position_modelspace + particle_center_worldspace;
 
-  float diffuse = max(0.0, dot(light_direction, N));
-  output_color = base_color * diffuse;
+  vec3 n = normalize(normal_modelspace); // normal_modelspace and normal_cameraspace is almost the same for sphere?
+  // Eye vector (towards the camera)
+  vec3 E = normalize(camera_worldspace - position_worldspace);
+
+  vec3 accumulate_color = CalcDirLight(directional_light, n, E);
+  for (int i = 0; i < NUM_POINT_LIGHTS ; i++)
+    accumulate_color += CalcPointLight(point_lights[i], n, position_worldspace, E);
+
+  color = vec4(accumulate_color, 1.0);
+
+
+}
+
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+{
+    vec3 lightDir = normalize(light.position - fragPos);
+    // diffuse shading
+    float diff = max(dot(normal, lightDir), 0.0);
+    // specular shading
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    // attenuation
+    float distance = length(light.position - fragPos);
+    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    // combine results
+    vec3 ambient = light.ambient * material.diffuse;
+    vec3 diffuse = light.diffuse * diff * material.diffuse;
+    vec3 specular = light.specular * spec * material.specular;
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+    return (ambient + diffuse + specular);
+}
+
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir)
+{
+    vec3 lightDir = normalize(-light.direction);
+    // diffuse shading
+    float diff = max(dot(normal, lightDir), 0.0);
+    // specular shading
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    // combine results
+    vec3 ambient = light.ambient * material.diffuse;
+    vec3 diffuse = light.diffuse * diff * material.diffuse;
+    vec3 specular = light.specular * spec * material.specular;
+    return (ambient + diffuse + specular);
 }
 )CODE",
-      {"view_matrix", "clip_matrix", "screen_dimension", "point_scale",
-       "base_color"},
-      [&particle_x, num_particles](ShadingProgram& program, Display& display) {
-        glm::mat4 clip_matrix = glm::perspective(
-            glm::radians(45.0f),
-            display.width_ / static_cast<GLfloat>(display.height_), .01f,
-            100.f);
+      {"particle_radius", "screen_dimension", "V", "P", "camera_worldspace",
+       "material.diffuse", "material.specular", "material.shininess",
+       "directional_light.direction", "directional_light.ambient",
+       "directional_light.diffuse", "directional_light.specular",
+       "point_lights[0].position", "point_lights[0].constant",
+       "point_lights[0].linear", "point_lights[0].quadratic",
+       "point_lights[0].ambient", "point_lights[0].diffuse",
+       "point_lights[0].specular",
+       //
+       "point_lights[1].position", "point_lights[1].constant",
+       "point_lights[1].linear", "point_lights[1].quadratic",
+       "point_lights[1].ambient", "point_lights[1].diffuse",
+       "point_lights[1].specular"
 
-        glUniformMatrix4fv(program.get_uniform_location("view_matrix"), 1,
-                           GL_FALSE,
-                           glm::value_ptr(display.camera_.getMatrix()));
-        glUniformMatrix4fv(program.get_uniform_location("clip_matrix"), 1,
-                           GL_FALSE, glm::value_ptr(clip_matrix));
+      },
+      [&particle_x, num_particles, particle_radius](ShadingProgram& program,
+                                                    Display& display) {
+        glUniformMatrix4fv(
+            program.get_uniform_location("P"), 1, GL_FALSE,
+            glm::value_ptr(display.camera_.getProjectionMatrix()));
+        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
+                           glm::value_ptr(display.camera_.getViewMatrix()));
         glUniform2f(program.get_uniform_location("screen_dimension"),
                     static_cast<GLfloat>(display.width_),
                     static_cast<GLfloat>(display.height_));
-        glUniform1f(program.get_uniform_location("point_scale"), 400);
-        glUniform4f(program.get_uniform_location("base_color"), 1.0, 1.0, 1.0,
-                    1.0);
+        glUniform1f(program.get_uniform_location("particle_radius"),
+                    particle_radius);
+
+        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
+        glUniform3f(program.get_uniform_location("camera_worldspace"),
+                    camera_worldspace[0], camera_worldspace[1],
+                    camera_worldspace[2]);
+        glUniform3f(program.get_uniform_location("directional_light.direction"),
+                    0.2f, 1.0f, 0.3f);
+        glUniform3f(program.get_uniform_location("directional_light.ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
+                    0.4f, 0.4f, 0.4f);
+        glUniform3f(program.get_uniform_location("directional_light.specular"),
+                    0.5f, 0.5f, 0.5f);
+
+        glUniform3f(program.get_uniform_location("point_lights[0].position"),
+                    2.0f, 2.0f, 2.0f);
+        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
+                    1.0f);
+        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
+                    0.09f);
+        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
+                    0.032f);
+        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
+                    0.8f, 0.8f, 0.8f);
+        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
+                    1.0f, 1.0f, 1.0f);
+
+        glUniform3f(program.get_uniform_location("point_lights[1].position"),
+                    2.0f, 1.0f, -2.0f);
+        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
+                    1.0f);
+        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
+                    0.09f);
+        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
+                    0.032f);
+        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
+                    0.8f, 0.8f, 0.8f);
+        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
+                    1.0f, 1.0f, 1.0f);
+        glUniform3f(program.get_uniform_location("material.diffuse"), 0.2, 0.3,
+                    0.87);
+        glUniform3f(program.get_uniform_location("material.specular"), 0.8, 0.9,
+                    0.9);
+        glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
 
         glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
         glEnableVertexAttribArray(0);
@@ -367,105 +508,185 @@ void main() {
   display->add_shading_program(new ShadingProgram(
       R"CODE(
 #version 330 core
-layout(location = 0) in vec3 vertexPosition_modelspace;
-layout(location = 1) in vec3 vertexNormal_modelspace;
+layout(location = 0) in vec3 vertex_position_modelspace;
+layout(location = 1) in vec3 vertex_normal_modelspace;
 
 uniform mat4 MVP;
 uniform mat4 V;
 uniform mat4 M;
-uniform vec3 LightPosition_worldspace;
 
-out vec3 Position_worldspace;
-out vec3 Normal_cameraspace;
-out vec3 EyeDirection_cameraspace;
-out vec3 LightDirection_cameraspace;
+out vec3 position_worldspace;
+out vec3 normal_cameraspace;
 
 void main() {
   // Output position of the vertex, in clip space : MVP * position
-  gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+  gl_Position =  MVP * vec4(vertex_position_modelspace,1);
 
   // Position of the vertex, in worldspace : M * position
-  Position_worldspace = (M * vec4(vertexPosition_modelspace,1)).xyz;
+  position_worldspace = (M * vec4(vertex_position_modelspace,1)).xyz;
 
   // Vector that goes from the vertex to the camera, in camera space.
   // In camera space, the camera is at the origin (0,0,0).
-  vec3 vertexPosition_cameraspace = ( V * M * vec4(vertexPosition_modelspace,1)).xyz;
-  EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
-
-  // Vector that goes from the vertex to the light, in camera space. M is ommited because it's identity.
-  vec3 LightPosition_cameraspace = ( V * vec4(LightPosition_worldspace,1)).xyz;
-  LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
+  vec3 vertexPosition_cameraspace = ( V * M * vec4(vertex_position_modelspace,1)).xyz;
 
   // Normal of the the vertex, in camera space
-  Normal_cameraspace = ( V * M * vec4(vertexNormal_modelspace,0)).xyz; // Only correct if ModelMatrix does not scale the model ! Use its inverse transpose if not.
+  normal_cameraspace = ( V * M * vec4(vertex_normal_modelspace,0)).xyz; // Only correct if ModelMatrix does not scale the model ! Use its inverse transpose if not.
 }
+
 )CODE",
       R"CODE(
 #version 330 core
-in vec3 Position_worldspace;
-in vec3 Normal_cameraspace;
-in vec3 EyeDirection_cameraspace;
-in vec3 LightDirection_cameraspace;
+in vec3 position_worldspace;
+in vec3 normal_cameraspace;
 
-uniform vec3 MaterialDiffuseColor;
-uniform vec3 LightPosition_worldspace;
+struct PointLight {
+    vec3 position;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+struct DirectionalLight {
+    vec3 direction;
+
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+struct Material {
+  vec3 diffuse;
+  vec3 specular;
+  float shininess;
+};
+
+#define NUM_POINT_LIGHTS 2
+
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir);
+
+uniform vec3 camera_worldspace;
+uniform Material material;
+uniform DirectionalLight directional_light;
+uniform PointLight point_lights[NUM_POINT_LIGHTS];
 
 out vec4 color;
 
 void main() {
-  // Light emission properties
-  // You probably want to put them as uniforms
-  vec3 LightColor = vec3(1,1,1);
-  float LightPower = 100.0f;
-
-  // Material properties
-  vec3 MaterialAmbientColor = vec3(0.1,0.1,0.1) * MaterialDiffuseColor;
-  vec3 MaterialSpecularColor = vec3(0.3,0.3,0.3);
-
-  // Distance to the light
-  float distance = length( LightPosition_worldspace - Position_worldspace );
-
   // Normal of the computed fragment, in camera space
-  vec3 n = normalize( Normal_cameraspace );
-  // Direction of the light (from the fragment to the light)
-  vec3 l = normalize( LightDirection_cameraspace );
-  // Cosine of the angle between the normal and the light direction, 
-  // clamped above 0
-  //  - light is at the vertical of the triangle -> 1
-  //  - light is perpendicular to the triangle -> 0
-  //  - light is behind the triangle -> 0
-  float cosTheta = clamp( dot( n,l ), 0,1 );
-
+  vec3 n = normalize( normal_cameraspace );
   // Eye vector (towards the camera)
-  vec3 E = normalize(EyeDirection_cameraspace);
-  // Direction in which the triangle reflects the light
-  vec3 R = reflect(-l,n);
-  // Cosine of the angle between the Eye vector and the Reflect vector,
-  // clamped to 0
-  //  - Looking into the reflection -> 1
-  //  - Looking elsewhere -> < 1
-  float cosAlpha = clamp( dot( E,R ), 0,1 );
+  vec3 E = normalize(camera_worldspace - position_worldspace);
 
-  color =  vec4(
-    // Ambient : simulates indirect lighting
-    MaterialAmbientColor +
-    // Diffuse : "color" of the object
-    MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) +
-    // Specular : reflective highlight, like a mirror
-    MaterialSpecularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance), 1);
+  vec3 accumulate_color = CalcDirLight(directional_light, n, E);
+  for (int i = 0; i < NUM_POINT_LIGHTS ; i++)
+    accumulate_color += CalcPointLight(point_lights[i], n, position_worldspace, E);
+
+  color = vec4(accumulate_color, 1.0);
+}
+
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+{
+    vec3 lightDir = normalize(light.position - fragPos);
+    // diffuse shading
+    float diff = max(dot(normal, lightDir), 0.0);
+    // specular shading
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    // attenuation
+    float distance = length(light.position - fragPos);
+    float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+    // combine results
+    vec3 ambient = light.ambient * material.diffuse;
+    vec3 diffuse = light.diffuse * diff * material.diffuse;
+    vec3 specular = light.specular * spec * material.specular;
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+    return (ambient + diffuse + specular);
+}
+
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir)
+{
+    vec3 lightDir = normalize(-light.direction);
+    // diffuse shading
+    float diff = max(dot(normal, lightDir), 0.0);
+    // specular shading
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    // combine results
+    vec3 ambient = light.ambient * material.diffuse;
+    vec3 diffuse = light.diffuse * diff * material.diffuse;
+    vec3 specular = light.specular * spec * material.specular;
+    return (ambient + diffuse + specular);
 }
 )CODE",
-      {"MVP", "V", "M", "MaterialDiffuseColor", "LightPosition_worldspace"},
+      {"MVP", "V", "M", "camera_worldspace", "material.diffuse",
+       "material.specular", "material.shininess", "directional_light.direction",
+       "directional_light.ambient", "directional_light.diffuse",
+       "directional_light.specular", "point_lights[0].position",
+       "point_lights[0].constant", "point_lights[0].linear",
+       "point_lights[0].quadratic", "point_lights[0].ambient",
+       "point_lights[0].diffuse", "point_lights[0].specular",
+       //
+       "point_lights[1].position", "point_lights[1].constant",
+       "point_lights[1].linear", "point_lights[1].quadratic",
+       "point_lights[1].ambient", "point_lights[1].diffuse",
+       "point_lights[1].specular"},
       [&pile](ShadingProgram& program, Display& display) {
-        glm::mat4 projection_matrix = glm::perspective(
-            glm::radians(45.0f),
-            display.width_ / static_cast<GLfloat>(display.height_), .01f,
-            100.f);
-        glm::mat4 const& view_matrix = display.camera_.getMatrix();
+        glm::mat4 const& projection_matrix =
+            display.camera_.getProjectionMatrix();
+        glm::mat4 const& view_matrix = display.camera_.getViewMatrix();
         glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
                            glm::value_ptr(view_matrix));
-        glUniform3f(program.get_uniform_location("LightPosition_worldspace"),
-                    8.f, 8.f, 8.f);
+        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
+        glUniform3f(program.get_uniform_location("camera_worldspace"),
+                    camera_worldspace[0], camera_worldspace[1],
+                    camera_worldspace[2]);
+
+        glUniform3f(program.get_uniform_location("directional_light.direction"),
+                    0.2f, 1.0f, 0.3f);
+        glUniform3f(program.get_uniform_location("directional_light.ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
+                    0.4f, 0.4f, 0.4f);
+        glUniform3f(program.get_uniform_location("directional_light.specular"),
+                    0.5f, 0.5f, 0.5f);
+
+        glUniform3f(program.get_uniform_location("point_lights[0].position"),
+                    2.0f, 2.0f, 2.0f);
+        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
+                    1.0f);
+        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
+                    0.09f);
+        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
+                    0.032f);
+        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
+                    0.8f, 0.8f, 0.8f);
+        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
+                    1.0f, 1.0f, 1.0f);
+
+        glUniform3f(program.get_uniform_location("point_lights[1].position"),
+                    2.0f, 1.0f, -2.0f);
+        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
+                    1.0f);
+        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
+                    0.09f);
+        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
+                    0.032f);
+        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
+                    0.05f, 0.05f, 0.05f);
+        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
+                    0.8f, 0.8f, 0.8f);
+        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
+                    1.0f, 1.0f, 1.0f);
 
         for (U i = 0; i < pile.get_size(); ++i) {
           MeshBuffer const& mesh_buffer = pile.mesh_buffer_list_[i];
@@ -478,8 +699,12 @@ void main() {
                                glm::value_ptr(model_matrix));
             glUniformMatrix4fv(program.get_uniform_location("MVP"), 1, GL_FALSE,
                                glm::value_ptr(mvp_matrix));
-            glUniform3f(program.get_uniform_location("MaterialDiffuseColor"),
-                        0.9f, 0.3f, 0.4f);
+            glUniform3f(program.get_uniform_location("material.diffuse"), 0.2,
+                        0.3, 0.87);
+            glUniform3f(program.get_uniform_location("material.specular"), 0.8,
+                        0.9, 0.9);
+            glUniform1f(program.get_uniform_location("material.shininess"),
+                        5.0);
 
             glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
             glEnableVertexAttribArray(0);

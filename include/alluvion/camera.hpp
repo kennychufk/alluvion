@@ -10,8 +10,9 @@ class Camera {
   Camera();
   ~Camera();
 
-  const glm::mat4& getMatrix();
-  const float* getMatrixFlat();
+  const glm::mat4& getViewMatrix();
+  const glm::mat4& getProjectionMatrix();
+  const float* getViewMatrixFlat();
   const glm::vec3& getCenter();
   const glm::vec3& getEye();
   const glm::vec3& getUp();
@@ -22,13 +23,26 @@ class Camera {
   void setEye(const glm::vec3& e);
   void setUp(float x, float y, float z);
   void setUp(const glm::vec3& u);
+  void setRenderSize(float width, float height);
+  void setFocalLength(float focal_length);
+  void setClipPlanes(float near, float far);
+  void setSensorWidth(float sensor_width);
   void update();
 
  private:
   glm::vec3 mCenter;
   glm::vec3 mEye;
-  glm::mat4 mMatrix;
   glm::vec3 mUp;
+
+  float width_;
+  float height_;
+  float focal_length_;
+  float sensor_width_;
+  float clip_near_;
+  float clip_far_;
+
+  glm::mat4 view_matrix_;
+  glm::mat4 projection_matrix_;
 };
 
 }  // namespace alluvion

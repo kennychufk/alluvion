@@ -14,9 +14,13 @@ const glm::vec3& Camera::getCenter() { return mCenter; }
 
 const glm::vec3& Camera::getEye() { return mEye; }
 
-const glm::mat4& Camera::getMatrix() { return mMatrix; }
+const glm::mat4& Camera::getViewMatrix() { return view_matrix_; }
 
-const float* Camera::getMatrixFlat() { return glm::value_ptr(mMatrix); }
+const glm::mat4& Camera::getProjectionMatrix() { return projection_matrix_; }
+
+const float* Camera::getViewMatrixFlat() {
+  return glm::value_ptr(view_matrix_);
+}
 
 const glm::vec3& Camera::getUp() { return mUp; }
 
@@ -30,6 +34,11 @@ void Camera::reset() {
   mUp.x = 0.f;
   mUp.y = 1.f;
   mUp.z = 0.f;
+
+  focal_length_ = 50.f;
+  sensor_width_ = 36.f;
+  clip_near_ = 0.1f;
+  clip_far_ = 100.f;
 
   update();
 }
@@ -58,7 +67,42 @@ void Camera::setUp(float x, float y, float z) {
 
 void Camera::setUp(const glm::vec3& u) { mUp = u; }
 
-void Camera::update() { mMatrix = glm::lookAt(mEye, mCenter, mUp); }
+void Camera::setRenderSize(float width, float height) {
+  width_ = width;
+  height_ = height;
+}
+
+void Camera::setClipPlanes(float near, float far) {
+  clip_near_ = near;
+  clip_far_ = far;
+}
+
+void Camera::setSensorWidth(float sensor_width) {
+  sensor_width_ = sensor_width;
+}
+
+void Camera::update() {
+  view_matrix_ = glm::lookAt(mEye, mCenter, mUp);
+  float m00 = focal_length_ * 2.f / sensor_width_;
+  float column_major_perspective[16] = {
+      m00,
+      0.f,
+      0.f,
+      0.f,  //
+      0.f,
+      m00 * width_ / height_,
+      0.f,
+      0.f,  //
+      0.f,
+      0.f,
+      -(clip_far_ + clip_near_) / (clip_far_ - clip_near_),
+      -1.f,  //
+      0.f,
+      0.f,
+      -2.f * (clip_far_ * clip_near_) / (clip_far_ - clip_near_),
+      0.f};
+  projection_matrix_ = glm::make_mat4(column_major_perspective);
+}
 
 }  // namespace alluvion
 

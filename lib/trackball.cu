@@ -217,7 +217,7 @@ void Trackball::freezeTransform() {
   if (mCamera) {
     // Opengl is ZYX order.
     // Flip orientation to rotate scene with sticky cursor.
-    mRotationSum = glm::inverse(glm::quat(mCamera->getMatrix()));
+    mRotationSum = glm::inverse(glm::quat(mCamera->getViewMatrix()));
     mTranslateLength = glm::length(mCamera->getEye() - mCamera->getCenter());
   }
 }
