@@ -25,6 +25,10 @@ using U3 = uint3;
 using U4 = uint4;
 enum class NumericType { f32, f64, i32, u32, undefined };
 
+__device__ __host__ constexpr F operator"" _F(long double a) {
+  return static_cast<F>(a);
+}
+
 }  // namespace alluvion
 
 #endif

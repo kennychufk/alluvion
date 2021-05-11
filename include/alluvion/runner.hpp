@@ -48,10 +48,6 @@ __device__ void forThreadMappedToElement(U element_count, Lambda f) {
   }
 }
 
-__device__ __host__ constexpr F operator"" _F(long double a) {
-  return static_cast<F>(a);
-}
-
 template <typename TF3, typename TF>
 __device__ __host__ TF3 make_vector(TF x, TF y, TF z) = delete;
 
