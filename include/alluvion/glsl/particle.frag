@@ -36,6 +36,7 @@ vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir);
 
 uniform float particle_radius;
 uniform mat4 V;
+uniform mat4 M;
 uniform vec3 camera_worldspace;
 uniform Material material;
 uniform DirectionalLight directional_light;
@@ -51,7 +52,7 @@ void main() {
   normal_modelspace.z = sqrt(1.0 - normal_xy_length2);
 
   vec3 position_modelspace = normal_modelspace * particle_radius;
-  vec3 position_worldspace = position_modelspace + particle_center_worldspace;
+  vec3 position_worldspace = (M * vec4(position_modelspace + particle_center_worldspace, 1.0)).xyz;
 
   vec3 n = normalize(normal_modelspace); // normal_modelspace and normal_cameraspace is almost the same for sphere?
   // Eye vector (towards the camera)

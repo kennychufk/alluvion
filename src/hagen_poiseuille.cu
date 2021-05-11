@@ -256,14 +256,14 @@ int main(void) {
 #include "alluvion/glsl/particle.vert"
   display->add_shading_program(new ShadingProgram(
       kParticleVertexShaderStr, kParticleFragmentShaderStr,
-      {"particle_radius", "screen_dimension", "V", "P", "camera_worldspace",
-       "material.diffuse", "material.specular", "material.shininess",
-       "directional_light.direction", "directional_light.ambient",
-       "directional_light.diffuse", "directional_light.specular",
-       "point_lights[0].position", "point_lights[0].constant",
-       "point_lights[0].linear", "point_lights[0].quadratic",
-       "point_lights[0].ambient", "point_lights[0].diffuse",
-       "point_lights[0].specular",
+      {"particle_radius", "screen_dimension", "M", "V", "P",
+       "camera_worldspace", "material.diffuse", "material.specular",
+       "material.shininess", "directional_light.direction",
+       "directional_light.ambient", "directional_light.diffuse",
+       "directional_light.specular", "point_lights[0].position",
+       "point_lights[0].constant", "point_lights[0].linear",
+       "point_lights[0].quadratic", "point_lights[0].ambient",
+       "point_lights[0].diffuse", "point_lights[0].specular",
        //
        "point_lights[1].position", "point_lights[1].constant",
        "point_lights[1].linear", "point_lights[1].quadratic",
@@ -271,8 +271,8 @@ int main(void) {
        "point_lights[1].specular"
 
       },
-      [&particle_x, num_particles, particle_radius](ShadingProgram& program,
-                                                    Display& display) {
+      [&particle_x, num_particles, particle_radius, &grid_res, kernel_radius](
+          ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(
             program.get_uniform_location("P"), 1, GL_FALSE,
             glm::value_ptr(display.camera_.getProjectionMatrix()));
@@ -335,7 +335,14 @@ int main(void) {
         glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-        glDrawArrays(GL_POINTS, 0, num_particles);
+        for (I i = -1; i <= 1; ++i) {
+          float wrap_length = grid_res.x * kernel_radius;
+          glUniformMatrix4fv(
+              program.get_uniform_location("M"), 1, GL_FALSE,
+              glm::value_ptr(glm::translate(glm::mat4(1),
+                                            glm::vec3{wrap_length * i, 0, 0})));
+          glDrawArrays(GL_POINTS, 0, num_particles);
+        }
         glDisableVertexAttribArray(0);
       }));
 
