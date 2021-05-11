@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "alluvion/constants.hpp"
+#include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
@@ -19,7 +20,7 @@ int main(void) {
   F density0 = 1.0;
   F particle_mass = 0.1;
   F dt = 2e-3;
-  F gravity = -9.81;
+  F gravity = -9.81_F;
   cnst::set_cubic_discretization_constants();
   cnst::set_kernel_radius(kernel_radius);
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
@@ -29,18 +30,9 @@ int main(void) {
   // rigids
   U max_num_contacts = 512;
   Pile pile(store, max_num_contacts);
-  Mesh cube_mesh;
-  cube_mesh.set_obj("cube.obj");
-  Mesh sphere_mesh;
-  F sphere_radius = 2.5_F;
-  sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  pile.add(cube_mesh, U3{20, 20, 20}, -1._F, 0, cube_mesh, 0._F, 1, 0, 0.1,
-           F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
-  pile.add(new SphereDistance(sphere_radius), U3{50, 50, 50}, 1._F, 0,
-           sphere_mesh, 65.45_F, 1, 0, 0.2, F3{1, 1, 1}, F3{-5, -5, -5},
-           Q{0, 0, 0, 1}, sphere_mesh);
+  pile.add(new InfiniteCylinderDistance(6.5_F), U3{1, 20, 20}, -1._F, 0, Mesh(),
+           0._F, 1, 0, 0.1, F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
-  // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
   cnst::set_num_boundaries(pile.get_size());
   cnst::set_contact_tolerance(0.05);
@@ -71,17 +63,16 @@ int main(void) {
       store.create<1, F3>({num_particles});
 
   // grid
-  U3 grid_res{128, 128, 128};
-  I3 grid_offset{-64, -64, -64};
+  U3 grid_res{32, 32, 32};
+  I3 grid_offset{-16, -16, -16};
   U max_num_particles_per_cell = 128;
   U max_num_neighbors_per_particle = 128;
-  const F kCellWidthRelativeToKernelRadius =
-      pow((sqrt(5.0) - 1.0) * 0.5, 1.0 / 3.0);
   cnst::init_grid_constants(grid_res, grid_offset);
-  cnst::set_cell_width(kernel_radius * kCellWidthRelativeToKernelRadius);
-  cnst::set_search_range(2.0 / kCellWidthRelativeToKernelRadius);
+  cnst::set_cell_width(kernel_radius);
+  cnst::set_search_range(2.5_F);
   cnst::set_max_num_particles_per_cell(max_num_particles_per_cell);
   cnst::set_max_num_neighbors_per_particle(max_num_neighbors_per_particle);
+  cnst::set_wrap_length(grid_res.x * kernel_radius);
   Variable<4, U> pid = store.create<4, U>(
       {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
   Variable<3, U> pid_length =
@@ -95,7 +86,7 @@ int main(void) {
   Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_block<F3, F>
         <<<grid_size, block_size>>>(particle_x, num_particles, 0, 0,
-                                    F3{-6.0, -2.0, -6.0}, F3{6.0, 7.0, 6.0});
+                                    F3{-4.0, -4.0, -4.0}, F3{4.0, 4.0, 4.0});
   });
 
   store.unmap_graphical_pointers();
@@ -123,7 +114,7 @@ int main(void) {
                                   U3 const& resolution, F3 const& cell_size,
                                   U num_nodes, F sign, F thickness) {
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              compute_particle_boundary<<<grid_size, block_size>>>(
+              compute_particle_boundary_wrapped<<<grid_size, block_size>>>(
                   volume_grid, distance_grid, rigid_x, rigid_q, boundary_id,
                   domain_min, domain_max, resolution, cell_size, num_nodes, 0,
                   sign, thickness, dt, particle_x, particle_v,
@@ -137,12 +128,13 @@ int main(void) {
                 particle_x, pid, pid_length, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            make_neighbor_list<<<grid_size, block_size>>>(
+            make_neighbor_list_wrapped<<<grid_size, block_size>>>(
                 particle_x, pid, pid_length, particle_neighbors,
                 particle_num_neighbors, num_particles);
           });
+
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_density_fluid<<<grid_size, block_size>>>(
+            compute_density_fluid_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_neighbors, particle_num_neighbors,
                 particle_density, num_particles);
           });
@@ -156,7 +148,7 @@ int main(void) {
           // compute_surface_tension_boundary
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_viscosity_fluid<<<grid_size, block_size>>>(
+            compute_viscosity_fluid_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_density, particle_neighbors,
                 particle_num_neighbors, particle_a, num_particles);
           });
@@ -181,7 +173,7 @@ int main(void) {
                 particle_v, particle_a, dt, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection0_fluid<<<grid_size, block_size>>>(
+            predict_advection0_fluid_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_density, particle_dii, particle_neighbors,
                 particle_num_neighbors, num_particles);
           });
@@ -195,7 +187,7 @@ int main(void) {
                 particle_pressure, particle_last_pressure, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection1_fluid<<<grid_size, block_size>>>(
+            predict_advection1_fluid_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_dii, particle_adv_density,
                 particle_aii, particle_density, particle_neighbors,
                 particle_num_neighbors, dt, num_particles);
@@ -211,13 +203,14 @@ int main(void) {
           for (U p_solve_iteration = 0; p_solve_iteration < 2;
                ++p_solve_iteration) {
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              pressure_solve_iteration0<<<grid_size, block_size>>>(
+              pressure_solve_iteration0_wrapped<<<grid_size, block_size>>>(
                   particle_x, particle_density, particle_last_pressure,
                   particle_dij_pj, particle_neighbors, particle_num_neighbors,
                   num_particles);
             });
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              pressure_solve_iteration1_fluid<<<grid_size, block_size>>>(
+              pressure_solve_iteration1_fluid_wrapped<<<grid_size,
+                                                        block_size>>>(
                   particle_x, particle_density, particle_last_pressure,
                   particle_dii, particle_dij_pj, particle_sum_tmp,
                   particle_neighbors, particle_num_neighbors, num_particles);
@@ -236,7 +229,7 @@ int main(void) {
           }
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_pressure_accels_fluid<<<grid_size, block_size>>>(
+            compute_pressure_accels_fluid_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_density, particle_pressure,
                 particle_pressure_accel, particle_neighbors,
                 particle_num_neighbors, num_particles);
@@ -249,45 +242,10 @@ int main(void) {
                 num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            kinematic_integration<<<grid_size, block_size>>>(
+            kinematic_integration_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_pressure_accel, dt,
                 num_particles);
           });
-
-          // rigids
-          for (U i = 0; i < pile.get_size(); ++i) {
-            if (pile.mass_[i] == 0._F) continue;
-            pile.force_[i] =
-                Runner::sum(particle_force, num_particles, i * num_particles);
-            pile.torque_[i] =
-                Runner::sum(particle_torque, num_particles, i * num_particles);
-          }
-
-          // apply total force by fluid
-          for (U i = 0; i < pile.get_size(); ++i) {
-            if (pile.mass_[i] == 0._F) continue;
-            pile.v_(i) += 1._F / pile.mass_[i] * pile.force_[i] * dt;
-            pile.omega_(i) +=
-                calculate_angular_acceleration(pile.inertia_tensor_[i],
-                                               pile.q_[i], pile.torque_[i]) *
-                dt;
-            // clear accleration
-            pile.a_[i] = F3{0._F, gravity, 0._F};
-          }
-          // semi_implicit_euler
-          for (U i = 0; i < pile.get_size(); ++i) {
-            if (pile.mass_[i] == 0._F) continue;
-            pile.q_[i] += dt * calculate_dq(pile.omega_(i), pile.q_[i]);
-            pile.q_[i] = normalize(pile.q_[i]);
-
-            // pile.x_(i) += (pile.a_[i] * dt + pile.v_(i)) * dt;
-            // pile.v_(i) += pile.a_[i] * dt;
-            F3 dx = (pile.a_[i] * dt + pile.v_(i)) * dt;
-            pile.x_(i) += dx;
-            pile.v_(i) = 1 / dt * dx;
-          }
-          pile.find_contacts();
-          pile.solve_contacts();
         }
         store.unmap_graphical_pointers();
         frame_id += 1;

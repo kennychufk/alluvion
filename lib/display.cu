@@ -47,7 +47,7 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glDepthFunc(GL_LEQUAL);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+  glClearColor(0.2f, 0.2f, 0.2f, 0.0f);
   glClearDepth(1.0f);
 }
 Display::~Display() {

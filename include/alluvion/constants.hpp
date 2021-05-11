@@ -13,7 +13,7 @@ constexpr F kFMax = std::numeric_limits<F>::max();
 
 constexpr U kGridN = 16;
 constexpr U kGridP = 30;
-constexpr U kMaxNumCellsToSearch = 64;
+constexpr U kMaxNumCellsToSearch = 128;
 // a separate namespace for constant memory and its setters
 namespace cnst {
 extern __constant__ F kGridAbscissae[kGridN];
@@ -53,6 +53,10 @@ extern __constant__ U num_boundaries;
 extern __constant__ F contact_tolerance;
 extern __constant__ U max_num_contacts;
 
+extern __constant__ F wrap_length;
+extern __constant__ F wrap_min;
+extern __constant__ F wrap_max;
+
 void set_cubic_discretization_constants();
 void set_kernel_radius(F r);
 void set_particle_attr(F radius, F mass, F density);
@@ -66,6 +70,7 @@ void set_gravity(F g);
 void set_num_boundaries(U n);
 void set_contact_tolerance(F tolerance);
 void set_max_num_contacts(U n);
+void set_wrap_length(F l);
 }  // namespace cnst
 }  // namespace alluvion
 

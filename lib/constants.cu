@@ -43,6 +43,10 @@ __constant__ U num_boundaries;
 __constant__ F contact_tolerance;
 __constant__ U max_num_contacts;
 
+__constant__ F wrap_length;
+__constant__ F wrap_min;
+__constant__ F wrap_max;
+
 void set_cubic_discretization_constants() {
   Allocator::abort_if_error(
       cudaMemcpyToSymbol(kGridAbscissae, &dg::gaussian_abscissae_1[kGridP][0],
@@ -160,6 +164,13 @@ void set_contact_tolerance(F tolerance) {
 void set_max_num_contacts(U n) {
   Allocator::abort_if_error(
       cudaMemcpyToSymbol(max_num_contacts, &n, sizeof(U)));
+}
+void set_wrap_length(F l) {
+  F wmin = l * -0.5_F;
+  F wmax = l * 0.5_F;
+  Allocator::abort_if_error(cudaMemcpyToSymbol(wrap_length, &l, sizeof(F)));
+  Allocator::abort_if_error(cudaMemcpyToSymbol(wrap_min, &wmin, sizeof(F)));
+  Allocator::abort_if_error(cudaMemcpyToSymbol(wrap_max, &wmax, sizeof(F)));
 }
 }  // namespace cnst
 }  // namespace alluvion

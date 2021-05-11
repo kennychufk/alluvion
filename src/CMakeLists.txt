@@ -7,3 +7,12 @@ target_link_libraries(stationary
     lib_alluvion
 )
 
+add_executable(hagen_poiseuille
+  hagen_poiseuille.cu
+)
+
+target_link_libraries(hagen_poiseuille
+  PRIVATE
+    lib_alluvion
+)
+
