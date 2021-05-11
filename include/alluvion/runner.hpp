@@ -1089,9 +1089,9 @@ __device__ I3 get_ipos(TF3 x) {
 
 template <typename TI3>
 __device__ bool within_grid(TI3 ipos) {
-  return 0 <= ipos.x and ipos.x < cnst::grid_res.x and 0 <= ipos.y and
-         ipos.y < cnst::grid_res.y and 0 <= ipos.z and
-         ipos.z < cnst::grid_res.z;
+  return 0 <= ipos.x and ipos.x < static_cast<I>(cnst::grid_res.x) and
+         0 <= ipos.y and ipos.y < static_cast<I>(cnst::grid_res.y) and
+         0 <= ipos.z and ipos.z < static_cast<I>(cnst::grid_res.z);
 }
 
 template <typename TF3>
