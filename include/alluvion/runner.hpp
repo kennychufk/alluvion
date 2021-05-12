@@ -3,6 +3,8 @@
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 
+#include <limits>
+
 #include "alluvion/constants.hpp"
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
@@ -14,21 +16,29 @@ class Runner {
  public:
   Runner();
   virtual ~Runner();
-  template <typename T>
-  static T sum(void* ptr, U num_elements, U offset = 0) {
+  template <typename T, typename BinaryFunction>
+  static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
+                  U offset = 0) {
     return thrust::reduce(
         thrust::device_ptr<T>(static_cast<T*>(ptr)) + offset,
         thrust::device_ptr<T>(static_cast<T*>(ptr)) + (offset + num_elements),
-        T{});
+        init, binary_op);
+  }
+
+  template <typename T>
+  static T sum(void* ptr, U num_elements, U offset = 0) {
+    return reduce(ptr, num_elements, T{}, thrust::plus<T>(), offset);
   }
 
   template <U D, typename M>
   static M sum(Variable<D, M> var, U num_elements, U offset = 0) {
-    return thrust::reduce(
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
-            (offset + num_elements),
-        M{});
+    return reduce(var.ptr_, num_elements, M{}, thrust::plus<M>(), offset);
+  }
+
+  template <U D, typename M>
+  static M max(Variable<D, M> var, U num_elements, U offset = 0) {
+    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::lowest(),
+                  thrust::maximum<M>(), offset);
   }
 
   template <class Lambda>
@@ -376,7 +386,42 @@ inline __device__ F displacement_cohesion_kernel(TF3 d) {
 }
 
 template <typename TF3, typename TF>
-__global__ void create_fluid_block(Variable<1, TF3> x, U num_particles,
+__global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
+                                      U num_particles, TF radius,
+                                      U num_particles_per_slice,
+                                      TF slice_distance, TF x_min) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    U slice_i = p_i / num_particles_per_slice;
+    U id_in_rotation_pattern = slice_i / 4;
+    U id_in_slice = p_i % num_particles_per_slice;
+    // U num_slices = (num_particles + num_particles_per_slice - 1) /
+    // num_particles_per_slice; F slice_distance = (x_max - x_min) / num_slices;
+    F real_in_slice =
+        static_cast<F>(id_in_slice) + (id_in_rotation_pattern * 0.25_F);
+    F point_r = sqrt(real_in_slice / num_particles_per_slice) * radius;
+    F angle = kPi<F> * (1._F + sqrt(5._F)) * (real_in_slice);
+    particle_x(p_i) = F3{slice_distance * slice_i + x_min, point_r * cos(angle),
+                         point_r * sin(angle)};
+  });
+}
+
+template <typename TF3, typename TF>
+__global__ void emit_cylinder(Variable<1, TF3> particle_x,
+                              Variable<1, TF3> particle_v, U num_emission,
+                              U offset, TF radius, TF3 center, TF3 v) {
+  forThreadMappedToElement(num_emission, [&](U i) {
+    F real_in_slice = static_cast<F>(i) + 0.5_F;
+    F point_r = sqrt(real_in_slice / num_emission) * radius;
+    F angle = kPi<F> * (1._F + sqrt(5._F)) * (real_in_slice);
+    U p_i = i + offset;
+    particle_x(p_i) =
+        center + F3{point_r * cos(angle), 0._F, point_r * sin(angle)};
+    particle_v(p_i) = v;
+  });
+}
+
+template <typename TF3, typename TF>
+__global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
                                    U offset, int mode, TF3 box_min,
                                    TF3 box_max) {
   forThreadMappedToElement(num_particles, [&](U tid) {
@@ -427,7 +472,7 @@ __global__ void create_fluid_block(Variable<1, TF3> x, U num_particles,
         shift_vec.x = xshift * 0.5_F;
       }
     }
-    x(offset + p_i) = currPos + shift_vec;
+    particle_x(offset + p_i) = currPos + shift_vec;
   });
 }
 
@@ -1112,14 +1157,12 @@ __global__ void update_particle_grid(Variable<1, TF3> particle_x,
 }
 
 template <typename TF3>
-__global__ void make_neighbor_list(Variable<1, TF3> particle_x,
-                                   Variable<4, U> pid,
-                                   Variable<3, U> pid_length,
-                                   Variable<2, U> particle_neighbors,
-                                   Variable<1, U> particle_num_neighbors,
-                                   U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x = particle_x(p_i);
+__global__ void make_neighbor_list(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x, Variable<4, U> pid,
+    Variable<3, U> pid_length, Variable<2, U> sample_neighbors,
+    Variable<1, U> sample_num_neighbors, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 x = sample_x(p_i);
     I3 ipos = get_ipos(x);
     U num_neighbors = 0;
     for (U i = 0; i < cnst::num_cells_to_search; ++i) {
@@ -1131,13 +1174,13 @@ __global__ void make_neighbor_list(Variable<1, TF3> particle_x,
           U p_j = pid(neighbor_ipos, k);
           if (p_j != p_i &&
               length_sqr(x - particle_x(p_j)) < cnst::kernel_radius_sqr) {
-            particle_neighbors(p_i, num_neighbors) = p_j;
+            sample_neighbors(p_i, num_neighbors) = p_j;
             num_neighbors += 1;
           }
         }
       }
     }
-    particle_num_neighbors(p_i) = num_neighbors;
+    sample_num_neighbors(p_i) = num_neighbors;
   });
 }
 
@@ -1145,9 +1188,8 @@ __global__ void make_neighbor_list(Variable<1, TF3> particle_x,
 template <typename TF3>
 __global__ void clear_acceleration(Variable<1, TF3> particle_a,
                                    U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    particle_a(p_i) = make_vector<TF3>((0._F), cnst::gravity, (0._F));
-  });
+  forThreadMappedToElement(num_particles,
+                           [&](U p_i) { particle_a(p_i) = cnst::gravity; });
 }
 
 template <typename TQ, typename TF3, typename TF>
@@ -1494,8 +1536,7 @@ __global__ void calculate_cfl_v2(Variable<1, TF3> particle_v,
                                  Variable<1, TF> particle_cfl_v2, TF dt,
                                  U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    particle_cfl_v2(p_i) += length_sqr(particle_v(p_i) + particle_a(p_i) * dt) /
-                            num_particles / num_particles;
+    particle_cfl_v2(p_i) = length_sqr(particle_v(p_i) + particle_a(p_i) * dt);
   });
 }
 template <typename TF3, typename TF>
@@ -1974,11 +2015,11 @@ inline __device__ TF3 wrap_x(TF3 v) {
 }
 template <typename TF3>
 __global__ void make_neighbor_list_wrapped(
-    Variable<1, TF3> particle_x, Variable<4, U> pid, Variable<3, U> pid_length,
-    Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x = particle_x(p_i);
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x, Variable<4, U> pid,
+    Variable<3, U> pid_length, Variable<2, U> sample_neighbors,
+    Variable<1, U> sample_num_neighbors, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 x = sample_x(p_i);
     I3 ipos = get_ipos(x);
     U num_neighbors = 0;
     for (U i = 0; i < cnst::num_cells_to_search; ++i) {
@@ -1991,13 +2032,13 @@ __global__ void make_neighbor_list_wrapped(
           U p_j = pid(neighbor_ipos, k);
           F3 x_ij = wrap_x(x - particle_x(p_j));
           if (p_j != p_i && length_sqr(x_ij) < cnst::kernel_radius_sqr) {
-            particle_neighbors(p_i, num_neighbors) = p_j;
+            sample_neighbors(p_i, num_neighbors) = p_j;
             num_neighbors += 1;
           }
         }
       }
     }
-    particle_num_neighbors(p_i) = num_neighbors;
+    sample_num_neighbors(p_i) = num_neighbors;
   });
 }
 template <typename TQ, typename TF3, typename TF>
@@ -2308,6 +2349,27 @@ __global__ void kinematic_integration_wrapped(
     v += particle_pressure_accel(p_i) * dt;
     particle_x(p_i) = wrap_x(particle_x(p_i) + v * dt);
     particle_v(p_i) = v;
+  });
+}
+
+// statistics
+template <typename TF3, typename TF, typename TQuantity>
+__global__ void sample_fluid(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
+    Variable<1, TF> particle_density, Variable<1, TQuantity> particle_quantity,
+    Variable<2, U> sample_neighbors, Variable<1, U> sample_num_neighbors,
+    Variable<1, TQuantity> sample_quantity, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TQuantity result{};
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j = sample_neighbors(p_i, neighbor_id);
+      result += cnst::particle_mass / particle_density(p_j) *
+                displacement_cubic_kernel(x_i - particle_x(p_j)) *
+                particle_quantity(p_j);
+    }
+    sample_quantity(p_i) = result;
   });
 }
 

@@ -39,7 +39,7 @@ extern __constant__ F viscosity_omega;
 extern __constant__ F surface_tension_coeff;
 extern __constant__ F surface_tension_boundary_coeff;
 
-extern __constant__ F gravity;
+extern __constant__ F3 gravity;
 
 extern __constant__ I3 neighbor_offsets[kMaxNumCellsToSearch];
 extern __constant__ U num_cells_to_search;
@@ -66,7 +66,7 @@ void set_cell_width(F width);
 void set_search_range(F search_radius_relative_to_cell_width);
 void set_max_num_particles_per_cell(U n);
 void set_max_num_neighbors_per_particle(U n);
-void set_gravity(F g);
+void set_gravity(F3 g);
 void set_num_boundaries(U n);
 void set_contact_tolerance(F tolerance);
 void set_max_num_contacts(U n);

@@ -18,19 +18,32 @@ int main(void) {
   F particle_radius = 0.25;
   F kernel_radius = 1.0;
   F density0 = 1.0;
-  F particle_mass = 0.1;
-  F dt = 2e-3;
-  F gravity = -9.81_F;
+  // F particle_mass = 4._F / 3._F * kPi<F> * particle_radius * particle_radius
+  // *
+  //                   particle_radius * density0;
+  F cubical_particle_volume =
+      8 * particle_radius * particle_radius * particle_radius;
+  F volume_relative_to_cube = 1.0_F;
+  F particle_mass =
+      cubical_particle_volume * volume_relative_to_cube * density0;
+  // F dt = 1e-3;
+  F dt = 1e-4;
+  F3 gravity = {0._F, -9.81_F, 0._F};
   cnst::set_cubic_discretization_constants();
   cnst::set_kernel_radius(kernel_radius);
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
   cnst::set_gravity(gravity);
   cnst::set_advanced_fluid_attr(0.1, 0.01, 0.1, 0.5, 0.05, 0.01);
 
+  I kM = 8;
+  F cylinder_length = kM * kernel_radius;
+  I kQ = 10;
+  F R = particle_radius * 2._F * kQ;
+
   // rigids
   U max_num_contacts = 512;
   Pile pile(store, max_num_contacts);
-  pile.add(new InfiniteCylinderDistance(6.5_F), U3{1, 20, 20}, -1._F, 0, Mesh(),
+  pile.add(new InfiniteCylinderDistance(R), U3{1, 20, 20}, -1._F, 0, Mesh(),
            0._F, 1, 0, 0.1, F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
@@ -38,33 +51,40 @@ int main(void) {
   cnst::set_contact_tolerance(0.05);
 
   // particles
-  U num_particles = 10000;
+  U num_particles_per_slice = 220;
+  // U num_particles = 12 * kM * kQ*kQ;
+  // U num_slices = 1;
+  U num_slices = 2 * kM;
+  U num_particles = 0;
+  U max_num_particles = num_particles_per_slice * num_slices;
   GraphicalVariable<1, F3> particle_x =
-      store.create_graphical<1, F3>({num_particles});
-  Variable<1, F3> particle_v = store.create<1, F3>({num_particles});
-  Variable<1, F3> particle_a = store.create<1, F3>({num_particles});
-  Variable<1, F> particle_density = store.create<1, F>({num_particles});
-  Variable<1, F> particle_pressure = store.create<1, F>({num_particles});
-  Variable<1, F> particle_last_pressure = store.create<1, F>({num_particles});
+      store.create_graphical<1, F3>({max_num_particles});
+  Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
+  Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
+  Variable<1, F> particle_density = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_pressure = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_last_pressure =
+      store.create<1, F>({max_num_particles});
   Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({pile.get_size(), num_particles});
+      store.create<2, F3>({pile.get_size(), max_num_particles});
   Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({pile.get_size(), num_particles});
+      store.create<2, F>({pile.get_size(), max_num_particles});
   Variable<2, F3> particle_force =
-      store.create<2, F3>({pile.get_size(), num_particles});
+      store.create<2, F3>({pile.get_size(), max_num_particles});
   Variable<2, F3> particle_torque =
-      store.create<2, F3>({pile.get_size(), num_particles});
-  Variable<1, F> particle_aii = store.create<1, F>({num_particles});
-  Variable<1, F3> particle_dii = store.create<1, F3>({num_particles});
-  Variable<1, F3> particle_dij_pj = store.create<1, F3>({num_particles});
-  Variable<1, F> particle_sum_tmp = store.create<1, F>({num_particles});
-  Variable<1, F> particle_adv_density = store.create<1, F>({num_particles});
+      store.create<2, F3>({pile.get_size(), max_num_particles});
+  Variable<1, F> particle_aii = store.create<1, F>({max_num_particles});
+  Variable<1, F3> particle_dii = store.create<1, F3>({max_num_particles});
+  Variable<1, F3> particle_dij_pj = store.create<1, F3>({max_num_particles});
+  Variable<1, F> particle_sum_tmp = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_adv_density = store.create<1, F>({max_num_particles});
   Variable<1, F3> particle_pressure_accel =
-      store.create<1, F3>({num_particles});
+      store.create<1, F3>({max_num_particles});
+  Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
 
   // grid
-  U3 grid_res{32, 32, 32};
-  I3 grid_offset{-16, -16, -16};
+  U3 grid_res{kM, kQ, kQ};
+  I3 grid_offset{-kM / 2, -kQ / 2, -kQ / 2};
   U max_num_particles_per_cell = 128;
   U max_num_neighbors_per_particle = 128;
   cnst::init_grid_constants(grid_res, grid_offset);
@@ -79,26 +99,119 @@ int main(void) {
       store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
   // neighbor
   Variable<2, U> particle_neighbors =
-      store.create<2, U>({num_particles, max_num_neighbors_per_particle});
-  Variable<1, U> particle_num_neighbors = store.create<1, U>({num_particles});
+      store.create<2, U>({max_num_particles, max_num_neighbors_per_particle});
+  Variable<1, U> particle_num_neighbors =
+      store.create<1, U>({max_num_particles});
 
-  store.map_graphical_pointers();
-  Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-    create_fluid_block<F3, F>
-        <<<grid_size, block_size>>>(particle_x, num_particles, 0, 0,
-                                    F3{-4.0, -4.0, -4.0}, F3{4.0, 4.0, 4.0});
-  });
+  // store.map_graphical_pointers();
+  // Runner::launch(max_num_particles, 256, [&](U grid_size, U block_size) {
+  //   create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
+  //       particle_x, max_num_particles, R - particle_radius * 2,
+  //       num_particles_per_slice, particle_radius * 2._F,
+  //       cylinder_length * -0.5_F);
+  // });
+  // store.unmap_graphical_pointers();
+  // num_particles = max_num_particles - 2000;
 
-  store.unmap_graphical_pointers();
+  // // sample points
+  // U num_sample_points = 21;
+  // Variable<1, F3> sample_x = store.create<1, F3>({num_sample_points});
+  // Variable<1, F3> sample_data = store.create<1, F3>({num_sample_points});
+  // Variable<2, U> sample_neighbors =
+  //     store.create<2, U>({num_sample_points,
+  //     max_num_neighbors_per_particle});
+  // Variable<1, U> sample_num_neighbors = store.create<1,
+  // U>({num_sample_points});
+  // // TODO: add boundary
+  // std::vector<F3> sample_points_host(num_sample_points);
+  // for (I i = 0; i < num_sample_points; ++i) {
+  //   sample_points_host[i] = F3{0._F, 0._F,
+  //                              R * 2._F / (num_sample_points + 1) *
+  //                                  (i - static_cast<I>(num_sample_points) /
+  //                                  2)};
+  // }
+  // sample_x.set_bytes(sample_points_host.data());
+  // std::vector<F3> sample_data_host(num_sample_points);
 
   U frame_id = 0;
+  F t = 0;
+  F t_next_emission = 0;
+  bool should_close = false;
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, [&](ShadingProgram& program, Display& display) {
         // std::cout << "============= frame_id = " << frame_id << std::endl;
+        if (should_close) {
+          return;
+        }
 
         store.map_graphical_pointers();
+        // if (frame_id == 10000) {
+        //   pid_length.set_zero();
+        //   Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+        //     update_particle_grid<<<grid_size, block_size>>>(
+        //         particle_x, pid, pid_length, num_particles);
+        //   });
+        //   Runner::launch(num_sample_points, 256, [&](U grid_size, U
+        //   block_size) {
+        //     make_neighbor_list_wrapped<<<grid_size, block_size>>>(
+        //         sample_x, particle_x, pid, pid_length, sample_neighbors,
+        //         sample_num_neighbors, num_sample_points);
+        //   });
+
+        //   Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+        //     compute_density_fluid_wrapped<<<grid_size, block_size>>>(
+        //         particle_x, particle_neighbors, particle_num_neighbors,
+        //         particle_density, num_particles);
+        //   });
+        //   Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+        //     compute_density_boundary<<<grid_size, block_size>>>(
+        //         particle_x, particle_density, particle_boundary_xj,
+        //         particle_boundary_volume, num_particles);
+        //   });
+
+        //   Runner::launch(num_sample_points, 256, [&](U grid_size, U
+        //   block_size) {
+        //     sample_fluid<<<grid_size, block_size>>>(
+        //         sample_x, particle_x, particle_density, particle_v,
+        //         sample_neighbors, sample_num_neighbors, sample_data,
+        //         num_sample_points);
+        //   });
+        //   should_close = true;
+        // }
         // start of simulation loop
-        for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
+        // F num_emission = 50;
+        // if (frame_id > 5000 && frame_id % 300 == 1 && num_particles +
+        // num_emission <= max_num_particles) {
+        //   Runner::launch(num_emission, 256, [&](U grid_size, U block_size) {
+        //     emit_cylinder<<<grid_size, block_size>>>(
+        //         particle_x, particle_v, num_emission, num_particles, 2.0_F,
+        //         F3{0._F, R*3._F/4._F, 0._F}, F3{0._F, -0.1_F, 0._F});
+        //   });
+        //   num_particles += num_emission;
+        // }
+        std::cout << "num_particles = " << num_particles << std::endl;
+        std::vector<F3> particle_x_host(1);
+        particle_x.get_bytes(particle_x_host.data(), sizeof(F3));
+        F3 first_x = particle_x_host[0];
+        std::cout << "x = " << first_x.x << ", " << first_x.y << ", "
+                  << first_x.z << std::endl;
+        for (U frame_interstep = 0; frame_interstep < 1; ++frame_interstep) {
+          // emission
+          F num_emission = 20;
+          F3 emission_velocity = F3{0._F, -4.0_F, 0._F};
+          F emission_speed = length(emission_velocity);
+          F emission_interval = particle_radius * 2._F / emission_speed;
+          if (t >= t_next_emission &&
+              num_particles + num_emission <= max_num_particles) {
+            Runner::launch(num_emission, 256, [&](U grid_size, U block_size) {
+              emit_cylinder<<<grid_size, block_size>>>(
+                  particle_x, particle_v, num_emission, num_particles, 2.0_F,
+                  F3{0._F, 0._F, 0._F}, emission_velocity);
+            });
+            num_particles += num_emission;
+            t_next_emission = t + emission_interval;
+          }
+          //
           particle_force.set_zero();
           particle_torque.set_zero();
           pile.copy_kinematics_to_device();
@@ -129,7 +242,7 @@ int main(void) {
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             make_neighbor_list_wrapped<<<grid_size, block_size>>>(
-                particle_x, pid, pid_length, particle_neighbors,
+                particle_x, particle_x, pid, pid_length, particle_neighbors,
                 particle_num_neighbors, num_particles);
           });
 
@@ -166,7 +279,22 @@ int main(void) {
           // integrate_angular_acceleration
           //
           // calculate_cfl_v2
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            calculate_cfl_v2<<<grid_size, block_size>>>(
+                particle_v, particle_a, particle_cfl_v2, dt, num_particles);
+          });
           // update_dt
+          F cfl_length_scale = particle_radius * 2._F;
+          F cfl_factor = 0.04_F;
+          F max_particle_speed =
+              sqrt(Runner::max(particle_cfl_v2, num_particles));
+          dt = cfl_factor * (cfl_length_scale / max_particle_speed);
+          dt = min(5e-3, dt);
+          std::cout << "dt = " << dt << " max speed = " << max_particle_speed
+                    << std::endl;
+          // if (max_particle_speed > 100.0 && frame_id > 1000) {
+          //   should_close = true;
+          // }
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             predict_advection0_fluid_advect<<<grid_size, block_size>>>(
@@ -200,7 +328,7 @@ int main(void) {
                 pile.omega_device_, dt, num_particles);
           });
 
-          for (U p_solve_iteration = 0; p_solve_iteration < 2;
+          for (U p_solve_iteration = 0; p_solve_iteration < 4;
                ++p_solve_iteration) {
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
               pressure_solve_iteration0_wrapped<<<grid_size, block_size>>>(
@@ -249,6 +377,7 @@ int main(void) {
         }
         store.unmap_graphical_pointers();
         frame_id += 1;
+        t += dt;
       }));
 
   // {{{
@@ -271,7 +400,7 @@ int main(void) {
        "point_lights[1].specular"
 
       },
-      [&particle_x, num_particles, particle_radius, &grid_res, kernel_radius](
+      [&particle_x, &num_particles, particle_radius, &grid_res, kernel_radius](
           ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(
             program.get_uniform_location("P"), 1, GL_FALSE,

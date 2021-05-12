@@ -19,7 +19,7 @@ int main(void) {
   F density0 = 1.0;
   F particle_mass = 0.1;
   F dt = 2e-3;
-  F gravity = -9.81;
+  F3 gravity = {0._F, -9.81_F, 0._F};
   cnst::set_cubic_discretization_constants();
   cnst::set_kernel_radius(kernel_radius);
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
@@ -138,7 +138,7 @@ int main(void) {
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             make_neighbor_list<<<grid_size, block_size>>>(
-                particle_x, pid, pid_length, particle_neighbors,
+                particle_x, particle_x, pid, pid_length, particle_neighbors,
                 particle_num_neighbors, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
@@ -272,7 +272,7 @@ int main(void) {
                                                pile.q_[i], pile.torque_[i]) *
                 dt;
             // clear accleration
-            pile.a_[i] = F3{0._F, gravity, 0._F};
+            pile.a_[i] = gravity;
           }
           // semi_implicit_euler
           for (U i = 0; i < pile.get_size(); ++i) {

@@ -29,7 +29,7 @@ __constant__ F viscosity_omega;
 __constant__ F surface_tension_coeff;
 __constant__ F surface_tension_boundary_coeff;
 
-__constant__ F gravity;
+__constant__ F3 gravity;
 
 __constant__ I3 neighbor_offsets[kMaxNumCellsToSearch];
 __constant__ U num_cells_to_search;
@@ -151,8 +151,8 @@ void set_max_num_neighbors_per_particle(U n) {
   Allocator::abort_if_error(
       cudaMemcpyToSymbol(max_num_neighbors_per_particle, &n, sizeof(U)));
 }
-void set_gravity(F g) {
-  Allocator::abort_if_error(cudaMemcpyToSymbol(gravity, &g, sizeof(F)));
+void set_gravity(F3 g) {
+  Allocator::abort_if_error(cudaMemcpyToSymbol(gravity, &g, sizeof(F3)));
 }
 void set_num_boundaries(U n) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(num_boundaries, &n, sizeof(U)));
