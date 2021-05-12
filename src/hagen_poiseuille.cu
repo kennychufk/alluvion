@@ -16,14 +16,14 @@ int main(void) {
   Display* display = store.create_display(800, 600, "particle view");
 
   F particle_radius = 0.25;
-  F kernel_radius = 1.0;
+  F kernel_radius = 1.0_F;
   F density0 = 1.0;
   // F particle_mass = 4._F / 3._F * kPi<F> * particle_radius * particle_radius
   // *
   //                   particle_radius * density0;
   F cubical_particle_volume =
       8 * particle_radius * particle_radius * particle_radius;
-  F volume_relative_to_cube = 1.0_F;
+  F volume_relative_to_cube = 0.8_F;
   F particle_mass =
       cubical_particle_volume * volume_relative_to_cube * density0;
   // F dt = 1e-3;
@@ -35,10 +35,10 @@ int main(void) {
   cnst::set_gravity(gravity);
   cnst::set_advanced_fluid_attr(0.1, 0.01, 0.1, 0.5, 0.05, 0.01);
 
-  I kM = 8;
-  F cylinder_length = kM * kernel_radius;
+  I kM = 4;
+  F cylinder_length = 2._F * kM * kernel_radius;
   I kQ = 10;
-  F R = particle_radius * 2._F * kQ;
+  F R = kernel_radius * kQ;
 
   // rigids
   U max_num_contacts = 512;
@@ -51,12 +51,10 @@ int main(void) {
   cnst::set_contact_tolerance(0.05);
 
   // particles
-  U num_particles_per_slice = 220;
-  // U num_particles = 12 * kM * kQ*kQ;
-  // U num_slices = 1;
-  U num_slices = 2 * kM;
   U num_particles = 0;
-  U max_num_particles = num_particles_per_slice * num_slices;
+  U max_num_particles =
+      static_cast<U>(2._F * kPi<F> * kQ * kQ * kM * kernel_radius *
+                     kernel_radius * kernel_radius * density0 / particle_mass);
   GraphicalVariable<1, F3> particle_x =
       store.create_graphical<1, F3>({max_num_particles});
   Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
@@ -83,8 +81,8 @@ int main(void) {
   Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
 
   // grid
-  U3 grid_res{kM, kQ, kQ};
-  I3 grid_offset{-kM / 2, -kQ / 2, -kQ / 2};
+  U3 grid_res{kM * 2, kQ * 2, kQ * 2};
+  I3 grid_offset{-kM, -kQ, -kQ};
   U max_num_particles_per_cell = 128;
   U max_num_neighbors_per_particle = 128;
   cnst::init_grid_constants(grid_res, grid_offset);
@@ -178,35 +176,31 @@ int main(void) {
         //   });
         //   should_close = true;
         // }
-        // start of simulation loop
-        // F num_emission = 50;
-        // if (frame_id > 5000 && frame_id % 300 == 1 && num_particles +
-        // num_emission <= max_num_particles) {
-        //   Runner::launch(num_emission, 256, [&](U grid_size, U block_size) {
-        //     emit_cylinder<<<grid_size, block_size>>>(
-        //         particle_x, particle_v, num_emission, num_particles, 2.0_F,
-        //         F3{0._F, R*3._F/4._F, 0._F}, F3{0._F, -0.1_F, 0._F});
-        //   });
-        //   num_particles += num_emission;
-        // }
-        std::cout << "num_particles = " << num_particles << std::endl;
-        std::vector<F3> particle_x_host(1);
-        particle_x.get_bytes(particle_x_host.data(), sizeof(F3));
-        F3 first_x = particle_x_host[0];
-        std::cout << "x = " << first_x.x << ", " << first_x.y << ", "
-                  << first_x.z << std::endl;
+        std::cout << "num_particles = " << num_particles << "/"
+                  << max_num_particles << std::endl;
         for (U frame_interstep = 0; frame_interstep < 1; ++frame_interstep) {
           // emission
-          F num_emission = 20;
+          U num_emission = 20;
           F3 emission_velocity = F3{0._F, -4.0_F, 0._F};
           F emission_speed = length(emission_velocity);
           F emission_interval = particle_radius * 2._F / emission_speed;
+          if (num_particles >= max_num_particles * 4 / 5) {
+            num_emission = 1;
+            emission_velocity /= 4._F;
+            emission_interval = particle_radius * 4._F / emission_speed;
+          } else if (num_particles >= max_num_particles * 3 / 4) {
+            num_emission = 10;
+            emission_speed = length(emission_velocity);
+            emission_interval = particle_radius * 2._F / emission_speed;
+          }
           if (t >= t_next_emission &&
               num_particles + num_emission <= max_num_particles) {
             Runner::launch(num_emission, 256, [&](U grid_size, U block_size) {
-              emit_cylinder<<<grid_size, block_size>>>(
-                  particle_x, particle_v, num_emission, num_particles, 2.0_F,
-                  F3{0._F, 0._F, 0._F}, emission_velocity);
+              emit_line<<<grid_size, block_size>>>(
+                  particle_x, particle_v, num_emission, num_particles,
+                  F3{cylinder_length * -0.5_F, R - particle_radius * 2._F, 0.F},
+                  F3{cylinder_length * 0.5_F, R - particle_radius * 2._F, 0.F},
+                  emission_velocity);
             });
             num_particles += num_emission;
             t_next_emission = t + emission_interval;

@@ -420,6 +420,18 @@ __global__ void emit_cylinder(Variable<1, TF3> particle_x,
   });
 }
 
+template <typename TF3>
+__global__ void emit_line(Variable<1, TF3> particle_x,
+                          Variable<1, TF3> particle_v, U num_emission, U offset,
+                          TF3 p0, TF3 p1, TF3 v) {
+  forThreadMappedToElement(num_emission, [&](U i) {
+    U p_i = i + offset;
+    TF3 step = (p1 - p0) / num_emission;
+    particle_x(p_i) = p0 + step * i;
+    particle_v(p_i) = v;
+  });
+}
+
 template <typename TF3, typename TF>
 __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
                                    U offset, int mode, TF3 box_min,
