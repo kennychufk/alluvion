@@ -36,6 +36,7 @@ class Display {
 
   void run();
   void add_shading_program(ShadingProgram *program);
+  void update_trackball_camera();
 };
 }  // namespace alluvion
 

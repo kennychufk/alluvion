@@ -240,22 +240,23 @@ U Pile::get_size() const { return distance_grids_.size(); }
 glm::mat4 Pile::get_matrix(U i) const {
   Q const& q = q_[i];
   F3 const& translation = x_(i);
-  float column_major_transformation[16] = {1 - 2 * (q.y * q.y + q.z * q.z),
-                                           2 * (q.x * q.y + q.z * q.w),
-                                           2 * (q.x * q.z - q.y * q.w),
-                                           0,
-                                           2 * (q.x * q.y - q.z * q.w),
-                                           1 - 2 * (q.x * q.x + q.z * q.z),
-                                           2 * (q.y * q.z + q.x * q.w),
-                                           0,
-                                           2 * (q.x * q.z + q.y * q.w),
-                                           2 * (q.y * q.z - q.x * q.w),
-                                           1 - 2 * (q.x * q.x + q.y * q.y),
-                                           0,
-                                           translation.x,
-                                           translation.y,
-                                           translation.z,
-                                           1};
+  float column_major_transformation[16] = {
+      static_cast<float>(1 - 2 * (q.y * q.y + q.z * q.z)),
+      static_cast<float>(2 * (q.x * q.y + q.z * q.w)),
+      static_cast<float>(2 * (q.x * q.z - q.y * q.w)),
+      static_cast<float>(0),
+      static_cast<float>(2 * (q.x * q.y - q.z * q.w)),
+      static_cast<float>(1 - 2 * (q.x * q.x + q.z * q.z)),
+      static_cast<float>(2 * (q.y * q.z + q.x * q.w)),
+      static_cast<float>(0),
+      static_cast<float>(2 * (q.x * q.z + q.y * q.w)),
+      static_cast<float>(2 * (q.y * q.z - q.x * q.w)),
+      static_cast<float>(1 - 2 * (q.x * q.x + q.y * q.y)),
+      static_cast<float>(0),
+      static_cast<float>(translation.x),
+      static_cast<float>(translation.y),
+      static_cast<float>(translation.z),
+      static_cast<float>(1)};
   return glm::make_mat4(column_major_transformation);
 }
 

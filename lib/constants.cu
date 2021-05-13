@@ -31,6 +31,8 @@ __constant__ F surface_tension_boundary_coeff;
 
 __constant__ F3 gravity;
 
+__constant__ F boundary_epsilon;
+
 __constant__ I3 neighbor_offsets[kMaxNumCellsToSearch];
 __constant__ U num_cells_to_search;
 __constant__ U max_num_particles_per_cell;
@@ -59,12 +61,12 @@ void set_cubic_discretization_constants() {
 void set_kernel_radius(F h) {
   F h2 = h * h;
   F h3 = h2 * h;
-  F tmp_cubic_k = 8.0 / (kPi<F> * h3);
-  F tmp_cubic_l = 48.0 / (kPi<F> * h3);
+  F tmp_cubic_k = 8.0_F / (kPi<F> * h3);
+  F tmp_cubic_l = 48.0_F / (kPi<F> * h3);
   F tmp_cubic_zero = tmp_cubic_k;
-  F tmp_adhesion_kernel_k = 0.007 / pow(h, 3.25);
-  F tmp_cohesion_kernel_k = 32.0 / (kPi<F> * h3 * h3 * h3);
-  F tmp_cohesion_kernel_c = h3 * h3 / 64.0;
+  F tmp_adhesion_kernel_k = 0.007_F / pow(h, 3.25_F);
+  F tmp_cohesion_kernel_k = 32.0_F / (kPi<F> * h3 * h3 * h3);
+  F tmp_cohesion_kernel_c = h3 * h3 / 64.0_F;
 
   Allocator::abort_if_error(cudaMemcpyToSymbol(kernel_radius, &h, sizeof(F)));
   Allocator::abort_if_error(
@@ -153,6 +155,10 @@ void set_max_num_neighbors_per_particle(U n) {
 }
 void set_gravity(F3 g) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(gravity, &g, sizeof(F3)));
+}
+void set_boundary_epsilon(F e) {
+  Allocator::abort_if_error(
+      cudaMemcpyToSymbol(boundary_epsilon, &e, sizeof(F)));
 }
 void set_num_boundaries(U n) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(num_boundaries, &n, sizeof(U)));

@@ -41,6 +41,12 @@ class Runner {
                   thrust::maximum<M>(), offset);
   }
 
+  template <U D, typename M>
+  static M min(Variable<D, M> var, U num_elements, U offset = 0) {
+    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::max(),
+                  thrust::minimum<M>(), offset);
+  }
+
   template <class Lambda>
   static void launch(U n, U desired_block_size, Lambda f) {
     if (n == 0) return;
@@ -429,6 +435,24 @@ __global__ void emit_line(Variable<1, TF3> particle_x,
     TF3 step = (p1 - p0) / num_emission;
     particle_x(p_i) = p0 + step * i;
     particle_v(p_i) = v;
+  });
+}
+
+template <typename TF3, typename TF>
+__global__ void emit_if_density_lower_than_last(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, TF3> emission_x, Variable<1, TF> emission_sample_density,
+    Variable<1, U> num_emitted, U num_emission, U offset, TF ratio_of_last,
+    TF3 v) {
+  forThreadMappedToElement(num_emission, [&](U i) {
+    TF density_threshold =
+        emission_sample_density(num_emission) * ratio_of_last;
+    if (emission_sample_density(i) <= density_threshold) {
+      U emit_id = atomicAdd(&num_emitted(0), 1);
+      U p_i = offset + emit_id;
+      particle_x(p_i) = emission_x(i);
+      particle_v(p_i) = v;
+    }
   });
 }
 
@@ -1067,10 +1091,12 @@ __device__ TF compute_volume_and_boundary_x(
     volume = interpolate(volume_nodes, node_offset, cells, N);
     write_boundary =
         (dist > 0.1_F * cnst::particle_radius && dist < cnst::kernel_radius &&
-         volume > 1e-5_F && volume != kFMax && nl > 1e-5_F);
+         volume > cnst::boundary_epsilon && volume != kFMax &&
+         nl > cnst::boundary_epsilon);
     boundary_volume = write_boundary * volume;
     *boundary_xj = write_boundary * (x - dist * (*normal));
-    penetrated = (dist <= 0.1_F * cnst::particle_radius && nl > 1e-5_F);
+    penetrated =
+        (dist <= 0.1_F * cnst::particle_radius && nl > cnst::boundary_epsilon);
     *d = penetrated * -dist;
     *d = min(*d, 0.25_F / 0.005_F * cnst::particle_radius * dt);
   }
@@ -1998,10 +2024,12 @@ __device__ TF compute_volume_and_boundary_x_wrapped(
     volume = interpolate(volume_nodes, node_offset, cells, N);
     write_boundary =
         (dist > 0.1_F * cnst::particle_radius && dist < cnst::kernel_radius &&
-         volume > 1e-5_F && volume != kFMax && nl > 1e-5_F);
+         volume > cnst::boundary_epsilon && volume != kFMax &&
+         nl > cnst::boundary_epsilon);
     boundary_volume = write_boundary * volume;
     *boundary_xj = write_boundary * (x - dist * (*normal));
-    penetrated = (dist <= 0.1_F * cnst::particle_radius && nl > 1e-5_F);
+    penetrated =
+        (dist <= 0.1_F * cnst::particle_radius && nl > cnst::boundary_epsilon);
     *d = penetrated * -dist;
     *d = min(*d, 0.25_F / 0.005_F * cnst::particle_radius * dt);
   }
@@ -2365,6 +2393,46 @@ __global__ void kinematic_integration_wrapped(
 }
 
 // statistics
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_sample_boundary(
+    Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,
+    TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
+    TF3 cell_size, U num_nodes, U node_offset, TF sign, TF thickness, TF dt,
+    Variable<1, TF3> sample_x, Variable<2, TF3> sample_boundary_xj,
+    Variable<2, TF> sample_boundary_volume, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 boundary_xj, normal;
+    TF d;
+    bool penetrated;
+    TF boundary_volume = compute_volume_and_boundary_x(
+        &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
+        cell_size, num_nodes, node_offset, sign, thickness, sample_x(p_i),
+        rigid_x, rigid_q, dt, &boundary_xj, &d, &normal);
+    sample_boundary_xj(boundary_id, p_i) = boundary_xj;
+    sample_boundary_volume(boundary_id, p_i) = boundary_volume;
+  });
+}
+
+template <typename TF3, typename TF, typename TQuantity>
+__global__ void sample_fluid_wrapped(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
+    Variable<1, TF> particle_density, Variable<1, TQuantity> particle_quantity,
+    Variable<2, U> sample_neighbors, Variable<1, U> sample_num_neighbors,
+    Variable<1, TQuantity> sample_quantity, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TQuantity result{};
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j = sample_neighbors(p_i, neighbor_id);
+      result += cnst::particle_mass / particle_density(p_j) *
+                displacement_cubic_kernel(wrap_x(x_i - particle_x(p_j))) *
+                particle_quantity(p_j);
+    }
+    sample_quantity(p_i) = result;
+  });
+}
+
 template <typename TF3, typename TF, typename TQuantity>
 __global__ void sample_fluid(
     Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
@@ -2382,6 +2450,35 @@ __global__ void sample_fluid(
                 particle_quantity(p_j);
     }
     sample_quantity(p_i) = result;
+  });
+}
+
+template <typename TF3, typename TF, typename TQuantity>
+__global__ void sample_density_boundary(Variable<1, TF3> sample_x,
+                                        Variable<1, TQuantity> sample_quantity,
+                                        Variable<2, TF3> sample_boundary_xj,
+                                        Variable<2, TF> sample_boundary_volume,
+                                        U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF density = 0._F;
+    TF3 x_i = sample_x(p_i);
+    for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
+      TF vj = max(0._F, sample_boundary_volume(boundary_id, p_i));
+      TF3 bx_j = sample_boundary_xj(boundary_id, p_i);
+      density += vj * displacement_cubic_kernel(x_i - bx_j);
+    }
+    sample_quantity(p_i) += density * cnst::density0;
+  });
+}
+
+// Graphical post-processing
+template <typename TFDest, typename TF3Dest, typename TF3Source>
+__global__ void convert_fp3(Variable<1, TF3Dest> dest,
+                            Variable<1, TF3Source> source, U n) {
+  forThreadMappedToElement(n, [&](U i) {
+    TF3Source v = source(i);
+    dest(i) = TF3Dest{static_cast<TFDest>(v.x), static_cast<TFDest>(v.y),
+                      static_cast<TFDest>(v.z)};
   });
 }
 

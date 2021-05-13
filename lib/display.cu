@@ -34,7 +34,7 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glfwSetScrollCallback(window_, &Display::scroll_callback);
   glfwSetWindowSizeCallback(window_, &Display::resize_callback);
 
-  trackball_.setCamera(&camera_);
+  update_trackball_camera();
   resize_callback(window_, width, height);
 
   glGenVertexArrays(1, &vao_);
@@ -137,7 +137,7 @@ void Display::key_callback(GLFWwindow *window, int key, int scancode,
         case GLFW_KEY_R:
           // Reset the view.
           display->camera_.reset();
-          display->trackball_.setCamera(&display->camera_);
+          display->update_trackball_camera();
           break;
         case GLFW_KEY_T:
           // Toogle motion type.
@@ -155,7 +155,7 @@ void Display::key_callback(GLFWwindow *window, int key, int scancode,
           display->camera_.setEye(length, 0, 0);
           display->camera_.setUp(0, 1, 0);
           display->camera_.update();
-          display->trackball_.setCamera(&display->camera_);
+          display->update_trackball_camera();
           break;
         case GLFW_KEY_Y:
           length = glm::length(display->camera_.getEye() -
@@ -163,7 +163,7 @@ void Display::key_callback(GLFWwindow *window, int key, int scancode,
           display->camera_.setEye(0, length, 0);
           display->camera_.setUp(1, 0, 0);
           display->camera_.update();
-          display->trackball_.setCamera(&display->camera_);
+          display->update_trackball_camera();
           break;
         case GLFW_KEY_Z:
           length = glm::length(display->camera_.getEye() -
@@ -171,7 +171,7 @@ void Display::key_callback(GLFWwindow *window, int key, int scancode,
           display->camera_.setEye(0, 0, length);
           display->camera_.setUp(1, 0, 0);
           display->camera_.update();
-          display->trackball_.setCamera(&display->camera_);
+          display->update_trackball_camera();
           break;
         default:
           break;
@@ -229,6 +229,8 @@ void Display::run() {
 void Display::add_shading_program(ShadingProgram *program) {
   programs_.emplace_back(program);
 }
+
+void Display::update_trackball_camera() { trackball_.setCamera(&camera_); }
 
 }  // namespace alluvion
 
