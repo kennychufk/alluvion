@@ -2393,6 +2393,12 @@ __global__ void kinematic_integration_wrapped(
 }
 
 // statistics
+template <typename TF>
+__global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
+                                U n) {
+  forThreadMappedToElement(n, [&](U i) { dest(i) = 1._F / source(i); });
+}
+
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_sample_boundary(
     Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,
