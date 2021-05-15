@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <numeric>
+#include <vector>
 
 #include "alluvion/allocator.hpp"
 #include "alluvion/base_variable.hpp"
@@ -83,6 +85,92 @@ class Variable : public BaseVariable {
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
+
+  void write_file(const char* filename, U shape_outermost = 0) const {
+    std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
+    if (shape_outermost > shape_[0]) {
+      std::cerr << "Writing more than the outermost shape (" << shape_outermost
+                << ">" << shape_[0] << ")." << std::endl;
+      abort();
+    }
+    if (shape_outermost == 0) shape_outermost = shape_[0];
+    for (U i = 0; i < D; ++i) {
+      stream.write(
+          reinterpret_cast<const char*>(i == 0 ? &shape_outermost : &shape_[i]),
+          sizeof(U));
+    }
+    const U kEndOfShape = 0;
+    stream.write(reinterpret_cast<const char*>(&kEndOfShape), sizeof(U));
+    U num_primitives_per_unit = get_num_primitives_per_unit();
+    stream.write(reinterpret_cast<const char*>(&num_primitives_per_unit),
+                 sizeof(U));
+    char type_label = numeric_type_to_label(get_type());
+    stream.write(reinterpret_cast<const char*>(&type_label), sizeof(char));
+    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
+    U num_bytes = linear_shape * sizeof(M);
+    std::vector<M> host_copy(linear_shape);
+    get_bytes(host_copy.data(), num_bytes);
+    stream.write(reinterpret_cast<const char*>(host_copy.data()), num_bytes);
+  }
+
+  U read_file(const char* filename) {
+    std::ifstream stream(filename, std::ios::binary);
+    U shape_outermost;
+    for (U i = 0; i < D; ++i) {
+      U shape_item;
+      stream.read(reinterpret_cast<char*>(&shape_item), sizeof(U));
+      if (shape_item == 0) {
+        std::cerr << "Shape mismatch when reading " << filename << std::endl;
+        abort();
+      }
+      if (i == 0) {
+        shape_outermost = shape_item;
+        if (shape_outermost > shape_[0]) {
+          std::cerr << "Reading more than the outermost shape ("
+                    << shape_outermost << ">" << shape_[0] << ")." << std::endl;
+          abort();
+        }
+      } else if (shape_[i] != shape_item) {
+        std::cerr << "Shape mistmatch for shape item " << i << "(" << shape_[i]
+                  << "!=" << shape_item << ")." << std::endl;
+        abort();
+      }
+    }
+    U end_of_shape;
+    stream.read(reinterpret_cast<char*>(&end_of_shape), sizeof(U));
+    if (end_of_shape != 0) {
+      std::cerr << "Dimension mismatch when reading " << filename << std::endl;
+      abort();
+    }
+    U num_primitives_per_unit;
+    stream.read(reinterpret_cast<char*>(&num_primitives_per_unit), sizeof(U));
+    if (num_primitives_per_unit != get_num_primitives_per_unit()) {
+      std::cerr << "Num primitives per unit mismatch when reading " << filename
+                << "(" << num_primitives_per_unit
+                << "!=" << get_num_primitives_per_unit() << ")." << std::endl;
+      abort();
+    }
+    char type_label;
+    stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
+    if (type_label != numeric_type_to_label(get_type())) {
+      std::cerr << "Data type mismatch when reading " << filename << std::endl;
+      abort();
+    }
+    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
+    U num_bytes = linear_shape * sizeof(M);
+    std::vector<M> host_buffer(linear_shape);
+    stream.read(reinterpret_cast<char*>(host_buffer.data()), num_bytes);
+    set_bytes(host_buffer.data(), num_bytes);
+    return shape_outermost;
+  }
+
+  static char numeric_type_to_label(NumericType numeric_type) {
+    if (numeric_type == NumericType::f32) return 'f';
+    if (numeric_type == NumericType::f64) return 'd';
+    if (numeric_type == NumericType::i32) return 'i';
+    if (numeric_type == NumericType::u32) return 'u';
+    return '!';
+  }
 
   constexpr __device__ M& operator()(U i) {
     return *(static_cast<M*>(ptr_) + i);
