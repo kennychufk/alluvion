@@ -2399,6 +2399,19 @@ __global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
   forThreadMappedToElement(n, [&](U i) { dest(i) = 1._F / source(i); });
 }
 
+template <typename TF3>
+__global__ void count_out_of_grid(Variable<1, TF3> particle_x,
+                                  Variable<1, U> out_of_grid_count,
+                                  U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    I3 ipos = get_ipos(particle_x(p_i));
+    U pid_insert_index;
+    if (!within_grid(ipos)) {
+      atomicAdd(&out_of_grid_count(0), 1);
+    }
+  });
+}
+
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_sample_boundary(
     Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,

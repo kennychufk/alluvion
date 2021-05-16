@@ -38,6 +38,7 @@ int main(void) {
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
   cnst::set_gravity(gravity);
   cnst::set_boundary_epsilon(1e-9_F);
+  F target_physical_viscosity = 1e-3_F;
   F viscosity = 5e-7_F;
   F vorticity = 0.01_F;
   F inertia_inverse = 0.1_F;
@@ -142,7 +143,9 @@ int main(void) {
   num_particles = initial_num_particles;
 
   // sample points
-  U num_samples = 31;
+  U num_sample_planes = 14;
+  U num_samples_per_plane = 31;
+  U num_samples = num_samples_per_plane * num_sample_planes;
   Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
   Variable<1, F3> sample_data3 = store.create<1, F3>({num_samples});
   Variable<1, F> sample_data = store.create<1, F>({num_samples});
@@ -155,16 +158,22 @@ int main(void) {
       store.create<2, F>({pile.get_size(), num_samples});
   {
     std::vector<F3> sample_x_host(num_samples);
+    F distance_between_sample_planes = cylinder_length / num_sample_planes;
     for (I i = 0; i < num_samples; ++i) {
+      I plane_id = i / num_samples_per_plane;
+      I id_in_plane = i % num_samples_per_plane;
       sample_x_host[i] = F3{
-          0._F,
-          R * 2._F / (num_samples + 1) * (i - static_cast<I>(num_samples) / 2),
+          cylinder_length * -0.5_F + distance_between_sample_planes * plane_id,
+          R * 2._F / (num_samples_per_plane + 1) *
+              (id_in_plane - static_cast<I>(num_samples_per_plane) / 2),
           0._F};
     }
     sample_x.set_bytes(sample_x_host.data());
   }
   std::vector<F3> sample_data3_host(num_samples);
   std::vector<F> sample_data_host(num_samples);
+  std::vector<F> previous_vx(num_samples_per_plane);
+  std::vector<F> vx(num_samples_per_plane);
 
   U step_id = 0;
   F t = 0;
@@ -204,14 +213,16 @@ int main(void) {
   F finished_filling_t = -1.0_F;
   bool should_close = false;
   I resting_phase = 0;
+  I sample_step = -1;
+  I num_averaging_steps = 500;
 
   if (use_particle_files) {
     finished_filling = true;
     finished_filling_t = 0._F;
     store.map_graphical_pointers();
-    num_particles = particle_x.read_file("x.alu");
+    num_particles = particle_x.read_file("x8.alu");
     store.unmap_graphical_pointers();
-    particle_pressure.read_file("pressure.alu");
+    particle_pressure.read_file("pressure8.alu");
     cnst::set_gravity(F3{});
   }
   display->add_shading_program(new ShadingProgram(
@@ -223,7 +234,10 @@ int main(void) {
 
         store.map_graphical_pointers();
         for (U frame_interstep = 0; frame_interstep < 40; ++frame_interstep) {
-          if (!finished_filling || step_id % 4000 == 0) {
+          if (resting_phase == 3 && step_id % 4000 == 0) {
+            sample_step = 0;
+          }
+          if (!finished_filling || step_id % 4000 == 0 || sample_step > -1) {
             pid_length.set_zero();
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
               update_particle_grid<<<grid_size, block_size>>>(
@@ -268,7 +282,7 @@ int main(void) {
             sample_data.get_bytes(
                 sample_data_host.data());  // for determining whether top
                                            // density matches bottom density
-            if (finished_filling && step_id % 4000 == 0) {
+            if (finished_filling && sample_step > -1) {
               Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
                 sample_fluid_wrapped<<<grid_size, block_size>>>(
                     sample_x, particle_x, particle_density, particle_v,
@@ -276,11 +290,47 @@ int main(void) {
                     num_samples);
               });
               sample_data3.get_bytes(sample_data3_host.data());
-              std::cout << "vx = ";
-              for (F3 const& vhost : sample_data3_host) {
-                std::cout << vhost.x << ", ";
+              if (sample_step == 0) {
+                std::fill(vx.begin(), vx.end(), 0._F);
               }
-              std::cout << std::endl;
+              for (U i = 0; i < sample_data3_host.size(); ++i) {
+                vx[i % num_samples_per_plane] += sample_data3_host[i].x /
+                                                 num_sample_planes /
+                                                 num_averaging_steps;
+              }
+              ++sample_step;
+              if (sample_step == num_averaging_steps) {
+                sample_step = -1;
+                std::cout << "vx = ";
+                for (F const& vhost : vx) {
+                  std::cout << vhost << ", ";
+                }
+                std::cout << std::endl;
+
+                F deviation_from_previous = 0._F;
+                for (U i = 0; i < vx.size(); ++i) {
+                  F diff = vx[i] - previous_vx[i];
+                  deviation_from_previous +=
+                      sqrt(diff * diff) / vx[i] / vx.size();
+                }
+                std::cout << "Deviation from previous = "
+                          << deviation_from_previous << std::endl;
+                if (deviation_from_previous < 0.015) {
+                  std::vector<F> ground_truth(num_samples_per_plane);
+                  std::cout << "ground_truth = ";
+                  for (I i = 0; i < num_samples_per_plane; ++i) {
+                    F vertical_pos =
+                        R * 2._F / (num_samples_per_plane + 1) *
+                        (i - static_cast<I>(num_samples_per_plane) / 2);
+                    ground_truth[i] = 0.25_F / target_physical_viscosity *
+                                      density0 * pressure_gradient_acc.x *
+                                      (R * R - vertical_pos * vertical_pos);
+                    std::cout << ground_truth[i] << ", ";
+                  }
+                  std::cout << std::endl;
+                }
+                std::copy(vx.begin(), vx.end(), previous_vx.begin());
+              }
             }
           }
           if (finished_filling && t - finished_filling_t > 3._F &&
@@ -294,7 +344,7 @@ int main(void) {
             resting_phase++;
             std::cout << "Finished resting phase 2." << std::endl;
             max_dt *= 10.0_F;
-          } else if (finished_filling && t - finished_filling_t > 0.3_F &&
+          } else if (finished_filling && t - finished_filling_t > 0.05_F &&
                      resting_phase == 0) {
             resting_phase++;
             std::cout << "Finished resting phase 1." << std::endl;
@@ -380,7 +430,7 @@ int main(void) {
                                     (R - particle_radius) * cylinder_length;
           F naive_filled_percentage =
               num_particles * particle_mass / density0 / expected_total_volume;
-          if (!finished_filling || step_id % 4000 == 0) {
+          if (!finished_filling || step_id % 16000 == 0) {
             std::cout << "t: " << t << " dt: " << dt << "/" << max_dt
                       << " particle density: " << min_density << ", "
                       << max_density << " naive vol:" << naive_filled_percentage
