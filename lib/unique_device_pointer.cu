@@ -6,9 +6,5 @@
 #include "alluvion/unique_device_pointer.hpp"
 namespace alluvion {
 UniqueDevicePointer::UniqueDevicePointer(void* ptr) : ptr_(ptr){};
-UniqueDevicePointer::~UniqueDevicePointer() {
-  std::cout << "destructing UniqueDevicePointer with addr " << ptr_
-            << std::endl;
-  Allocator::free(&ptr_);
-}
+UniqueDevicePointer::~UniqueDevicePointer() { Allocator::free(&ptr_); }
 }  // namespace alluvion
