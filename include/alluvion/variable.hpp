@@ -142,6 +142,7 @@ class Variable : public BaseVariable {
       std::cerr << "Dimension mismatch when reading " << filename << std::endl;
       abort();
     }
+    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
     U num_primitives_per_unit;
     stream.read(reinterpret_cast<char*>(&num_primitives_per_unit), sizeof(U));
     if (num_primitives_per_unit != get_num_primitives_per_unit()) {
@@ -152,14 +153,28 @@ class Variable : public BaseVariable {
     }
     char type_label;
     stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
-    if (type_label != numeric_type_to_label(get_type())) {
+    bool conversion_required = false;
+    U num_bytes = linear_shape * sizeof(M);
+    std::vector<M> host_buffer(linear_shape);
+
+    if (type_label == numeric_type_to_label(get_type())) {
+      stream.read(reinterpret_cast<char*>(host_buffer.data()), num_bytes);
+    } else if (type_label == 'f' && numeric_type_to_label(get_type()) == 'd') {
+      U num_primitives = linear_shape * num_primitives_per_unit;
+      U num_source_bytes = sizeof(float) * num_primitives;
+      std::vector<float> source_buffer(num_primitives);
+      stream.read(reinterpret_cast<char*>(source_buffer.data()),
+                  num_source_bytes);
+      double* host_buffer_primitive_pointer =
+          reinterpret_cast<double*>(host_buffer.data());
+      for (U i = 0; i < source_buffer.size(); ++i) {
+        host_buffer_primitive_pointer[i] =
+            static_cast<double>(source_buffer[i]);
+      }
+    } else {
       std::cerr << "Data type mismatch when reading " << filename << std::endl;
       abort();
     }
-    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
-    U num_bytes = linear_shape * sizeof(M);
-    std::vector<M> host_buffer(linear_shape);
-    stream.read(reinterpret_cast<char*>(host_buffer.data()), num_bytes);
     set_bytes(host_buffer.data(), num_bytes);
     return shape_outermost;
   }
