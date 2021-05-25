@@ -23,6 +23,7 @@ __constant__ F particle_vol;
 __constant__ F particle_mass;
 __constant__ F density0;
 __constant__ F viscosity;
+__constant__ F viscosity_v;
 __constant__ F vorticity_coeff;
 __constant__ F inertia_inverse;
 __constant__ F viscosity_omega;
@@ -95,8 +96,9 @@ void set_particle_attr(F radius, F mass, F density) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(particle_vol, &vol, sizeof(F)));
 }
 
-void set_advanced_fluid_attr(F vis, F vor, F ii, F viso, F st, F stb) {
+void set_advanced_fluid_attr(F vis, F visv, F vor, F ii, F viso, F st, F stb) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(viscosity, &vis, sizeof(F)));
+  Allocator::abort_if_error(cudaMemcpyToSymbol(viscosity_v, &visv, sizeof(F)));
   Allocator::abort_if_error(
       cudaMemcpyToSymbol(vorticity_coeff, &vor, sizeof(F)));
   Allocator::abort_if_error(
