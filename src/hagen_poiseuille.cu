@@ -45,7 +45,7 @@ int main(void) {
   F viscosity_omega = 0.5_F;
   F surface_tension_coeff = 0.05_F;
   F surface_tension_boundary_coeff = 0.01_F;
-  cnst::set_advanced_fluid_attr(viscosity, 0._F, vorticity, inertia_inverse,
+  cnst::set_advanced_fluid_attr(viscosity, vorticity, inertia_inverse,
                                 viscosity_omega, surface_tension_coeff,
                                 surface_tension_boundary_coeff);
 

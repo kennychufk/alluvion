@@ -67,7 +67,7 @@ PYBIND11_MODULE(_alluvion, m) {
   m.def(
       "evaluate_developing_hagen_poiseuille",
       [](I kQ, std::string particle_x_filename, F pressure_gradient_acc_x,
-         F viscosity, F viscosity_v, F boundary_viscosity, F dt,
+         F viscosity, F boundary_viscosity, F dt,
          std::vector<F> const& sample_ts) -> std::vector<F> {
         Store store;
 
@@ -92,9 +92,9 @@ PYBIND11_MODULE(_alluvion, m) {
         F viscosity_omega = 0.5_F;
         F surface_tension_coeff = 0.05_F;
         F surface_tension_boundary_coeff = 0.01_F;
-        cnst::set_advanced_fluid_attr(
-            viscosity, viscosity_v, vorticity, inertia_inverse, viscosity_omega,
-            surface_tension_coeff, surface_tension_boundary_coeff);
+        cnst::set_advanced_fluid_attr(viscosity, vorticity, inertia_inverse,
+                                      viscosity_omega, surface_tension_coeff,
+                                      surface_tension_boundary_coeff);
 
         I kM = 2;
         F cylinder_length = 2._F * kM * kernel_radius;

@@ -1311,10 +1311,8 @@ __global__ void compute_viscosity_fluid(Variable<1, TF3> particle_x,
       U p_j = particle_neighbors(p_i, neighbor_id);
       TF3 x_j = particle_x(p_j);
       TF3 xixj = x_i - x_j;
-      TF3 v_j = particle_v(p_j);
-      TF3 vij = v_i - v_j;
-      da += d * (cnst::viscosity + cnst::viscosity_v * length(v_j)) *
-            cnst::particle_mass / particle_density(p_j) * dot(vij, xixj) /
+      da += d * cnst::viscosity * cnst::particle_mass / particle_density(p_j) *
+            dot(v_i - particle_v(p_j), xixj) /
             (length_sqr(xixj) + 0.01_F * cnst::kernel_radius_sqr) *
             displacement_cubic_kernel_grad(xixj);
     }
@@ -2142,10 +2140,8 @@ __global__ void compute_viscosity_fluid_wrapped(
       U p_j = particle_neighbors(p_i, neighbor_id);
       TF3 x_j = particle_x(p_j);
       TF3 xixj = wrap_x(x_i - x_j);
-      TF3 v_j = particle_v(p_j);
-      TF3 vij = v_i - v_j;
-      da += d * (cnst::viscosity + cnst::viscosity_v * length(v_j)) *
-            cnst::particle_mass / particle_density(p_j) * dot(vij, xixj) /
+      da += d * cnst::viscosity * cnst::particle_mass / particle_density(p_j) *
+            dot(v_i - particle_v(p_j), xixj) /
             (length_sqr(xixj) + 0.01_F * cnst::kernel_radius_sqr) *
             displacement_cubic_kernel_grad(xixj);
     }

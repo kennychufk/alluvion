@@ -24,7 +24,7 @@ int main(void) {
   cnst::set_kernel_radius(kernel_radius);
   cnst::set_particle_attr(particle_radius, particle_mass, density0);
   cnst::set_gravity(gravity);
-  cnst::set_advanced_fluid_attr(0.1, 0.0, 0.01, 0.1, 0.5, 0.05, 0.01);
+  cnst::set_advanced_fluid_attr(0.1, 0.01, 0.1, 0.5, 0.05, 0.01);
 
   // rigids
   U max_num_contacts = 512;
