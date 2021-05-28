@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "alluvion/display.hpp"
+#include "alluvion/graphical_allocator.hpp"
 
 namespace alluvion {
 Display::Display(int width, int height, const char *title) : window_(nullptr) {
@@ -47,6 +48,8 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glDepthFunc(GL_LEQUAL);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glClearColor(0.2f, 0.2f, 0.2f, 0.0f);
   glClearDepth(1.0f);
 }
@@ -224,6 +227,14 @@ void Display::run() {
     glfwSwapBuffers(window_);
     glfwPollEvents();
   }
+}
+
+GLuint Display::create_colormap(std::array<GLfloat, 3> const *colormap_data,
+                                GLsizei palette_size) {
+  GLuint tex =
+      GraphicalAllocator::allocate_texture1d(colormap_data, palette_size);
+  textures_.emplace_back(tex);
+  return tex;
 }
 
 void Display::add_shading_program(ShadingProgram *program) {

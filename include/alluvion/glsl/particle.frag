@@ -2,6 +2,7 @@ const char* kParticleFragmentShaderStr = R"CODE(
 #version 330 core
 
 in vec3 particle_center_worldspace;
+in float particle_normalized_attr_pass;
 
 struct PointLight {
   vec3 position;
@@ -23,22 +24,22 @@ struct DirectionalLight {
   vec3 specular;
 };
 
-struct Material {
-  vec3 diffuse;
+struct ParticleMaterial {
   vec3 specular;
   float shininess;
 };
 
 #define NUM_POINT_LIGHTS 2
 
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
-vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir);
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 material_diffuse);
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 material_diffuse);
 
+uniform sampler1D colormap_texture;
 uniform float particle_radius;
 uniform mat4 V;
 uniform mat4 M;
 uniform vec3 camera_worldspace;
-uniform Material material;
+uniform ParticleMaterial material;
 uniform DirectionalLight directional_light;
 uniform PointLight point_lights[NUM_POINT_LIGHTS];
 
@@ -58,16 +59,18 @@ void main() {
   // Eye vector (towards the camera)
   vec3 E = normalize(camera_worldspace - position_worldspace);
 
-  vec3 accumulate_color = CalcDirLight(directional_light, n, E);
+  vec3 material_diffuse = texture(colormap_texture, particle_normalized_attr_pass).rgb;
+
+  vec3 accumulate_color = CalcDirLight(directional_light, n, E, material_diffuse);
   for (int i = 0; i < NUM_POINT_LIGHTS ; i++)
-    accumulate_color += CalcPointLight(point_lights[i], n, position_worldspace, E);
+    accumulate_color += CalcPointLight(point_lights[i], n, position_worldspace, E, material_diffuse);
 
   color = vec4(accumulate_color, 1.0);
 
 
 }
 
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 material_diffuse)
 {
   vec3 lightDir = normalize(light.position - fragPos);
   // diffuse shading
@@ -79,8 +82,8 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
   float distance = length(light.position - fragPos);
   float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
   // combine results
-  vec3 ambient = light.ambient * material.diffuse;
-  vec3 diffuse = light.diffuse * diff * material.diffuse;
+  vec3 ambient = light.ambient * material_diffuse;
+  vec3 diffuse = light.diffuse * diff * material_diffuse;
   vec3 specular = light.specular * spec * material.specular;
   ambient *= attenuation;
   diffuse *= attenuation;
@@ -88,7 +91,7 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
   return (ambient + diffuse + specular);
 }
 
-vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir)
+vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 material_diffuse)
 {
   vec3 lightDir = normalize(-light.direction);
   // diffuse shading
@@ -97,8 +100,8 @@ vec3 CalcDirLight(DirectionalLight light, vec3 normal, vec3 viewDir)
   vec3 reflectDir = reflect(-lightDir, normal);
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
   // combine results
-  vec3 ambient = light.ambient * material.diffuse;
-  vec3 diffuse = light.diffuse * diff * material.diffuse;
+  vec3 ambient = light.ambient * material_diffuse;
+  vec3 diffuse = light.diffuse * diff * material_diffuse;
   vec3 specular = light.specular * spec * material.specular;
   return (ambient + diffuse + specular);
 }

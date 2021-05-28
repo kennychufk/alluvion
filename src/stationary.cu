@@ -1,6 +1,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
+#include "alluvion/colormaps.hpp"
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/pile.hpp"
@@ -49,6 +50,8 @@ int main(void) {
   U num_particles = 10000;
   GraphicalVariable<1, F3> particle_x =
       store.create_graphical<1, F3>({num_particles});
+  GraphicalVariable<1, F> particle_normalized_attr =
+      store.create_graphical<1, F>({num_particles});
   Variable<1, F3> particle_v = store.create<1, F3>({num_particles});
   Variable<1, F3> particle_a = store.create<1, F3>({num_particles});
   Variable<1, F> particle_density = store.create<1, F>({num_particles});
@@ -99,6 +102,9 @@ int main(void) {
   });
 
   store.unmap_graphical_pointers();
+
+  GLuint colormap_tex =
+      display->create_colormap(kViridisData.data(), kViridisData.size());
 
   U frame_id = 0;
   display->add_shading_program(new ShadingProgram(
@@ -253,6 +259,11 @@ int main(void) {
                 particle_x, particle_v, particle_pressure_accel, dt,
                 num_particles);
           });
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            normalize_vector_magnitude<<<grid_size, block_size>>>(
+                particle_v, particle_normalized_attr, 0._F, 2.0_F,
+                num_particles);
+          });
 
           // rigids
           for (U i = 0; i < pile.get_size(); ++i) {
@@ -299,13 +310,13 @@ int main(void) {
   display->add_shading_program(new ShadingProgram(
       kParticleVertexShaderStr, kParticleFragmentShaderStr,
       {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.diffuse", "material.specular",
-       "material.shininess", "directional_light.direction",
-       "directional_light.ambient", "directional_light.diffuse",
-       "directional_light.specular", "point_lights[0].position",
-       "point_lights[0].constant", "point_lights[0].linear",
-       "point_lights[0].quadratic", "point_lights[0].ambient",
-       "point_lights[0].diffuse", "point_lights[0].specular",
+       "camera_worldspace", "material.specular", "material.shininess",
+       "directional_light.direction", "directional_light.ambient",
+       "directional_light.diffuse", "directional_light.specular",
+       "point_lights[0].position", "point_lights[0].constant",
+       "point_lights[0].linear", "point_lights[0].quadratic",
+       "point_lights[0].ambient", "point_lights[0].diffuse",
+       "point_lights[0].specular",
        //
        "point_lights[1].position", "point_lights[1].constant",
        "point_lights[1].linear", "point_lights[1].quadratic",
@@ -313,8 +324,7 @@ int main(void) {
        "point_lights[1].specular"
 
       },
-      [&particle_x, num_particles, particle_radius](ShadingProgram& program,
-                                                    Display& display) {
+      [&](ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                            glm::value_ptr(glm::mat4(1)));
         glUniformMatrix4fv(
@@ -370,17 +380,21 @@ int main(void) {
                     0.8f, 0.8f, 0.8f);
         glUniform3f(program.get_uniform_location("point_lights[1].specular"),
                     1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.diffuse"), 0.2, 0.3,
-                    0.87);
         glUniform3f(program.get_uniform_location("material.specular"), 0.8, 0.9,
                     0.9);
         glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
 
+        glBindTexture(GL_TEXTURE_1D, colormap_tex);
         glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, particle_normalized_attr.vbo_);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, 0);
         glDrawArrays(GL_POINTS, 0, num_particles);
         glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
       }));
 
   // rigid mesh shader

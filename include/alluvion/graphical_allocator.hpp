@@ -5,6 +5,7 @@
 //
 #include <cuda_gl_interop.h>
 
+#include <array>
 #include <iostream>
 #include <vector>
 
@@ -37,17 +38,25 @@ class GraphicalAllocator {
         cudaGraphicsGLRegisterBuffer(res, *vbo, cudaGraphicsRegisterFlagsNone));
   };
   template <typename M>
-  static GLuint allocate_static_array_buffer(U num_elements, void const* src) {
+  static GLuint allocate_array_buffer(U num_elements, GLenum usage,
+                                      void const* src) {
     if (num_elements == 0) {
       return 0;
     }
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), src,
-                 GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, num_elements * sizeof(M), src, usage);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return buffer;
+  }
+  template <typename M>
+  static GLuint allocate_static_array_buffer(U num_elements, void const* src) {
+    return allocate_array_buffer<M>(num_elements, GL_STATIC_DRAW, src);
+  }
+  template <typename M>
+  static GLuint allocate_dynamic_array_buffer(U num_elements, void const* src) {
+    return allocate_array_buffer<M>(num_elements, GL_DYNAMIC_DRAW, src);
   }
   template <typename M>
   static GLuint allocate_element_array_buffer(U num_elements, void const* src) {
@@ -62,12 +71,15 @@ class GraphicalAllocator {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     return buffer;
   }
+  static GLuint allocate_texture1d(std::array<GLfloat, 3> const* texture_data,
+                                   GLsizei width);
 
   static void map(std::vector<cudaGraphicsResource*>& resources);
   static void* get_mapped_pointer(cudaGraphicsResource* res);
   static void unmap(std::vector<cudaGraphicsResource*>& resources);
   static void free(GLuint* vbo, cudaGraphicsResource** res);
   static void free_buffer(GLuint* vbo);
+  static void free_texture(GLuint* tex);
 };
 }  // namespace alluvion
 

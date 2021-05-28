@@ -10,11 +10,13 @@
 
 #include "alluvion/shading_program.hpp"
 #include "alluvion/trackball.hpp"
+#include "alluvion/unique_texture.hpp"
 namespace alluvion {
 class Display {
  private:
   Trackball trackball_;
   std::vector<std::unique_ptr<ShadingProgram>> programs_;
+  std::vector<UniqueTexture> textures_;
   GLuint vao_;
 
  public:
@@ -35,6 +37,8 @@ class Display {
   static void resize_callback(GLFWwindow *window, int width, int height);
 
   void run();
+  GLuint create_colormap(std::array<GLfloat, 3> const *colormap_data,
+                         GLsizei palette_size);
   void add_shading_program(ShadingProgram *program);
   void update_trackball_camera();
 };

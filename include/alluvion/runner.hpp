@@ -2399,6 +2399,12 @@ __global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
   forThreadMappedToElement(n, [&](U i) { dest(i) = 1._F / source(i); });
 }
 
+template <typename TF3, typename TF>
+__global__ void compute_magnitude(Variable<1, TF3> v, Variable<1, TF> magnitude,
+                                  U n) {
+  forThreadMappedToElement(n, [&](U i) { magnitude(i) = length(v(i)); });
+}
+
 template <typename TF3>
 __global__ void count_out_of_grid(Variable<1, TF3> particle_x,
                                   Variable<1, U> out_of_grid_count,
@@ -2498,6 +2504,16 @@ __global__ void convert_fp3(Variable<1, TF3Dest> dest,
     TF3Source v = source(i);
     dest(i) = TF3Dest{static_cast<TFDest>(v.x), static_cast<TFDest>(v.y),
                       static_cast<TFDest>(v.z)};
+  });
+}
+
+template <typename TF3, typename TF>
+__global__ void normalize_vector_magnitude(Variable<1, TF3> v,
+                                           Variable<1, TF> normalized,
+                                           TF lower_bound, TF upper_bound,
+                                           U n) {
+  forThreadMappedToElement(n, [&](U i) {
+    normalized(i) = (length(v(i)) - lower_bound) / (upper_bound - lower_bound);
   });
 }
 

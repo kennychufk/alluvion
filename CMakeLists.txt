@@ -9,6 +9,7 @@ find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(Freetype REQUIRED)
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
