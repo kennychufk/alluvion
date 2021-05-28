@@ -20,7 +20,6 @@ class Display {
   std::vector<std::unique_ptr<ShadingProgram>> programs_;
   std::vector<UniqueTexture> textures_;
   std::unordered_map<GLuint, UniqueMeshBuffer> mesh_dict_;
-  GLuint vao_;
 
  public:
   GLFWwindow *window_;

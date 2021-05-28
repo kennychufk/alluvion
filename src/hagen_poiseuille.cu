@@ -1,6 +1,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
+#include "alluvion/colormaps.hpp"
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
@@ -56,6 +57,9 @@ int main(void) {
   display->camera_.setClipPlanes(particle_radius * 10._F, R * 20._F);
   display->update_trackball_camera();
 
+  GLuint colormap_tex =
+      display->create_colormap(kViridisData.data(), kViridisData.size());
+
   // rigids
   F restitution = 1._F;
   F friction = 0._F;
@@ -79,6 +83,8 @@ int main(void) {
       store.create_graphical<1, F3>({max_num_particles});
   GraphicalVariable<1, float3> particle_x_display =
       store.create_graphical<1, float3>({max_num_particles});
+  GraphicalVariable<1, float> particle_normalized_attr =
+      store.create_graphical<1, float>({max_num_particles});
   Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
   Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
   Variable<1, F> particle_density = store.create<1, F>({max_num_particles});
@@ -217,7 +223,7 @@ int main(void) {
   F min_particle_pressure = 99.9_F;
 
   display->add_shading_program(new ShadingProgram(
-      nullptr, nullptr, {}, [&](ShadingProgram& program, Display& display) {
+      nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
         // std::cout << "============= step_id = " << step_id << std::endl;
         if (should_close) {
           return;
@@ -556,6 +562,11 @@ int main(void) {
                 particle_x, particle_v, particle_pressure_accel, dt,
                 num_particles);
           });
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            normalize_vector_magnitude<<<grid_size, block_size>>>(
+                particle_v, particle_normalized_attr, 0._F, 2.0_F,
+                num_particles);
+          });
           t += dt;
           step_id += 1;
         }
@@ -574,13 +585,13 @@ int main(void) {
   display->add_shading_program(new ShadingProgram(
       kParticleVertexShaderStr, kParticleFragmentShaderStr,
       {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.diffuse", "material.specular",
-       "material.shininess", "directional_light.direction",
-       "directional_light.ambient", "directional_light.diffuse",
-       "directional_light.specular", "point_lights[0].position",
-       "point_lights[0].constant", "point_lights[0].linear",
-       "point_lights[0].quadratic", "point_lights[0].ambient",
-       "point_lights[0].diffuse", "point_lights[0].specular",
+       "camera_worldspace", "material.specular", "material.shininess",
+       "directional_light.direction", "directional_light.ambient",
+       "directional_light.diffuse", "directional_light.specular",
+       "point_lights[0].position", "point_lights[0].constant",
+       "point_lights[0].linear", "point_lights[0].quadratic",
+       "point_lights[0].ambient", "point_lights[0].diffuse",
+       "point_lights[0].specular",
        //
        "point_lights[1].position", "point_lights[1].constant",
        "point_lights[1].linear", "point_lights[1].quadratic",
@@ -588,6 +599,9 @@ int main(void) {
        "point_lights[1].specular"
 
       },
+      {std::make_tuple(using_double ? particle_x_display.vbo_ : particle_x.vbo_,
+                       3, 0),
+       std::make_tuple(particle_normalized_attr.vbo_, 1, 0)},
       [&](ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(
             program.get_uniform_location("P"), 1, GL_FALSE,
@@ -642,19 +656,11 @@ int main(void) {
                     0.8f, 0.8f, 0.8f);
         glUniform3f(program.get_uniform_location("point_lights[1].specular"),
                     1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.diffuse"), 0.2f,
-                    0.3f, 0.87f);
         glUniform3f(program.get_uniform_location("material.specular"), 0.8f,
                     0.9f, 0.9f);
         glUniform1f(program.get_uniform_location("material.shininess"), 5.0f);
 
-        if (using_double) {
-          glBindBuffer(GL_ARRAY_BUFFER, particle_x_display.vbo_);
-        } else {
-          glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
-        }
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glBindTexture(GL_TEXTURE_1D, colormap_tex);
         for (I i = 0; i <= 0; ++i) {
           float wrap_length = grid_res.x * kernel_radius;
           glUniformMatrix4fv(
@@ -663,7 +669,6 @@ int main(void) {
                                             glm::vec3{wrap_length * i, 0, 0})));
           glDrawArrays(GL_POINTS, 0, num_particles);
         }
-        glDisableVertexAttribArray(0);
       }));
 
   display->run();

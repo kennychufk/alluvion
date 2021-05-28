@@ -17,6 +17,12 @@ GLuint GraphicalAllocator::allocate_texture1d(
   return tex;
 }
 
+GLuint GraphicalAllocator::allocate_vao() {
+  GLuint vao;
+  glGenVertexArrays(1, &vao);
+  return vao;
+}
+
 void GraphicalAllocator::free(GLuint* vbo, cudaGraphicsResource** res) {
   if (*res == nullptr) return;
   Allocator::abort_if_error(cudaGraphicsUnregisterResource(*res));
@@ -36,6 +42,12 @@ void GraphicalAllocator::free_texture(GLuint* tex) {
   if (*tex == 0) return;
   glDeleteTextures(1, tex);
   *tex = 0;
+}
+
+void GraphicalAllocator::free_vao(GLuint* vao) {
+  if (*vao == 0) return;
+  glDeleteVertexArrays(1, vao);
+  *vao = 0;
 }
 
 void GraphicalAllocator::map(std::vector<cudaGraphicsResource*>& resources) {

@@ -243,20 +243,11 @@ int main(void) {
   GLuint colormap_tex =
       display->create_colormap(kViridisData.data(), kViridisData.size());
 
-  GLuint glyph_vao;
-  glGenVertexArrays(1, &glyph_vao);
   GLuint glyph_quad =
       GraphicalAllocator::allocate_dynamic_array_buffer<float4>(6, nullptr);
 
-  glBindVertexArray(glyph_vao);
-  glBindBuffer(GL_ARRAY_BUFFER, glyph_quad);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-
   display->add_shading_program(new ShadingProgram(
-      nullptr, nullptr, {}, [&](ShadingProgram& program, Display& display) {
+      nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
         if (should_close) {
           return;
         }
@@ -486,6 +477,8 @@ int main(void) {
        "point_lights[1].specular"
 
       },
+      {std::make_tuple(particle_x.vbo_, 3, 0),
+       std::make_tuple(particle_normalized_attr.vbo_, 1, 0)},
       [&](ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(
             program.get_uniform_location("P"), 1, GL_FALSE,
@@ -545,13 +538,6 @@ int main(void) {
         glUniform1f(program.get_uniform_location("material.shininess"), 5.0f);
 
         glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-        glBindBuffer(GL_ARRAY_BUFFER, particle_normalized_attr.vbo_);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, 0);
         for (I i = 0; i <= 0; ++i) {
           float wrap_length = grid_res.x * kernel_radius;
           glUniformMatrix4fv(
@@ -560,8 +546,6 @@ int main(void) {
                                             glm::vec3{wrap_length * i, 0, 0})));
           glDrawArrays(GL_POINTS, 0, num_particles);
         }
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
       }));
 
 #include "alluvion/glsl/glyph.frag"
@@ -572,6 +556,7 @@ int main(void) {
           "projection",
           "text_color",
       },
+      {std::make_tuple(glyph_quad, 4, 0)},
       [&](ShadingProgram& program, Display& display) {
         glm::mat4 projection =
             glm::ortho(0.0f, static_cast<GLfloat>(display.width_), 0.0f,
@@ -591,7 +576,6 @@ int main(void) {
         float scale = 1.0f;
         glUniform3f(program.get_uniform_location("text_color"), 1.0f, 1.0f,
                     1.0f);
-        glBindVertexArray(glyph_vao);
 
         // iterate through all characters
         std::string::const_iterator c;

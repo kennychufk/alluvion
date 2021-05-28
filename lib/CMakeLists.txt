@@ -5,6 +5,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/unique_graphical_resource.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_mesh_buffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_texture.cu
+  ${CMAKE_CURRENT_LIST_DIR}/unique_vao.cu
   ${CMAKE_CURRENT_LIST_DIR}/mesh_buffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/mesh.cu
   ${CMAKE_CURRENT_LIST_DIR}/allocator.cu

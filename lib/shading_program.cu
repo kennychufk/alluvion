@@ -3,14 +3,15 @@
 #include <tuple>
 #include <utility>
 
+#include "alluvion/graphical_allocator.hpp"
 #include "alluvion/shading_program.hpp"
 
 namespace alluvion {
 
-ShadingProgram::ShadingProgram(const char* vertex_code,
-                               const char* fragment_code,
-                               std::vector<std::string> uniform_names,
-                               ProgramCallback callback)
+ShadingProgram::ShadingProgram(
+    const char* vertex_code, const char* fragment_code,
+    std::vector<std::string> uniform_names,
+    std::vector<VertexAttribSpec> vertex_attrib_specs, ProgramCallback callback)
     : program_(0), callback_(callback) {
   if (vertex_code && fragment_code) {
     std::vector<GLuint> shaders;
@@ -40,6 +41,22 @@ ShadingProgram::ShadingProgram(const char* vertex_code,
         uniform_dict_.emplace(std::piecewise_construct,
                               std::forward_as_tuple(uniform_name),
                               std::forward_as_tuple(uniform_location));
+      }
+    }
+    if (vertex_attrib_specs.size() > 0) {
+      vao_.set(GraphicalAllocator::allocate_vao());
+      glBindVertexArray(vao_.vao_);
+      for (unsigned int i = 0; i < vertex_attrib_specs.size(); ++i) {
+        VertexAttribSpec const& spec = vertex_attrib_specs[i];
+        glBindBuffer(GL_ARRAY_BUFFER, std::get<0>(spec));
+        glEnableVertexAttribArray(i);
+        glVertexAttribPointer(i, std::get<1>(spec), GL_FLOAT, GL_FALSE,
+                              std::get<2>(spec), 0);
+      }
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
+      glBindVertexArray(0);
+      for (unsigned int i = 0; i < vertex_attrib_specs.size(); ++i) {
+        glDisableVertexAttribArray(i);
       }
     }
   }
@@ -93,7 +110,11 @@ GLuint ShadingProgram::create_program(std::vector<GLuint> const& shaders) {
 void ShadingProgram::update(Display& display) {
   if (!callback_) return;
   if (program_ != 0) glUseProgram(program_);
+  if (vao_.vao_ != 0) {
+    glBindVertexArray(vao_.vao_);
+  }
   callback_(*this, display);
+  glBindVertexArray(0);
 }
 
 GLint ShadingProgram::get_uniform_location(std::string const& name) {

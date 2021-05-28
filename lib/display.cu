@@ -38,9 +38,6 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   update_trackball_camera();
   resize_callback(window_, width, height);
 
-  glGenVertexArrays(1, &vao_);
-  glBindVertexArray(vao_);  // necessary for initialization
-  glBindVertexArray(0);
   glEnable(GL_PROGRAM_POINT_SIZE);
   glEnable(GL_POINT_SPRITE_ARB);
   glDepthMask(GL_TRUE);
@@ -219,8 +216,6 @@ void Display::run() {
   while (!glfwWindowShouldClose(window_)) {
     trackball_.update();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glBindVertexArray(vao_);
-
     for (std::unique_ptr<ShadingProgram> &program : programs_) {
       program->update(*this);
     }

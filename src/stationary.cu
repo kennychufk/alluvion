@@ -108,7 +108,7 @@ int main(void) {
 
   U frame_id = 0;
   display->add_shading_program(new ShadingProgram(
-      nullptr, nullptr, {}, [&](ShadingProgram& program, Display& display) {
+      nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
         // std::cout << "============= frame_id = " << frame_id << std::endl;
 
         store.map_graphical_pointers();
@@ -324,6 +324,8 @@ int main(void) {
        "point_lights[1].specular"
 
       },
+      {std::make_tuple(particle_x.vbo_, 3, 0),
+       std::make_tuple(particle_normalized_attr.vbo_, 1, 0)},
       [&](ShadingProgram& program, Display& display) {
         glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                            glm::value_ptr(glm::mat4(1)));
@@ -385,16 +387,7 @@ int main(void) {
         glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
 
         glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        glBindBuffer(GL_ARRAY_BUFFER, particle_x.vbo_);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-        glBindBuffer(GL_ARRAY_BUFFER, particle_normalized_attr.vbo_);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, 0);
         glDrawArrays(GL_POINTS, 0, num_particles);
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
       }));
 
   // rigid mesh shader
@@ -415,6 +408,7 @@ int main(void) {
        "point_lights[1].linear", "point_lights[1].quadratic",
        "point_lights[1].ambient", "point_lights[1].diffuse",
        "point_lights[1].specular"},
+      {std::make_tuple(0, 3, 0), std::make_tuple(0, 3, 0)},
       [&pile](ShadingProgram& program, Display& display) {
         glm::mat4 const& projection_matrix =
             display.camera_.getProjectionMatrix();
@@ -486,11 +480,9 @@ int main(void) {
             glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
             glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.normal);
             glEnableVertexAttribArray(1);
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
             glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices,
                            GL_UNSIGNED_INT, 0);

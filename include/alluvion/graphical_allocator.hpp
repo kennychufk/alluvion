@@ -73,6 +73,7 @@ class GraphicalAllocator {
   }
   static GLuint allocate_texture1d(std::array<GLfloat, 3> const* texture_data,
                                    GLsizei width);
+  static GLuint allocate_vao();
 
   static void map(std::vector<cudaGraphicsResource*>& resources);
   static void* get_mapped_pointer(cudaGraphicsResource* res);
@@ -80,6 +81,7 @@ class GraphicalAllocator {
   static void free(GLuint* vbo, cudaGraphicsResource** res);
   static void free_buffer(GLuint* vbo);
   static void free_texture(GLuint* tex);
+  static void free_vao(GLuint* tex);
 };
 }  // namespace alluvion
 
