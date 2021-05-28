@@ -8,11 +8,9 @@
 
 #include "alluvion/display.hpp"
 #include "alluvion/graphical_variable.hpp"
-#include "alluvion/mesh.hpp"
 #include "alluvion/pinned_variable.hpp"
 #include "alluvion/unique_device_pointer.hpp"
 #include "alluvion/unique_graphical_resource.hpp"
-#include "alluvion/unique_mesh_buffer.hpp"
 #include "alluvion/unique_pinned_pointer.hpp"
 #include "alluvion/variable.hpp"
 namespace alluvion {
@@ -24,7 +22,6 @@ class Store {
   std::unique_ptr<Display> display_;
   std::unordered_map<GLuint, UniqueGraphicalResource> graphical_resource_dict_;
   std::vector<cudaGraphicsResource*> resource_array_;
-  std::unordered_map<GLuint, UniqueMeshBuffer> mesh_dict_;
 
   void update_resource_array();
 
@@ -33,7 +30,8 @@ class Store {
   virtual ~Store();
 
   Display* create_display(int width, int height, const char* title);
-  Display* get_display() const;
+  Display const* get_display() const;
+  Display* get_display();
   bool has_display() const;
 
   template <unsigned int D, typename M>
@@ -88,8 +86,6 @@ class Store {
     update_resource_array();
     return var;
   }
-
-  MeshBuffer create_mesh_buffer(Mesh const& mesh);
 
   void map_graphical_pointers();
   void unmap_graphical_pointers();

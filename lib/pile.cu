@@ -69,7 +69,7 @@ void Pile::add(dg::Distance* distance, U3 const& resolution, F sign,
 
   MeshBuffer mesh_buffer;
   if (store_.has_display()) {
-    mesh_buffer = store_.create_mesh_buffer(display_mesh);
+    mesh_buffer = store_.get_display()->create_mesh_buffer(display_mesh);
   }
   mesh_buffer_list_.push_back(mesh_buffer);
 

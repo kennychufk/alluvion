@@ -8,8 +8,10 @@
 #include <memory>
 #include <vector>
 
+#include "alluvion/mesh.hpp"
 #include "alluvion/shading_program.hpp"
 #include "alluvion/trackball.hpp"
+#include "alluvion/unique_mesh_buffer.hpp"
 #include "alluvion/unique_texture.hpp"
 namespace alluvion {
 class Display {
@@ -17,6 +19,7 @@ class Display {
   Trackball trackball_;
   std::vector<std::unique_ptr<ShadingProgram>> programs_;
   std::vector<UniqueTexture> textures_;
+  std::unordered_map<GLuint, UniqueMeshBuffer> mesh_dict_;
   GLuint vao_;
 
  public:
@@ -39,6 +42,7 @@ class Display {
   void run();
   GLuint create_colormap(std::array<GLfloat, 3> const *colormap_data,
                          GLsizei palette_size);
+  MeshBuffer create_mesh_buffer(Mesh const &mesh);
   void add_shading_program(ShadingProgram *program);
   void update_trackball_camera();
 };
