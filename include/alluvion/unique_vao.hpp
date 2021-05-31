@@ -6,6 +6,7 @@ class UniqueVao {
  public:
   UniqueVao();
   UniqueVao(GLuint vao);
+  UniqueVao(const UniqueVao&) = delete;
   virtual ~UniqueVao();
   void set(GLuint vao);
   GLuint vao_;

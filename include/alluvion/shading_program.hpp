@@ -29,10 +29,12 @@ class ShadingProgram {
 
  public:
   GLuint program_;
+  ShadingProgram() = delete;
   ShadingProgram(const char* vertex_code, const char* fragment_code,
                  std::vector<std::string> uniform_names,
                  std::vector<VertexAttribSpec> vertex_attrib_specs,
                  ProgramCallback callback);
+  ShadingProgram(const ShadingProgram&) = delete;
   virtual ~ShadingProgram();
 
   void update(Display& display);

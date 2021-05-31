@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "alluvion/display.hpp"
-#include "alluvion/graphical_allocator.hpp"
 
 namespace alluvion {
 Display::Display(int width, int height, const char *title) : window_(nullptr) {
@@ -49,6 +48,8 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glClearColor(0.2f, 0.2f, 0.2f, 0.0f);
   glClearDepth(1.0f);
+  // disable byte-alignment restriction for glyph texture (1 byte per pixel)
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 }
 Display::~Display() {
   for (std::unique_ptr<ShadingProgram> &program : programs_) {
@@ -228,7 +229,17 @@ GLuint Display::create_colormap(std::array<GLfloat, 3> const *colormap_data,
                                 GLsizei palette_size) {
   GLuint tex =
       GraphicalAllocator::allocate_texture1d(colormap_data, palette_size);
-  textures_.emplace_back(tex);
+  textures_.emplace(std::piecewise_construct, std::forward_as_tuple(tex),
+                    std::forward_as_tuple(tex));
+  return tex;
+}
+
+GLuint Display::create_monochrome_texture(unsigned char const *texture_data,
+                                          GLsizei width, GLsizei height) {
+  GLuint tex = GraphicalAllocator::allocate_monochrome_texture2d(texture_data,
+                                                                 width, height);
+  textures_.emplace(std::piecewise_construct, std::forward_as_tuple(tex),
+                    std::forward_as_tuple(tex));
   return tex;
 }
 

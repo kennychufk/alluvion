@@ -16,6 +16,8 @@
 namespace alluvion {
 class Store {
  private:
+  // NOTE: cannot use std::vector or std::map for unique resources due to
+  // reallocation
   std::unordered_map<void*, UniqueDevicePointer> pointer_dict_;
   std::unordered_map<void*, UniquePinnedPointer> pinned_pointer_dict_;
   // NOTE: GraphicalVariable should be destructed before Display

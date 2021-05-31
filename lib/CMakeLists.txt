@@ -6,6 +6,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/unique_mesh_buffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_texture.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_vao.cu
+  ${CMAKE_CURRENT_LIST_DIR}/unique_vbo.cu
   ${CMAKE_CURRENT_LIST_DIR}/mesh_buffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/mesh.cu
   ${CMAKE_CURRENT_LIST_DIR}/allocator.cu
@@ -14,6 +15,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/constants.cu
   ${CMAKE_CURRENT_LIST_DIR}/display.cu
   ${CMAKE_CURRENT_LIST_DIR}/shading_program.cu
+  ${CMAKE_CURRENT_LIST_DIR}/typesetter.cu
   ${CMAKE_CURRENT_LIST_DIR}/camera.cu
   ${CMAKE_CURRENT_LIST_DIR}/trackball.cu
   ${CMAKE_CURRENT_LIST_DIR}/dg/bounding_sphere_hierarchy.cu
@@ -39,6 +41,7 @@ add_library(lib_alluvion
 target_link_libraries(lib_alluvion
   PRIVATE
     glfw
+    ${FREETYPE_LIBRARIES}
   PUBLIC
     Eigen3::Eigen
     OpenMP::OpenMP_CXX
@@ -49,6 +52,7 @@ target_include_directories(lib_alluvion
   PUBLIC
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    ${FREETYPE_INCLUDE_DIRS}
 )
 
 # The reason for compiling all source files
@@ -78,6 +82,7 @@ target_include_directories(_alluvion
   PUBLIC
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    ${FREETYPE_INCLUDE_DIRS}
 )
 
 target_link_libraries(_alluvion
@@ -86,4 +91,6 @@ target_link_libraries(_alluvion
     Eigen3::Eigen
     OpenMP::OpenMP_CXX
     pybind11::module
+  PRIVATE
+    ${FREETYPE_LIBRARIES}
 )

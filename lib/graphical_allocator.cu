@@ -14,6 +14,22 @@ GLuint GraphicalAllocator::allocate_texture1d(
   glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, width, 0, GL_RGB, GL_FLOAT,
                texture_data);
+  glBindTexture(GL_TEXTURE_1D, 0);
+  return tex;
+}
+
+GLuint GraphicalAllocator::allocate_monochrome_texture2d(
+    unsigned char const* texture_data, GLsizei width, GLsizei height) {
+  GLuint tex;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED,
+               GL_UNSIGNED_BYTE, texture_data);
+  glBindTexture(GL_TEXTURE_2D, 0);
   return tex;
 }
 

@@ -4,7 +4,9 @@
 namespace alluvion {
 class UniqueTexture {
  public:
+  UniqueTexture() = delete;
   UniqueTexture(GLuint tex);
+  UniqueTexture(const UniqueTexture &) = delete;
   virtual ~UniqueTexture();
   GLuint tex_;
 };

@@ -73,6 +73,8 @@ class GraphicalAllocator {
   }
   static GLuint allocate_texture1d(std::array<GLfloat, 3> const* texture_data,
                                    GLsizei width);
+  static GLuint allocate_monochrome_texture2d(unsigned char const* texture_data,
+                                              GLsizei width, GLsizei height);
   static GLuint allocate_vao();
 
   static void map(std::vector<cudaGraphicsResource*>& resources);
