@@ -117,7 +117,7 @@ void ShadingProgram::update(Display& display) {
   glBindVertexArray(0);
 }
 
-GLint ShadingProgram::get_uniform_location(std::string const& name) {
-  return uniform_dict_[name];
+GLint ShadingProgram::get_uniform_location(std::string const& name) const {
+  return uniform_dict_.at(name);
 }
 }  // namespace alluvion

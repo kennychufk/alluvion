@@ -38,7 +38,7 @@ class ShadingProgram {
   virtual ~ShadingProgram();
 
   void update(Display& display);
-  GLint get_uniform_location(std::string const& name);
+  GLint get_uniform_location(std::string const& name) const;
 };
 }  // namespace alluvion
 
