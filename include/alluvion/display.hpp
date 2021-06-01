@@ -12,6 +12,7 @@
 #include <deque>
 #include <memory>
 
+#include "alluvion/complete_framebuffer.hpp"
 #include "alluvion/graphical_allocator.hpp"
 #include "alluvion/mesh.hpp"
 #include "alluvion/shading_program.hpp"
@@ -27,13 +28,14 @@ class Display {
   std::unordered_map<GLuint, UniqueTexture> textures_;
   std::unordered_map<GLuint, UniqueVbo> vbos_;
   std::unordered_map<GLuint, UniqueMeshBuffer> mesh_dict_;
+  std::unordered_map<GLuint, CompleteFramebuffer> framebuffers_;
 
  public:
   GLFWwindow *window_;
   Camera camera_;
   int width_;
   int height_;
-  Display(int width, int height, const char *title);
+  Display(int width, int height, const char *title, bool offscreen = false);
   virtual ~Display();
 
   static void error_callback(int error, const char *description);
@@ -45,22 +47,24 @@ class Display {
   static void scroll_callback(GLFWwindow *window, double xpos, double ypos);
   static void resize_callback(GLFWwindow *window, int width, int height);
 
+  GLuint create_framebuffer();
   void run();
   GLuint create_colormap(std::array<GLfloat, 3> const *colormap_data,
                          GLsizei palette_size);
   GLuint create_monochrome_texture(unsigned char const *texture_data,
                                    GLsizei width, GLsizei height);
   template <typename M>
-  GLuint Display::create_dynamic_array_buffer(U num_elements, void const *src) {
+  GLuint create_dynamic_array_buffer(U num_elements, void const *src) {
     GLuint vbo =
         GraphicalAllocator::allocate_dynamic_array_buffer<M>(num_elements, src);
     vbos_.emplace(std::piecewise_construct, std::forward_as_tuple(vbo),
                   std::forward_as_tuple(vbo));
     return vbo;
   }
-
   MeshBuffer create_mesh_buffer(Mesh const &mesh);
   void add_shading_program(ShadingProgram *program);
+  CompleteFramebuffer &get_framebuffer(GLuint fbo);
+  CompleteFramebuffer const &get_framebuffer(GLuint fbo) const;
   void update_trackball_camera();
 };
 }  // namespace alluvion

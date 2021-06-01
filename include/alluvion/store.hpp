@@ -31,7 +31,8 @@ class Store {
   Store();
   virtual ~Store();
 
-  Display* create_display(int width, int height, const char* title);
+  Display* create_display(int width, int height, const char* title,
+                          bool offscreen = false);
   Display const* get_display() const;
   Display* get_display();
   bool has_display() const;

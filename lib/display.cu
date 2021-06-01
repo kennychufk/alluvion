@@ -6,7 +6,8 @@
 #include "alluvion/display.hpp"
 
 namespace alluvion {
-Display::Display(int width, int height, const char *title) : window_(nullptr) {
+Display::Display(int width, int height, const char *title, bool offscreen)
+    : window_(nullptr) {
   glfwSetErrorCallback(&Display::error_callback);
 
   if (!glfwInit()) exit(EXIT_FAILURE);
@@ -14,6 +15,7 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_VISIBLE, !offscreen);
 
   window_ = glfwCreateWindow(width, height, title, NULL, NULL);
   if (!window_) {
@@ -22,8 +24,12 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   }
 
   glfwMakeContextCurrent(window_);
-  gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
-  glfwSwapInterval(1);
+  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    glfwDestroyWindow(window_);
+    glfwTerminate();
+    exit(EXIT_FAILURE);
+  }
+  glfwSwapInterval(offscreen ? 0 : 1);
 
   using namespace std::placeholders;
 
@@ -50,11 +56,10 @@ Display::Display(int width, int height, const char *title) : window_(nullptr) {
   glClearDepth(1.0f);
   // disable byte-alignment restriction for glyph texture (1 byte per pixel)
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  // for copying framebuffer
+  glPixelStorei(GL_PACK_ALIGNMENT, 4);
 }
 Display::~Display() {
-  for (std::unique_ptr<ShadingProgram> &program : programs_) {
-    program.reset();
-  }
   glfwDestroyWindow(window_);
   glfwTerminate();
 }
@@ -211,12 +216,29 @@ void Display::resize_callback(GLFWwindow *window, int width, int height) {
   display->width_ = width;
   display->height_ = height;
   glViewport(0, 0, width, height);
+  for (auto &key_value_pair : display->framebuffers_) {
+    key_value_pair.second.resize(width, height);
+  }
+}
+
+GLuint Display::create_framebuffer() {
+  CompleteFramebuffer framebuffer(width_, height_);
+  GLuint fbo = framebuffer.fbo_;
+  framebuffers_.emplace(fbo, std::move(framebuffer));
+  return fbo;
+}
+
+CompleteFramebuffer &Display::get_framebuffer(GLuint fbo) {
+  return framebuffers_.at(fbo);
+}
+
+CompleteFramebuffer const &Display::get_framebuffer(GLuint fbo) const {
+  return framebuffers_.at(fbo);
 }
 
 void Display::run() {
   while (!glfwWindowShouldClose(window_)) {
     trackball_.update();
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     for (std::unique_ptr<ShadingProgram> &program : programs_) {
       program->update(*this);
     }

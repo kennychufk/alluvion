@@ -14,8 +14,9 @@ void Store::update_resource_array() {
     resource_array_[i++] = entry.second.res_;
   }
 }
-Display* Store::create_display(int width, int height, const char* title) {
-  display_.reset(new Display(width, height, title));
+Display* Store::create_display(int width, int height, const char* title,
+                               bool offscreen) {
+  display_.reset(new Display(width, height, title, offscreen));
   return display_.get();
 }
 Display const* Store::get_display() const { return display_.get(); }

@@ -26,7 +26,8 @@ int main(void) {
   std::vector<F> sample_ts = {320.0};
 
   Store store;
-  Display* display = store.create_display(800, 600, "particle view");
+  Display* display = store.create_display(1920, 1080, "particle view", false);
+  GLuint screenshot_fbo = display->create_framebuffer();
 
   F particle_radius = 0.0025_F;
   F kernel_radius = particle_radius * 4.0_F;
@@ -172,12 +173,20 @@ int main(void) {
   display->camera_.setEye(0._F, 0._F, R * 3._F);
   display->camera_.setUp(1._F, 0._F, 0._F);
   display->camera_.setClipPlanes(particle_radius * 10._F, R * 20._F);
+  display->camera_.update();
   display->update_trackball_camera();
 
   GLuint colormap_tex =
       display->create_colormap(kViridisData.data(), kViridisData.size());
 
   GLuint glyph_quad = display->create_dynamic_array_buffer<float4>(6, nullptr);
+  constexpr float kScreenQuadXYTex[] = {// positions   // texCoords
+                                        -1.0f, 1.0f, 0.0f, 1.0f,  -1.0f, -1.0f,
+                                        0.0f,  0.0f, 1.0f, -1.0f, 1.0f,  0.0f,
+                                        -1.0f, 1.0f, 0.0f, 1.0f,  1.0f,  -1.0f,
+                                        1.0f,  0.0f, 1.0f, 1.0f,  1.0f,  1.0f};
+  GLuint screen_quad =
+      display->create_dynamic_array_buffer<float4>(6, kScreenQuadXYTex);
 
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
@@ -413,6 +422,10 @@ int main(void) {
       {std::make_tuple(particle_x.vbo_, 3, 0),
        std::make_tuple(particle_normalized_attr.vbo_, 1, 0)},
       [&](ShadingProgram& program, Display& display) {
+        glBindFramebuffer(GL_FRAMEBUFFER,
+                          display.get_framebuffer(screenshot_fbo).fbo_);
+        glEnable(GL_DEPTH_TEST);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUniformMatrix4fv(
             program.get_uniform_location("P"), 1, GL_FALSE,
             glm::value_ptr(display.camera_.getProjectionMatrix()));
@@ -517,6 +530,21 @@ int main(void) {
           glDrawArrays(GL_TRIANGLES, 0, 6);
         }
         glBindTexture(GL_TEXTURE_2D, 0);
+      }));
+#include "alluvion/glsl/screen.frag"
+#include "alluvion/glsl/screen.vert"
+  display->add_shading_program(new ShadingProgram(
+      kScreenVertexShaderStr, kScreenFragmentShaderStr, {},
+      {std::make_tuple(screen_quad, 4, 0)},
+      [&](ShadingProgram& program, Display& display) {
+        // display.get_framebuffer(screenshot_fbo).write("test.bmp");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_TEST);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glBindTexture(GL_TEXTURE_2D,
+                      display.get_framebuffer(screenshot_fbo).color_tex_);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
       }));
   display->run();
   return 0;

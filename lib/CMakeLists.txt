@@ -15,6 +15,7 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/constants.cu
   ${CMAKE_CURRENT_LIST_DIR}/display.cu
   ${CMAKE_CURRENT_LIST_DIR}/shading_program.cu
+  ${CMAKE_CURRENT_LIST_DIR}/complete_framebuffer.cu
   ${CMAKE_CURRENT_LIST_DIR}/typesetter.cu
   ${CMAKE_CURRENT_LIST_DIR}/camera.cu
   ${CMAKE_CURRENT_LIST_DIR}/trackball.cu

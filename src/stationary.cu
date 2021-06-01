@@ -327,6 +327,7 @@ int main(void) {
       {std::make_tuple(particle_x.vbo_, 3, 0),
        std::make_tuple(particle_normalized_attr.vbo_, 1, 0)},
       [&](ShadingProgram& program, Display& display) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                            glm::value_ptr(glm::mat4(1)));
         glUniformMatrix4fv(

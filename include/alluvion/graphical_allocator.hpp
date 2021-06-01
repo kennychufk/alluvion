@@ -75,7 +75,16 @@ class GraphicalAllocator {
                                    GLsizei width);
   static GLuint allocate_monochrome_texture2d(unsigned char const* texture_data,
                                               GLsizei width, GLsizei height);
+  static GLuint allocate_texture2d(unsigned char const* texture_data,
+                                   GLsizei width, GLsizei height);
+  static GLuint allocate_render_buffer(GLsizei width, GLsizei height);
+  static GLuint allocate_framebuffer();
   static GLuint allocate_vao();
+  static void reallocate_render_buffer(GLuint rbo, GLsizei width,
+                                       GLsizei height);
+  static void reallocate_texture2d(GLuint tex,
+                                   unsigned char const* texture_data,
+                                   GLsizei width, GLsizei height);
 
   static void map(std::vector<cudaGraphicsResource*>& resources);
   static void* get_mapped_pointer(cudaGraphicsResource* res);
@@ -84,6 +93,8 @@ class GraphicalAllocator {
   static void free_buffer(GLuint* vbo);
   static void free_texture(GLuint* tex);
   static void free_vao(GLuint* tex);
+  static void free_render_buffer(GLuint* rbo);
+  static void free_framebuffer(GLuint* fbo);
 };
 }  // namespace alluvion
 
