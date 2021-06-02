@@ -7,6 +7,15 @@ target_link_libraries(stationary
     lib_alluvion
 )
 
+add_executable(stationary_dfsph
+  stationary_dfsph.cu
+)
+
+target_link_libraries(stationary_dfsph
+  PRIVATE
+    lib_alluvion
+)
+
 add_executable(hagen_poiseuille
   hagen_poiseuille.cu
 )

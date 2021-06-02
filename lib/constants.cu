@@ -32,6 +32,7 @@ __constant__ F surface_tension_boundary_coeff;
 __constant__ F3 gravity;
 
 __constant__ F boundary_epsilon;
+__constant__ F dfsph_factor_epsilon;
 
 __constant__ I3 neighbor_offsets[kMaxNumCellsToSearch];
 __constant__ U num_cells_to_search;
@@ -159,6 +160,10 @@ void set_gravity(F3 g) {
 void set_boundary_epsilon(F e) {
   Allocator::abort_if_error(
       cudaMemcpyToSymbol(boundary_epsilon, &e, sizeof(F)));
+}
+void set_dfsph_factor_epsilon(F e) {
+  Allocator::abort_if_error(
+      cudaMemcpyToSymbol(dfsph_factor_epsilon, &e, sizeof(F)));
 }
 void set_num_boundaries(U n) {
   Allocator::abort_if_error(cudaMemcpyToSymbol(num_boundaries, &n, sizeof(U)));
