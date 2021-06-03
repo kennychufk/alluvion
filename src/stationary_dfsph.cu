@@ -184,17 +184,17 @@ int main(void) {
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_divergence_solve_1<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_density_adv, particle_kappa_v,
-                particle_neighbors, particle_num_neighbors,
-                particle_boundary_xj, particle_boundary_volume, particle_force,
-                particle_torque, pile.x_device_, pile.v_device_,
-                pile.omega_device_, dt, num_particles);
+                particle_x, particle_v, particle_kappa_v, particle_neighbors,
+                particle_num_neighbors, particle_boundary_xj,
+                particle_boundary_volume, particle_force, particle_torque,
+                pile.x_device_, pile.v_device_, pile.omega_device_, dt,
+                num_particles);
           });
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             compute_velocity_of_density_change<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_dfsph_factor,
-                particle_density_adv, particle_kappa_v, particle_neighbors,
+                particle_density_adv, particle_neighbors,
                 particle_num_neighbors, particle_boundary_xj,
                 particle_boundary_volume, pile.x_device_, pile.v_device_,
                 pile.omega_device_, dt, num_particles);
@@ -277,20 +277,23 @@ int main(void) {
           // ===== [pressure solve
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_pressure_solve0<<<grid_size, block_size>>>(
-                particle_kappa, dt, num_particles);
+                particle_x, particle_v, particle_density, particle_density_adv,
+                particle_kappa, particle_neighbors, particle_num_neighbors,
+                particle_boundary_xj, particle_boundary_volume, pile.x_device_,
+                pile.v_device_, pile.omega_device_, dt, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_pressure_solve1<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_density_adv, particle_kappa,
-                particle_neighbors, particle_num_neighbors,
-                particle_boundary_xj, particle_boundary_volume, particle_force,
-                particle_torque, pile.x_device_, pile.v_device_,
-                pile.omega_device_, dt, num_particles);
+                particle_x, particle_v, particle_kappa, particle_neighbors,
+                particle_num_neighbors, particle_boundary_xj,
+                particle_boundary_volume, particle_force, particle_torque,
+                pile.x_device_, pile.v_device_, pile.omega_device_, dt,
+                num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             compute_rho_adv<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_density, particle_dfsph_factor,
-                particle_density_adv, particle_kappa, particle_neighbors,
+                particle_density_adv, particle_neighbors,
                 particle_num_neighbors, particle_boundary_xj,
                 particle_boundary_volume, pile.x_device_, pile.v_device_,
                 pile.omega_device_, dt, num_particles);
