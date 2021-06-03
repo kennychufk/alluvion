@@ -1256,11 +1256,13 @@ __global__ void compute_particle_boundary(
 }
 
 template <typename TF3, typename TF>
-__global__ void compute_density_fluid(Variable<1, TF3> particle_x,
-                                      Variable<2, U> particle_neighbors,
-                                      Variable<1, U> particle_num_neighbors,
-                                      Variable<1, TF> particle_density,
-                                      U num_particles) {
+__global__ void compute_density(Variable<1, TF3> particle_x,
+                                Variable<2, U> particle_neighbors,
+                                Variable<1, U> particle_num_neighbors,
+                                Variable<1, TF> particle_density,
+                                Variable<2, TF3> particle_boundary_xj,
+                                Variable<2, TF> particle_boundary_volume,
+                                U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF density = cnst::particle_vol * cnst::cubic_kernel_zero;
     TF3 x_i = particle_x(p_i);
@@ -1270,24 +1272,12 @@ __global__ void compute_density_fluid(Variable<1, TF3> particle_x,
       TF3 x_j = particle_x(p_j);
       density += cnst::particle_vol * displacement_cubic_kernel(x_i - x_j);
     }
-    particle_density(p_i) = density * cnst::density0;
-  });
-}
-
-template <typename TF3, typename TF>
-__global__ void compute_density_boundary(
-    Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
-    Variable<2, TF3> particle_boundary_xj,
-    Variable<2, TF> particle_boundary_volume, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF density = 0._F;
-    TF3 x_i = particle_x(p_i);
     for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
       TF vj = max(0._F, particle_boundary_volume(boundary_id, p_i));
       TF3 bx_j = particle_boundary_xj(boundary_id, p_i);
       density += vj * displacement_cubic_kernel(x_i - bx_j);
     }
-    particle_density(p_i) += density * cnst::density0;
+    particle_density(p_i) = density * cnst::density0;
   });
 }
 
@@ -2533,10 +2523,11 @@ __global__ void compute_particle_boundary_wrapped(
   });
 }
 template <typename TF3, typename TF>
-__global__ void compute_density_fluid_wrapped(
+__global__ void compute_density_wrapped(
     Variable<1, TF3> particle_x, Variable<2, U> particle_neighbors,
     Variable<1, U> particle_num_neighbors, Variable<1, TF> particle_density,
-    U num_particles) {
+    Variable<2, TF3> particle_boundary_xj,
+    Variable<2, TF> particle_boundary_volume, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF density = cnst::particle_vol * cnst::cubic_kernel_zero;
     TF3 x_i = particle_x(p_i);
@@ -2546,6 +2537,11 @@ __global__ void compute_density_fluid_wrapped(
       TF3 x_j = particle_x(p_j);
       density +=
           cnst::particle_vol * displacement_cubic_kernel(wrap_x(x_i - x_j));
+    }
+    for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
+      TF vj = max(0._F, particle_boundary_volume(boundary_id, p_i));
+      TF3 bx_j = particle_boundary_xj(boundary_id, p_i);
+      density += vj * displacement_cubic_kernel(x_i - bx_j);
     }
     particle_density(p_i) = density * cnst::density0;
   });

@@ -148,13 +148,9 @@ int main(void) {
                 particle_num_neighbors, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_density_fluid<<<grid_size, block_size>>>(
+            compute_density<<<grid_size, block_size>>>(
                 particle_x, particle_neighbors, particle_num_neighbors,
-                particle_density, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_density_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_density, particle_boundary_xj,
+                particle_density, particle_boundary_xj,
                 particle_boundary_volume, num_particles);
           });
           // compute_normal

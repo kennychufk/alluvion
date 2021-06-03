@@ -223,13 +223,9 @@ PYBIND11_MODULE(_alluvion, m) {
                   sample_num_neighbors, num_samples);
             });
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              compute_density_fluid_wrapped<<<grid_size, block_size>>>(
+              compute_density_wrapped<<<grid_size, block_size>>>(
                   particle_x, particle_neighbors, particle_num_neighbors,
-                  particle_density, num_particles);
-            });
-            Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              compute_density_boundary<<<grid_size, block_size>>>(
-                  particle_x, particle_density, particle_boundary_xj,
+                  particle_density, particle_boundary_xj,
                   particle_boundary_volume, num_particles);
             });
             Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
@@ -285,13 +281,9 @@ PYBIND11_MODULE(_alluvion, m) {
           });
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_density_fluid_wrapped<<<grid_size, block_size>>>(
+            compute_density_wrapped<<<grid_size, block_size>>>(
                 particle_x, particle_neighbors, particle_num_neighbors,
-                particle_density, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_density_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_density, particle_boundary_xj,
+                particle_density, particle_boundary_xj,
                 particle_boundary_volume, num_particles);
           });
 
