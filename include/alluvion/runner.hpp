@@ -1913,10 +1913,9 @@ __global__ void compute_dfsph_factor(Variable<1, TF3> particle_x,
 }
 
 template <typename TF3, typename TF>
-__device__ void compute_density_change(
+__device__ float compute_density_change(
     Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-    Variable<1, TF>& particle_density_adv, Variable<2, U>& particle_neighbors,
-    Variable<1, U>& particle_num_neighbors,
+    Variable<2, U>& particle_neighbors, Variable<1, U>& particle_num_neighbors,
     Variable<2, TF3>& particle_boundary_xj,
     Variable<2, TF>& particle_boundary_volume, Variable<1, TF3>& rigid_x,
     Variable<1, TF3>& rigid_v, Variable<1, TF3>& rigid_omega, U p_i) {
@@ -1945,24 +1944,24 @@ __device__ void compute_density_change(
              // particle_num_neighbors
     density_adv = 0._F;
   }
-  particle_density_adv(p_i) = density_adv;
+  return density_adv;
 }
 
 template <typename TF3, typename TF>
 __global__ void warm_start_divergence_solve_0(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF> particle_density_adv, Variable<1, TF> particle_kappa_v,
-    Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
+    Variable<1, TF> particle_kappa_v, Variable<2, U> particle_neighbors,
+    Variable<1, U> particle_num_neighbors,
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_change(particle_x, particle_v, particle_density_adv,
-                           particle_neighbors, particle_num_neighbors,
-                           particle_boundary_xj, particle_boundary_volume,
-                           rigid_x, rigid_v, rigid_omega, p_i);
-    particle_kappa_v(p_i) = (particle_density_adv(p_i) > 0._F)
+    F density_adv = compute_density_change(
+        particle_x, particle_v, particle_neighbors, particle_num_neighbors,
+        particle_boundary_xj, particle_boundary_volume, rigid_x, rigid_v,
+        rigid_omega, p_i);
+    particle_kappa_v(p_i) = (density_adv > 0._F)
                                 ? 0.5_F * max(particle_kappa_v(p_i), -0.5) / dt
                                 : 0._F;
   });
@@ -2024,10 +2023,10 @@ __global__ void compute_velocity_of_density_change(
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_change(particle_x, particle_v, particle_density_adv,
-                           particle_neighbors, particle_num_neighbors,
-                           particle_boundary_xj, particle_boundary_volume,
-                           rigid_x, rigid_v, rigid_omega, p_i);
+    particle_density_adv(p_i) = compute_density_change(
+        particle_x, particle_v, particle_neighbors, particle_num_neighbors,
+        particle_boundary_xj, particle_boundary_volume, rigid_x, rigid_v,
+        rigid_omega, p_i);
     TF inv_dt = 1._F / dt;
     particle_dfsph_factor(p_i) *=
         inv_dt;  // TODO: move to compute_dfsph_factor?
@@ -2093,10 +2092,10 @@ __global__ void compute_divergence_solve_density_error(
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_change(particle_x, particle_v, particle_density_adv,
-                           particle_neighbors, particle_num_neighbors,
-                           particle_boundary_xj, particle_boundary_volume,
-                           rigid_x, rigid_v, rigid_omega, p_i);
+    particle_density_adv(p_i) = compute_density_change(
+        particle_x, particle_v, particle_neighbors, particle_num_neighbors,
+        particle_boundary_xj, particle_boundary_volume, rigid_x, rigid_v,
+        rigid_omega, p_i);
   });
 }
 
@@ -2121,21 +2120,19 @@ __global__ void integrate_non_pressure_acceleration(Variable<1, TF3> particle_v,
 template <typename TF3, typename TF>
 __global__ void warm_start_pressure_solve0(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF> particle_density, Variable<1, TF> particle_density_adv,
-    Variable<1, TF> particle_kappa, Variable<2, U> particle_neighbors,
-    Variable<1, U> particle_num_neighbors,
+    Variable<1, TF> particle_density, Variable<1, TF> particle_kappa,
+    Variable<2, U> particle_neighbors, Variable<1, U> particle_num_neighbors,
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_adv(
-        particle_x, particle_v, particle_density, particle_density_adv,
-        particle_neighbors, particle_num_neighbors, particle_boundary_xj,
-        particle_boundary_volume, rigid_x, rigid_v, rigid_omega, p_i, dt);
-    // TODO: refactor particle_density_adv
+    F density_adv = compute_density_adv(
+        particle_x, particle_v, particle_density, particle_neighbors,
+        particle_num_neighbors, particle_boundary_xj, particle_boundary_volume,
+        rigid_x, rigid_v, rigid_omega, p_i, dt);
     particle_kappa(p_i) =
-        (particle_density_adv(p_i) > 1.0)
+        (density_adv > 1.0)
             ? (0.5_F * max(particle_kappa(p_i), -0.00025_F) / (dt * dt))
             : 0._F;
   });
@@ -2183,10 +2180,10 @@ __global__ void warm_start_pressure_solve1(
 }
 
 template <typename TF3, typename TF>
-__device__ void compute_density_adv(
+__device__ F compute_density_adv(
     Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-    Variable<1, TF>& particle_density, Variable<1, TF>& particle_density_adv,
-    Variable<2, U>& particle_neighbors, Variable<1, U>& particle_num_neighbors,
+    Variable<1, TF>& particle_density, Variable<2, U>& particle_neighbors,
+    Variable<1, U>& particle_num_neighbors,
     Variable<2, TF3>& particle_boundary_xj,
     Variable<2, TF>& particle_boundary_volume, Variable<1, TF3>& rigid_x,
     Variable<1, TF3>& rigid_v, Variable<1, TF3>& rigid_omega, U p_i, TF dt) {
@@ -2209,8 +2206,7 @@ __device__ void compute_density_adv(
     delta += particle_boundary_volume(boundary_id, p_i) *
              dot(v_i - velj, displacement_cubic_kernel_grad(x_i - bx_j));
   }
-  particle_density_adv(p_i) =
-      max(particle_density(p_i) / cnst::density0 + dt * delta, 1._F);
+  return max(particle_density(p_i) / cnst::density0 + dt * delta, 1._F);
 }
 
 template <typename TF3, typename TF>
@@ -2224,10 +2220,10 @@ __global__ void compute_rho_adv(
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_adv(
-        particle_x, particle_v, particle_density, particle_density_adv,
-        particle_neighbors, particle_num_neighbors, particle_boundary_xj,
-        particle_boundary_volume, rigid_x, rigid_v, rigid_omega, p_i, dt);
+    particle_density_adv(p_i) = compute_density_adv(
+        particle_x, particle_v, particle_density, particle_neighbors,
+        particle_num_neighbors, particle_boundary_xj, particle_boundary_volume,
+        rigid_x, rigid_v, rigid_omega, p_i, dt);
     particle_dfsph_factor(p_i) *= 1._F / (dt * dt);
   });
 }
@@ -2288,10 +2284,10 @@ __global__ void compute_pressure_solve_density_error(
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, F dt,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    compute_density_adv(
-        particle_x, particle_v, particle_density, particle_density_adv,
-        particle_neighbors, particle_num_neighbors, particle_boundary_xj,
-        particle_boundary_volume, rigid_x, rigid_v, rigid_omega, p_i, dt);
+    particle_density_adv(p_i) = compute_density_adv(
+        particle_x, particle_v, particle_density, particle_neighbors,
+        particle_num_neighbors, particle_boundary_xj, particle_boundary_volume,
+        rigid_x, rigid_v, rigid_omega, p_i, dt);
   });
 }
 

@@ -177,10 +177,10 @@ int main(void) {
           // ===== [divergence solve
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_divergence_solve_0<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_density_adv, particle_kappa_v,
-                particle_neighbors, particle_num_neighbors,
-                particle_boundary_xj, particle_boundary_volume, pile.x_device_,
-                pile.v_device_, pile.omega_device_, dt, num_particles);
+                particle_x, particle_v, particle_kappa_v, particle_neighbors,
+                particle_num_neighbors, particle_boundary_xj,
+                particle_boundary_volume, pile.x_device_, pile.v_device_,
+                pile.omega_device_, dt, num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_divergence_solve_1<<<grid_size, block_size>>>(
@@ -277,8 +277,8 @@ int main(void) {
           // ===== [pressure solve
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
             warm_start_pressure_solve0<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_density, particle_density_adv,
-                particle_kappa, particle_neighbors, particle_num_neighbors,
+                particle_x, particle_v, particle_density, particle_kappa,
+                particle_neighbors, particle_num_neighbors,
                 particle_boundary_xj, particle_boundary_volume, pile.x_device_,
                 pile.v_device_, pile.omega_device_, dt, num_particles);
           });
