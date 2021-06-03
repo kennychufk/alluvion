@@ -237,13 +237,9 @@ int main(void) {
           // compute_surface_tension_boundary
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_viscosity_fluid<<<grid_size, block_size>>>(
+            compute_viscosity<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_density, particle_neighbors,
-                particle_num_neighbors, particle_a, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_viscosity_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_a, particle_force,
+                particle_num_neighbors, particle_a, particle_force,
                 particle_torque, particle_boundary_xj, particle_boundary_volume,
                 pile.x_device_, pile.v_device_, pile.omega_device_,
                 pile.boundary_viscosity_device_, num_particles);

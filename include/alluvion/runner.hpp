@@ -1283,13 +1283,15 @@ __global__ void compute_density(Variable<1, TF3> particle_x,
 
 // Viscosity_Standard
 template <typename TF3, typename TF>
-__global__ void compute_viscosity_fluid(Variable<1, TF3> particle_x,
-                                        Variable<1, TF3> particle_v,
-                                        Variable<1, TF> particle_density,
-                                        Variable<2, U> particle_neighbors,
-                                        Variable<1, U> particle_num_neighbors,
-                                        Variable<1, TF3> particle_a,
-                                        U num_particles) {
+__global__ void compute_viscosity(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, TF> particle_density, Variable<2, U> particle_neighbors,
+    Variable<1, U> particle_num_neighbors, Variable<1, TF3> particle_a,
+    Variable<2, TF3> particle_force, Variable<2, TF3> particle_torque,
+    Variable<2, TF3> particle_boundary_xj,
+    Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
+    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega,
+    Variable<1, TF> boundary_viscosity, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF d = 10._F;
     TF3 v_i = particle_v(p_i);
@@ -1306,23 +1308,6 @@ __global__ void compute_viscosity_fluid(Variable<1, TF3> particle_x,
             (length_sqr(xixj) + 0.01_F * cnst::kernel_radius_sqr) *
             displacement_cubic_kernel_grad(xixj);
     }
-    particle_a(p_i) += da;
-  });
-}
-
-template <typename TF3, typename TF>
-__global__ void compute_viscosity_boundary(
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF3> particle_a, Variable<2, TF3> particle_force,
-    Variable<2, TF3> particle_torque, Variable<2, TF3> particle_boundary_xj,
-    Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega,
-    Variable<1, TF> boundary_viscosity, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF d = 10._F;
-    TF3 v_i = particle_v(p_i);
-    TF3 x_i = particle_x(p_i);
-    TF3 da = make_zeros<TF3>();
     for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
       TF vj = max(0._F, particle_boundary_volume(boundary_id, p_i));
       TF3 bx_j = particle_boundary_xj(boundary_id, p_i);
@@ -2547,11 +2532,15 @@ __global__ void compute_density_wrapped(
   });
 }
 template <typename TF3, typename TF>
-__global__ void compute_viscosity_fluid_wrapped(
+__global__ void compute_viscosity_wrapped(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
     Variable<1, TF> particle_density, Variable<2, U> particle_neighbors,
     Variable<1, U> particle_num_neighbors, Variable<1, TF3> particle_a,
-    U num_particles) {
+    Variable<2, TF3> particle_force, Variable<2, TF3> particle_torque,
+    Variable<2, TF3> particle_boundary_xj,
+    Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
+    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega,
+    Variable<1, TF> boundary_viscosity, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF d = 10._F;
     TF3 v_i = particle_v(p_i);
@@ -2567,6 +2556,71 @@ __global__ void compute_viscosity_fluid_wrapped(
             dot(v_i - particle_v(p_j), xixj) /
             (length_sqr(xixj) + 0.01_F * cnst::kernel_radius_sqr) *
             displacement_cubic_kernel_grad(xixj);
+    }
+    for (U boundary_id = 0; boundary_id < cnst::num_boundaries; ++boundary_id) {
+      TF vj = max(0._F, particle_boundary_volume(boundary_id, p_i));
+      TF3 bx_j = particle_boundary_xj(boundary_id, p_i);
+      TF3 r_x = rigid_x(boundary_id);
+      TF3 r_v = rigid_v(boundary_id);
+      TF3 r_omega = rigid_omega(boundary_id);
+      TF b_viscosity = boundary_viscosity(boundary_id);
+
+      TF3 normal = bx_j - x_i;
+      TF nl = length(normal);
+      if (nl > 0.0001_F) {
+        normal /= nl;
+        TF3 t1, t2;
+        get_orthogonal_vectors(normal, &t1, &t2);
+
+        TF dist = (1._F - nl / cnst::kernel_radius) * cnst::kernel_radius;
+        TF3 x1 = bx_j - t1 * dist;
+        TF3 x2 = bx_j + t1 * dist;
+        TF3 x3 = bx_j - t2 * dist;
+        TF3 x4 = bx_j + t2 * dist;
+
+        TF3 xix1 = x_i - x1;
+        TF3 xix2 = x_i - x2;
+        TF3 xix3 = x_i - x3;
+        TF3 xix4 = x_i - x4;
+
+        TF3 gradW1 = displacement_cubic_kernel_grad(xix1);
+        TF3 gradW2 = displacement_cubic_kernel_grad(xix2);
+        TF3 gradW3 = displacement_cubic_kernel_grad(xix3);
+        TF3 gradW4 = displacement_cubic_kernel_grad(xix4);
+
+        // each sample point represents the quarter of the volume inside of the
+        // boundary
+        TF vol = 0.25_F * vj;
+
+        TF3 v1 = cross(r_omega, x1 - r_x) + r_v;
+        TF3 v2 = cross(r_omega, x2 - r_x) + r_v;
+        TF3 v3 = cross(r_omega, x3 - r_x) + r_v;
+        TF3 v4 = cross(r_omega, x4 - r_x) + r_v;
+
+        // compute forces for both sample point
+        TF3 a1 = d * b_viscosity * vol * dot(v_i - v1, xix1) /
+                 (length_sqr(xix1) + 0.01_F * cnst::kernel_radius_sqr) * gradW1;
+        TF3 a2 = d * b_viscosity * vol * dot(v_i - v2, xix2) /
+                 (length_sqr(xix2) + 0.01_F * cnst::kernel_radius_sqr) * gradW2;
+        TF3 a3 = d * b_viscosity * vol * dot(v_i - v3, xix3) /
+                 (length_sqr(xix3) + 0.01_F * cnst::kernel_radius_sqr) * gradW3;
+        TF3 a4 = d * b_viscosity * vol * dot(v_i - v4, xix4) /
+                 (length_sqr(xix4) + 0.01_F * cnst::kernel_radius_sqr) * gradW4;
+        da += a1 + a2 + a3 + a4;
+
+        TF3 f1 = -cnst::particle_mass * a1;
+        TF3 f2 = -cnst::particle_mass * a2;
+        TF3 f3 = -cnst::particle_mass * a3;
+        TF3 f4 = -cnst::particle_mass * a4;
+        TF3 torque1 = cross(x1 - r_x, f1);
+        TF3 torque2 = cross(x2 - r_x, f2);
+        TF3 torque3 = cross(x3 - r_x, f3);
+        TF3 torque4 = cross(x4 - r_x, f4);
+
+        particle_force(boundary_id, p_i) += f1 + f2 + f3 + f4;
+        particle_torque(boundary_id, p_i) +=
+            torque1 + torque2 + torque3 + torque4;
+      }
     }
     particle_a(p_i) += da;
   });
