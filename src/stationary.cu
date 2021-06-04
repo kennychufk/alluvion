@@ -171,37 +171,29 @@ int main(void) {
           // compute_vorticity_boundary
           // integrate_angular_acceleration
           //
-          // calculate_cfl_v2
+          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+            calculate_cfl_v2<<<grid_size, block_size>>>(
+                particle_v, particle_a, particle_cfl_v2, dt, num_particles);
+          });
+          F particle_max_v2 = Runner::max(particle_cfl_v2, num_particles);
+          // TODO: rigid max_v2
+          dt = 0.4 * ((particle_radius * 2) / sqrt(particle_max_v2));
+          dt = max(min(dt, 0.005), 0.0001);
           // update_dt
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection0_fluid_advect<<<grid_size, block_size>>>(
-                particle_v, particle_a, dt, num_particles);
+            predict_advection0<<<grid_size, block_size>>>(
+                particle_x, particle_v, particle_a, particle_density,
+                particle_dii, particle_pressure, particle_last_pressure,
+                particle_neighbors, particle_num_neighbors,
+                particle_boundary_xj, particle_boundary_volume, dt,
+                num_particles);
           });
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection0_fluid<<<grid_size, block_size>>>(
-                particle_x, particle_density, particle_dii, particle_neighbors,
-                particle_num_neighbors, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection0_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_density, particle_dii,
-                particle_boundary_xj, particle_boundary_volume, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            reset_last_pressure<<<grid_size, block_size>>>(
-                particle_pressure, particle_last_pressure, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection1_fluid<<<grid_size, block_size>>>(
+            predict_advection1<<<grid_size, block_size>>>(
                 particle_x, particle_v, particle_dii, particle_adv_density,
                 particle_aii, particle_density, particle_neighbors,
-                particle_num_neighbors, dt, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            predict_advection1_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_v, particle_density, particle_dii,
-                particle_adv_density, particle_aii, particle_boundary_xj,
+                particle_num_neighbors, particle_boundary_xj,
                 particle_boundary_volume, pile.x_device_, pile.v_device_,
                 pile.omega_device_, dt, num_particles);
           });
@@ -215,14 +207,10 @@ int main(void) {
                   num_particles);
             });
             Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              pressure_solve_iteration1_fluid<<<grid_size, block_size>>>(
+              pressure_solve_iteration1<<<grid_size, block_size>>>(
                   particle_x, particle_density, particle_last_pressure,
                   particle_dii, particle_dij_pj, particle_sum_tmp,
-                  particle_neighbors, particle_num_neighbors, num_particles);
-            });
-            Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-              pressure_solve_iteration1_boundary<<<grid_size, block_size>>>(
-                  particle_x, particle_dij_pj, particle_sum_tmp,
+                  particle_neighbors, particle_num_neighbors,
                   particle_boundary_xj, particle_boundary_volume,
                   num_particles);
             });
@@ -234,15 +222,10 @@ int main(void) {
           }
 
           Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_pressure_accels_fluid<<<grid_size, block_size>>>(
+            compute_pressure_accels<<<grid_size, block_size>>>(
                 particle_x, particle_density, particle_pressure,
                 particle_pressure_accel, particle_neighbors,
-                particle_num_neighbors, num_particles);
-          });
-          Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
-            compute_pressure_accels_boundary<<<grid_size, block_size>>>(
-                particle_x, particle_density, particle_pressure,
-                particle_pressure_accel, particle_force, particle_torque,
+                particle_num_neighbors, particle_force, particle_torque,
                 particle_boundary_xj, particle_boundary_volume, pile.x_device_,
                 num_particles);
           });
