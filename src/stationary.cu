@@ -56,8 +56,6 @@ int main(void) {
   Variable<1, F3> particle_v = store.create<1, F3>({num_particles});
   Variable<1, F3> particle_a = store.create<1, F3>({num_particles});
   Variable<1, F> particle_density = store.create<1, F>({num_particles});
-  Variable<1, F> particle_pressure = store.create<1, F>({num_particles});
-  Variable<1, F> particle_last_pressure = store.create<1, F>({num_particles});
   Variable<2, F3> particle_boundary_xj =
       store.create<2, F3>({pile.get_size(), num_particles});
   Variable<2, F> particle_boundary_volume =
@@ -66,6 +64,10 @@ int main(void) {
       store.create<2, F3>({pile.get_size(), num_particles});
   Variable<2, F3> particle_torque =
       store.create<2, F3>({pile.get_size(), num_particles});
+  Variable<1, F> particle_cfl_v2 = store.create<1, F>({num_particles});
+  // IISPH
+  Variable<1, F> particle_pressure = store.create<1, F>({num_particles});
+  Variable<1, F> particle_last_pressure = store.create<1, F>({num_particles});
   Variable<1, F> particle_aii = store.create<1, F>({num_particles});
   Variable<1, F3> particle_dii = store.create<1, F3>({num_particles});
   Variable<1, F3> particle_dij_pj = store.create<1, F3>({num_particles});
@@ -177,8 +179,9 @@ int main(void) {
                 particle_v, particle_a, particle_cfl_v2, dt, num_particles);
           });
           F particle_max_v2 = Runner::max(particle_cfl_v2, num_particles);
-          // TODO: rigid max_v2
-          dt = 0.4 * ((particle_radius * 2) / sqrt(particle_max_v2));
+          F pile_max_v2 = pile.calculate_cfl_v2();
+          F max_v2 = max(particle_max_v2, pile_max_v2);
+          dt = 0.4 * ((particle_radius * 2) / sqrt(max_v2));
           dt = max(min(dt, 0.005), 0.0001);
           // update_dt
 

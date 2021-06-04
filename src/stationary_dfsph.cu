@@ -256,8 +256,9 @@ int main(void) {
                 particle_v, particle_a, particle_cfl_v2, dt, num_particles);
           });
           F particle_max_v2 = Runner::max(particle_cfl_v2, num_particles);
-          // TODO: rigid max_v2
-          dt = 0.4 * ((particle_radius * 2) / sqrt(particle_max_v2));
+          F pile_max_v2 = pile.calculate_cfl_v2();
+          F max_v2 = max(particle_max_v2, pile_max_v2);
+          dt = 0.4 * ((particle_radius * 2) / sqrt(max_v2));
           dt = max(min(dt, 0.005), 0.0001);
 
           // update_dt

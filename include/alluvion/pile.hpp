@@ -81,6 +81,7 @@ class Pile {
   void reallocate_kinematics_on_pinned();
   void copy_kinematics_to_device();
   void integrate_kinematics(F dt);
+  F calculate_cfl_v2() const;
   void find_contacts();
   void solve_contacts();
   U get_size() const;

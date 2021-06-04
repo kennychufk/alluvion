@@ -166,6 +166,17 @@ void Pile::integrate_kinematics(F dt) {
   }
 }
 
+F Pile::calculate_cfl_v2() const {
+  F max_v2 = std::numeric_limits<F>::lowest();
+  for (U i = 0; i < get_size(); ++i) {
+    F v2 = length_sqr(
+        cross(omega_(i), F3{distance_list_[i]->get_max_distance(), 0, 0}) +
+        v_(i));
+    if (v2 > max_v2) max_v2 = v2;
+  }
+  return max_v2;
+}
+
 void Pile::find_contacts() {
   num_contacts_.set_zero();
   for (U i = 0; i < get_size(); ++i) {
