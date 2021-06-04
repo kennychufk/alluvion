@@ -43,6 +43,7 @@ int main(void) {
   pile.build_grids(4 * kernel_radius);
   // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
+  pile.set_gravity(gravity);
   cnst::set_num_boundaries(pile.get_size());
   cnst::set_contact_tolerance(0.05);
 
@@ -249,29 +250,7 @@ int main(void) {
                 Runner::sum(particle_torque, num_particles, i * num_particles);
           }
 
-          // apply total force by fluid
-          for (U i = 0; i < pile.get_size(); ++i) {
-            if (pile.mass_[i] == 0._F) continue;
-            pile.v_(i) += 1._F / pile.mass_[i] * pile.force_[i] * dt;
-            pile.omega_(i) +=
-                calculate_angular_acceleration(pile.inertia_tensor_[i],
-                                               pile.q_[i], pile.torque_[i]) *
-                dt;
-            // clear accleration
-            pile.a_[i] = gravity;
-          }
-          // semi_implicit_euler
-          for (U i = 0; i < pile.get_size(); ++i) {
-            if (pile.mass_[i] == 0._F) continue;
-            pile.q_[i] += dt * calculate_dq(pile.omega_(i), pile.q_[i]);
-            pile.q_[i] = normalize(pile.q_[i]);
-
-            // pile.x_(i) += (pile.a_[i] * dt + pile.v_(i)) * dt;
-            // pile.v_(i) += pile.a_[i] * dt;
-            F3 dx = (pile.a_[i] * dt + pile.v_(i)) * dt;
-            pile.x_(i) += dx;
-            pile.v_(i) = 1 / dt * dx;
-          }
+          pile.integrate_kinematics(dt);
           pile.find_contacts();
           pile.solve_contacts();
         }

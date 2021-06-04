@@ -61,6 +61,7 @@ class Pile {
   Variable<1, U> num_contacts_;
   PinnedVariable<1, Contact> contacts_pinned_;
   PinnedVariable<1, U> num_contacts_pinned_;
+  F3 gravity_;
 
   Store& store_;
 
@@ -75,9 +76,11 @@ class Pile {
            F boundary_viscosity, F3 const& inertia_tensor, F3 const& x,
            Q const& q, Mesh const& display_mesh);
   void build_grids(F margin);
+  void set_gravity(F3 gravity);
   void reallocate_kinematics_on_device();
   void reallocate_kinematics_on_pinned();
   void copy_kinematics_to_device();
+  void integrate_kinematics(F dt);
   void find_contacts();
   void solve_contacts();
   U get_size() const;

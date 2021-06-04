@@ -112,6 +112,8 @@ void Pile::build_grids(F margin) {
   }
 }
 
+void Pile::set_gravity(F3 gravity) { gravity_ = gravity; }
+
 void Pile::reallocate_kinematics_on_device() {
   store_.remove(x_device_);
   store_.remove(v_device_);
@@ -144,6 +146,24 @@ void Pile::copy_kinematics_to_device() {
   x_device_.set_bytes(x_.ptr_);
   v_device_.set_bytes(v_.ptr_);
   omega_device_.set_bytes(omega_.ptr_);
+}
+
+void Pile::integrate_kinematics(F dt) {
+  for (U i = 0; i < get_size(); ++i) {
+    if (mass_[i] == 0._F) continue;
+    v_(i) += 1._F / mass_[i] * force_[i] * dt;
+    omega_(i) +=
+        calculate_angular_acceleration(inertia_tensor_[i], q_[i], torque_[i]) *
+        dt;
+    a_[i] = gravity_;
+    q_[i] += dt * calculate_dq(omega_(i), q_[i]);
+    q_[i] = normalize(q_[i]);
+    // x_(i) += (a_[i] * dt + v_(i)) * dt;
+    // v_(i) += a_[i] * dt;
+    F3 dx = (a_[i] * dt + v_(i)) * dt;
+    x_(i) += dx;
+    v_(i) = 1 / dt * dx;
+  }
 }
 
 void Pile::find_contacts() {
