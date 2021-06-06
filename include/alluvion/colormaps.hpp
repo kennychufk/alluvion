@@ -4,6 +4,8 @@
 #include <vector>
 
 namespace alluvion {
+// https://github.com/jgreitemann/colormap/blob/master/include/colormap/palettes.hpp
+// https://github.com/tdegeus/cppcolormap/blob/master/include/cppcolormap.h
 constexpr std::array<std::array<float, 3>, 256> kViridisData =
     // {{{
     {{

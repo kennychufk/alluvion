@@ -3,18 +3,18 @@
 
 #include <glad/glad.h>
 
-#include <alluvion/base_variable.hpp>
 namespace alluvion {
 class UniqueGraphicalResource {
  public:
   UniqueGraphicalResource() = delete;
   UniqueGraphicalResource(GLuint vbo, cudaGraphicsResource* res,
-                          BaseVariable* var);
+                          void** mapped_ptr);
   UniqueGraphicalResource(const UniqueGraphicalResource&) = delete;
+  void set_mapped_pointer(void* ptr);
   virtual ~UniqueGraphicalResource();
   GLuint vbo_;
   cudaGraphicsResource* res_;
-  BaseVariable* var_;
+  void** mapped_ptr_;
 };
 }  // namespace alluvion
 

@@ -9,13 +9,12 @@
 #include <vector>
 
 #include "alluvion/allocator.hpp"
-#include "alluvion/base_variable.hpp"
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 
 namespace alluvion {
 template <U D, typename M>
-class Variable : public BaseVariable {
+class Variable {
  public:
   Variable() : ptr_(nullptr) {}
   Variable(const Variable& var) = default;
@@ -24,27 +23,33 @@ class Variable : public BaseVariable {
     Allocator::allocate<M>(&ptr_, get_linear_shape());
   }
   virtual ~Variable() {}
-  virtual void set_pointer(void* ptr) override { ptr_ = ptr; }
   // ==== numpy-related functions
   constexpr NumericType get_type() const {
-    if (typeid(M) == typeid(F) || typeid(M) == typeid(F2) ||
-        typeid(M) == typeid(F3) || typeid(M) == typeid(F4))
-      return typeid(F) == typeid(float) ? NumericType::f32 : NumericType::f64;
+    if (typeid(M) == typeid(float) || typeid(M) == typeid(float2) ||
+        typeid(M) == typeid(float3) || typeid(M) == typeid(float4))
+      return NumericType::f32;
+    if (typeid(M) == typeid(double) || typeid(M) == typeid(double2) ||
+        typeid(M) == typeid(double3) || typeid(M) == typeid(double4))
+      return NumericType::f64;
     if (typeid(M) == typeid(I)) return NumericType::i32;
     if (typeid(M) == typeid(U)) return NumericType::u32;
     return NumericType::undefined;
   }
   constexpr U get_num_primitives_per_unit() const {
-    if (typeid(M) == typeid(F)) return 1;
+    if (typeid(M) == typeid(float)) return 1;
+    if (typeid(M) == typeid(double)) return 1;
     if (typeid(M) == typeid(I)) return 1;
     if (typeid(M) == typeid(U)) return 1;
-    if (typeid(M) == typeid(F2)) return 2;
+    if (typeid(M) == typeid(float2)) return 2;
+    if (typeid(M) == typeid(double2)) return 2;
     if (typeid(M) == typeid(I2)) return 2;
     if (typeid(M) == typeid(U2)) return 2;
-    if (typeid(M) == typeid(F3)) return 3;
+    if (typeid(M) == typeid(float3)) return 3;
+    if (typeid(M) == typeid(double3)) return 3;
     if (typeid(M) == typeid(I3)) return 3;
     if (typeid(M) == typeid(U3)) return 3;
-    if (typeid(M) == typeid(F4)) return 4;
+    if (typeid(M) == typeid(float4)) return 4;
+    if (typeid(M) == typeid(double4)) return 4;
     if (typeid(M) == typeid(I4)) return 4;
     if (typeid(M) == typeid(U4)) return 4;
     if (typeid(M) == typeid(Contact)) return 0;
@@ -153,7 +158,6 @@ class Variable : public BaseVariable {
     }
     char type_label;
     stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
-    bool conversion_required = false;
     U num_bytes = linear_shape * sizeof(M);
     std::vector<M> host_buffer(linear_shape);
 

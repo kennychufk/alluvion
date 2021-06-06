@@ -5,9 +5,12 @@ namespace alluvion {
 
 UniqueGraphicalResource::UniqueGraphicalResource(GLuint vbo,
                                                  cudaGraphicsResource* res,
-                                                 BaseVariable* var)
-    : vbo_(vbo), res_(res), var_(var) {}
+                                                 void** mapped_ptr)
+    : vbo_(vbo), res_(res), mapped_ptr_(mapped_ptr) {}
 UniqueGraphicalResource::~UniqueGraphicalResource() {
   GraphicalAllocator::free(&vbo_, &res_);
+}
+void UniqueGraphicalResource::set_mapped_pointer(void* ptr) {
+  *mapped_ptr_ = ptr;
 }
 }  // namespace alluvion

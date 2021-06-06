@@ -5,6 +5,7 @@
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
+#include "alluvion/display.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
@@ -14,28 +15,43 @@ using namespace alluvion::dg;
 namespace py = pybind11;
 
 template <unsigned int D, typename M>
-void declare_variable(py::module& m, py::class_<Store>& store_class,
-                      const char* name) {
-  using Class = Variable<D, M>;
+void declare_variable_with_store_creation(py::module& m,
+                                          py::class_<Store>& store_class,
+                                          const char* name) {
+  using VariableClass = Variable<D, M>;
+  using GraphicalVariableClass = GraphicalVariable<D, M>;
   std::string create_func_name = std::string("create") + name;
   store_class.def(create_func_name.c_str(), &Store::create<D, M>);
+  std::string create_graphical_func_name =
+      std::string("create_graphical") + name;
+  store_class.def(create_graphical_func_name.c_str(),
+                  &Store::create_graphical<D, M>,
+                  py::return_value_policy::take_ownership);
 
   std::string variable_name = std::string("Variable") + name;
-  py::class_<Class>(m, variable_name.c_str())
-      .def(py::init<const Class&>())
+  py::class_<VariableClass>(m, variable_name.c_str())
+      .def(py::init<const VariableClass&>())
+      .def_readonly("ptr", &VariableClass::ptr_)
       .def("get_bytes",
-           [](Class& variable, py::array_t<unsigned char> bytes) {
+           [](VariableClass& variable, py::array_t<unsigned char> bytes) {
              variable.get_bytes(bytes.mutable_data(), bytes.size());
            })
       .def("set_bytes",
-           [](Class& variable, py::array_t<unsigned char> bytes) {
+           [](VariableClass& variable, py::array_t<unsigned char> bytes) {
              variable.set_bytes(bytes.data(), bytes.size());
            })
-      .def("get_type", &Class::get_type)
-      .def("get_num_primitives_per_unit", &Class::get_num_primitives_per_unit)
-      .def("get_linear_shape", &Class::get_linear_shape)
-      .def("get_num_primitives", &Class::get_num_primitives)
-      .def("get_shape", &Class::get_shape);
+      .def("get_type", &VariableClass::get_type)
+      .def("get_num_primitives_per_unit",
+           &VariableClass::get_num_primitives_per_unit)
+      .def("get_linear_shape", &VariableClass::get_linear_shape)
+      .def("get_num_primitives", &VariableClass::get_num_primitives)
+      .def("get_shape", &VariableClass::get_shape);
+
+  std::string graphical_variable_name = std::string("GraphicalVariable") + name;
+  py::class_<GraphicalVariableClass, VariableClass>(
+      m, graphical_variable_name.c_str())
+      .def(py::init<const GraphicalVariableClass&>())
+      .def_readonly("vbo", &GraphicalVariableClass::vbo_);
 }
 
 PYBIND11_MODULE(_alluvion, m) {
@@ -43,11 +59,22 @@ PYBIND11_MODULE(_alluvion, m) {
   using namespace pybind11;
 
   py::class_<Store> store_class =
-      py::class_<Store>(m, "Store").def(py::init<>());
+      py::class_<Store>(m, "Store")
+          .def(py::init<>())
+          .def("create_display",
+               [](Store& store, int width, int height, const char* title,
+                  bool offscreen) -> void {
+                 store.create_display(width, height, title, offscreen);
+               })
+          .def("map_graphical_pointers", &Store::map_graphical_pointers)
+          .def("unmap_graphical_pointers", &Store::unmap_graphical_pointers);
 
-  declare_variable<1, F>(m, store_class, "1DF");
-  declare_variable<1, F3>(m, store_class, "1DF3");
-  declare_variable<2, F3>(m, store_class, "2DF3");
+  declare_variable_with_store_creation<1, float>(m, store_class, "1Dfloat");
+  declare_variable_with_store_creation<1, float3>(m, store_class, "1Dfloat3");
+  declare_variable_with_store_creation<2, float3>(m, store_class, "2Dfloat3");
+  declare_variable_with_store_creation<1, double>(m, store_class, "1Ddouble");
+  declare_variable_with_store_creation<1, double3>(m, store_class, "1Ddouble3");
+  declare_variable_with_store_creation<2, double3>(m, store_class, "2Ddouble3");
 
   // py::class_<Runner>(m, "Runner")
   //     .def_static(
@@ -62,7 +89,8 @@ PYBIND11_MODULE(_alluvion, m) {
       .value("i32", NumericType::i32)
       .value("u32", NumericType::u32)
       .value("undefined", NumericType::undefined);
-  py::class_<Display>(m, "Display").def(py::init<int, int, const char*>());
+
+  py::class_<Display>(m, "Display");
 
   m.def(
       "evaluate_developing_hagen_poiseuille",

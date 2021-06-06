@@ -75,17 +75,34 @@ class Store {
     var.ptr_ = nullptr;
   }
 
+  /*
+   * NOTE: Should return a pointer to the dynamically allocated instance.
+   * =================================
+   * (A) Reason for returning pointer: The device pointer will be later changed
+   * from nullptr to the mapped pointer, so it makes sense to return a pointer
+   * instead of a copy.
+   * =================================
+   * (B) Reason for dynamic allocation: The ownership of the dynamically
+   * allocated instance must be transferred to the client to avoid the following
+   * 2 unexpected behaviors (reasons unknown):
+   * =================================
+   * Problem 1: Program crashes upon the invocation of any virtual function
+   * (even when invoked internally in C++).
+   * =================================
+   * Problem 2: Partially-corrupted data are returned when copying data from the
+   * device memory in interactive Python (IPython or interactive Python shell).
+   */
   template <unsigned int D, typename M>
-  GraphicalVariable<D, M> create_graphical(
+  GraphicalVariable<D, M>* create_graphical(
       std::array<unsigned int, D> const& shape) {
     if (!display_) {
       std::cerr << "Display not created" << std::endl;
       abort();
     }
-    GraphicalVariable<D, M> var(shape);
+    GraphicalVariable<D, M>* var = new GraphicalVariable<D, M>(shape);
     graphical_resource_dict_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(var.vbo_),
-        std::forward_as_tuple(var.vbo_, var.res_, &var));
+        std::piecewise_construct, std::forward_as_tuple(var->vbo_),
+        std::forward_as_tuple(var->vbo_, var->res_, &(var->ptr_)));
     update_resource_array();
     return var;
   }

@@ -27,7 +27,7 @@ void Store::map_graphical_pointers() {
 
   for (auto& entry : graphical_resource_dict_) {
     UniqueGraphicalResource& unique_resource = entry.second;
-    unique_resource.var_->set_pointer(
+    unique_resource.set_mapped_pointer(
         GraphicalAllocator::get_mapped_pointer(unique_resource.res_));
   }
 }
@@ -35,7 +35,7 @@ void Store::unmap_graphical_pointers() {
   GraphicalAllocator::unmap(resource_array_);
   for (auto& entry : graphical_resource_dict_) {
     UniqueGraphicalResource& unique_resource = entry.second;
-    unique_resource.var_->set_pointer(nullptr);
+    unique_resource.set_mapped_pointer(nullptr);
   }
 }
 

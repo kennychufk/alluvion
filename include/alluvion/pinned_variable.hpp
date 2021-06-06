@@ -1,10 +1,9 @@
 #ifndef ALLUVION_PINNED_VARIABLE_HPP
 #define ALLUVION_PINNED_VARIABLE_HPP
 
-#include "alluvion/base_variable.hpp"
 namespace alluvion {
 template <U D, typename M>
-class PinnedVariable : public BaseVariable {
+class PinnedVariable {
  public:
   PinnedVariable() : ptr_(nullptr) {}
   PinnedVariable(const PinnedVariable& var) = default;
@@ -13,7 +12,6 @@ class PinnedVariable : public BaseVariable {
     Allocator::allocate_pinned<M>(&ptr_, get_linear_shape());
   }
   virtual ~PinnedVariable() {}
-  virtual void set_pointer(void* ptr) override { ptr_ = ptr; }
   U get_linear_shape() const {
     return std::accumulate(std::begin(shape_), std::end(shape_), 1,
                            std::multiplies<U>());
