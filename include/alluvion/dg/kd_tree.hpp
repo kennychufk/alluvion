@@ -16,7 +16,7 @@
 namespace alluvion {
 namespace dg {
 
-template <typename HullType>
+template <typename HullType, typename TF>
 class KDTree {
  public:
   using TraversalPredicate =
@@ -69,7 +69,7 @@ class KDTree {
                             TraversalQueue& pending = TraversalQueue()) const;
 
  protected:
-  void construct(unsigned int node, AlignedBox3r const& box, unsigned int b,
+  void construct(unsigned int node, AlignedBox3r<TF> const& box, unsigned int b,
                  unsigned int n);
   void traverseDepthFirst(unsigned int node, unsigned int depth,
                           TraversalPredicate pred, TraversalCallback cb,
@@ -81,7 +81,7 @@ class KDTree {
 
   unsigned int addNode(unsigned int b, unsigned int n);
 
-  virtual Vector3r const& entityPosition(unsigned int i) const = 0;
+  virtual Vector3r<TF> const& entityPosition(unsigned int i) const = 0;
   virtual void computeHull(unsigned int b, unsigned int n,
                            HullType& hull) const = 0;
 
@@ -92,8 +92,8 @@ class KDTree {
   std::vector<HullType> m_hulls;
 };
 
-template <typename HullType>
-void KDTree<HullType>::construct() {
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::construct() {
   m_nodes.clear();
   m_hulls.clear();
   if (m_lst.empty()) return;
@@ -101,16 +101,17 @@ void KDTree<HullType>::construct() {
   std::iota(m_lst.begin(), m_lst.end(), 0);
 
   // Determine bounding box of considered domain.
-  auto box = AlignedBox3r{};
+  auto box = AlignedBox3r<TF>{};
   for (auto i = 0u; i < m_lst.size(); ++i) box.extend(entityPosition(i));
 
   auto ni = addNode(0, static_cast<unsigned int>(m_lst.size()));
   construct(ni, box, 0, static_cast<unsigned int>(m_lst.size()));
 }
 
-template <typename HullType>
-void KDTree<HullType>::construct(unsigned int node, AlignedBox3r const& box,
-                                 unsigned int b, unsigned int n) {
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::construct(unsigned int node,
+                                     AlignedBox3r<TF> const& box,
+                                     unsigned int b, unsigned int n) {
   // If only one element is left end recursion.
   // if (n == 1) return;
   if (n < 10) return;
@@ -146,8 +147,8 @@ void KDTree<HullType>::construct(unsigned int node, AlignedBox3r const& box,
   construct(m_nodes[node].children[1], r_box, b + hal, n - hal);
 }
 
-template <typename HullType>
-void KDTree<HullType>::traverseDepthFirst(
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::traverseDepthFirst(
     TraversalPredicate pred, TraversalCallback cb,
     TraversalPriorityLess const& pless) const {
   if (m_nodes.empty()) return;
@@ -155,8 +156,8 @@ void KDTree<HullType>::traverseDepthFirst(
   if (pred(0, 0)) traverseDepthFirst(0, 0, pred, cb, pless);
 }
 
-template <typename HullType>
-void KDTree<HullType>::traverseDepthFirst(
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::traverseDepthFirst(
     unsigned int node_index, unsigned int depth, TraversalPredicate pred,
     TraversalCallback cb, TraversalPriorityLess const& pless) const {
   // auto pending = std::stack<QueueItem>{};
@@ -229,12 +230,11 @@ void KDTree<HullType>::traverseDepthFirst(
   //}
 }
 
-template <typename HullType>
-void KDTree<HullType>::traverseBreadthFirst(TraversalPredicate const& pred,
-                                            TraversalCallback const& cb,
-                                            unsigned int start_node,
-                                            TraversalPriorityLess const& pless,
-                                            TraversalQueue& pending) const {
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::traverseBreadthFirst(
+    TraversalPredicate const& pred, TraversalCallback const& cb,
+    unsigned int start_node, TraversalPriorityLess const& pless,
+    TraversalQueue& pending) const {
   // auto pending = TraversalQueue{};
 
   cb(start_node, 0);
@@ -242,8 +242,8 @@ void KDTree<HullType>::traverseBreadthFirst(TraversalPredicate const& pred,
   traverseBreadthFirst(pending, pred, cb, pless);
 }
 
-template <typename HullType>
-unsigned int KDTree<HullType>::addNode(unsigned int b, unsigned int n) {
+template <typename HullType, typename TF>
+unsigned int KDTree<HullType, TF>::addNode(unsigned int b, unsigned int n) {
   HullType hull;
   computeHull(b, n, hull);
   m_hulls.push_back(hull);
@@ -251,8 +251,8 @@ unsigned int KDTree<HullType>::addNode(unsigned int b, unsigned int n) {
   return static_cast<unsigned int>(m_nodes.size() - 1);
 }
 
-template <typename HullType>
-void KDTree<HullType>::update() {
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::update() {
   traverseDepthFirst([&](unsigned int, unsigned int) { return true; },
                      [&](unsigned int node_index, unsigned int) {
                        auto const& nd = node(node_index);
@@ -260,8 +260,8 @@ void KDTree<HullType>::update() {
                      });
 }
 
-template <typename HullType>
-void KDTree<HullType>::traverseBreadthFirst(
+template <typename HullType, typename TF>
+void KDTree<HullType, TF>::traverseBreadthFirst(
     TraversalQueue& pending, TraversalPredicate const& pred,
     TraversalCallback const& cb, TraversalPriorityLess const& pless) const {
   while (!pending.empty()) {

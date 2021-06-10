@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "alluvion/constants.hpp"
+#include "alluvion/float_shorthands.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
 
@@ -15,7 +16,8 @@ SCENARIO("testing the runner") {
     Variable<1, F3> var = store.create<1, F3>({num_particles});
     REQUIRE(var.get_num_primitives() == num_particles * 3);
     WHEN("creating fluid block") {
-      cnst::set_particle_attr(0.025, 0.0, 0.0);
+      store.get_cn<F>().set_particle_attr(0.025, 0.0, 0.0);
+      store.copy_cn<F>();
       Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
         create_fluid_block<F3, F><<<grid_size, block_size>>>(
             var, num_particles, 0, 1, F3{-0.5, 0.0, -0.5}, F3{0.5, 1.0, 0.5});

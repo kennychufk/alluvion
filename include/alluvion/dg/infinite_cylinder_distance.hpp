@@ -5,11 +5,19 @@
 
 namespace alluvion {
 namespace dg {
-class InfiniteCylinderDistance : public Distance {
+template <typename TF3, typename TF>
+class InfiniteCylinderDistance : public Distance<TF3, TF> {
  public:
-  InfiniteCylinderDistance(F radius);
-  F signedDistance(dg::Vector3r const& x) const override;
-  F radius_;
+  InfiniteCylinderDistance(TF radius)
+      : radius_(radius),
+        // AABB should be finite
+        Distance<TF3, TF>(TF3{-radius, -radius, -radius},
+                          TF3{radius, radius, radius}, radius) {}
+
+  TF signedDistance(dg::Vector3r<TF> const& x) const override {
+    return sqrt(x(1) * x(1) + x(2) * x(2)) - radius_;
+  }
+  TF radius_;
 };
 }  // namespace dg
 }  // namespace alluvion

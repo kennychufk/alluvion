@@ -6,70 +6,92 @@
 namespace alluvion {
 namespace dg {
 
+template <typename TF>
 class TriangleMesh;
 
+template <typename TF>
 class FaceContainer {
  public:
-  FaceIterator begin() const { return FaceIterator(0, m_mesh); }
-  FaceIterator end() const;
+  FaceIterator<TF> begin() const { return FaceIterator<TF>(0, m_mesh); }
+  FaceIterator<TF> end() const {
+    return FaceIterator<TF>(static_cast<unsigned int>(m_mesh->nFaces()),
+                            m_mesh);
+  }
 
  private:
-  friend class TriangleMesh;
-  FaceContainer(TriangleMesh* mesh) : m_mesh(mesh) {}
+  friend class TriangleMesh<TF>;
+  FaceContainer(TriangleMesh<TF>* mesh) : m_mesh(mesh) {}
 
-  TriangleMesh* m_mesh;
+  TriangleMesh<TF>* m_mesh;
 };
 
+template <typename TF>
 class FaceConstContainer {
  public:
-  FaceConstIterator begin() const { return FaceConstIterator(0, m_mesh); }
-  FaceConstIterator end() const;
+  FaceConstIterator<TF> begin() const {
+    return FaceConstIterator<TF>(0, m_mesh);
+  }
+  FaceConstIterator<TF> end() const {
+    return FaceConstIterator<TF>(static_cast<unsigned int>(m_mesh->nFaces()),
+                                 m_mesh);
+  }
 
  private:
-  friend class TriangleMesh;
-  FaceConstContainer(TriangleMesh const* mesh) : m_mesh(mesh) {}
+  friend class TriangleMesh<TF>;
+  FaceConstContainer(TriangleMesh<TF> const* mesh) : m_mesh(mesh) {}
 
-  TriangleMesh const* m_mesh;
+  TriangleMesh<TF> const* m_mesh;
 };
 
+template <typename TF>
 class IncidentFaceContainer {
  public:
-  IncidentFaceIterator begin() const {
-    return IncidentFaceIterator(m_v, m_mesh);
+  IncidentFaceIterator<TF> begin() const {
+    return IncidentFaceIterator<TF>(m_v, m_mesh);
   }
-  IncidentFaceIterator end() const { return IncidentFaceIterator(); }
+  IncidentFaceIterator<TF> end() const { return IncidentFaceIterator<TF>(); }
 
  private:
-  friend class TriangleMesh;
-  IncidentFaceContainer(unsigned int v, TriangleMesh const* mesh)
+  friend class TriangleMesh<TF>;
+  IncidentFaceContainer(unsigned int v, TriangleMesh<TF> const* mesh)
       : m_v(v), m_mesh(mesh) {}
 
-  TriangleMesh const* m_mesh;
+  TriangleMesh<TF> const* m_mesh;
   unsigned int m_v;
 };
 
+template <typename TF>
 class VertexContainer {
  public:
-  VertexIterator begin() const { return VertexIterator(0, m_mesh); }
-  VertexIterator end() const;
+  VertexIterator<TF> begin() const { return VertexIterator<TF>(0, m_mesh); }
+  VertexIterator<TF> end() const {
+    return VertexIterator<TF>(static_cast<unsigned int>(m_mesh->nVertices()),
+                              m_mesh);
+  }
 
  private:
-  friend class TriangleMesh;
-  VertexContainer(TriangleMesh* mesh) : m_mesh(mesh) {}
+  friend class TriangleMesh<TF>;
+  VertexContainer(TriangleMesh<TF>* mesh) : m_mesh(mesh) {}
 
-  TriangleMesh* m_mesh;
+  TriangleMesh<TF>* m_mesh;
 };
 
+template <typename TF>
 class VertexConstContainer {
  public:
-  VertexConstIterator begin() const { return VertexConstIterator(0, m_mesh); }
-  VertexConstIterator end() const;
+  VertexConstIterator<TF> begin() const {
+    return VertexConstIterator<TF>(0, m_mesh);
+  }
+  VertexConstIterator<TF> end() const {
+    return VertexConstIterator<TF>(
+        static_cast<unsigned int>(m_mesh->nVertices()), m_mesh);
+  }
 
  private:
-  friend class TriangleMesh;
-  VertexConstContainer(TriangleMesh const* mesh) : m_mesh(mesh) {}
+  friend class TriangleMesh<TF>;
+  VertexConstContainer(TriangleMesh<TF> const* mesh) : m_mesh(mesh) {}
 
-  TriangleMesh const* m_mesh;
+  TriangleMesh<TF> const* m_mesh;
 };
 }  // namespace dg
 }  // namespace alluvion

@@ -1,15 +1,21 @@
 #ifndef ALLUVION_DG_MESH_DISTANCE_HPP
 #define ALLUVION_DG_MESH_DISTANCE_HPP
+#include <omp.h>
+
+#include <functional>
+#include <limits>
 
 #include "alluvion/dg/common.hpp"
+#include "alluvion/dg/mesh_distance.hpp"
+#include "alluvion/dg/point_triangle_distance.hpp"
 #include "alluvion/dg/triangle_mesh.hpp"
 
 namespace std {
-template <>
-struct hash<alluvion::dg::Vector3r> {
-  std::size_t operator()(alluvion::dg::Vector3r const& x) const {
+template <typename TF>
+struct hash<alluvion::dg::Vector3r<TF>> {
+  std::size_t operator()(alluvion::dg::Vector3r<TF> const& x) const {
     std::size_t seed = 0;
-    std::hash<alluvion::F> hasher;
+    std::hash<TF> hasher;
     seed ^= hasher(x[0]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     seed ^= hasher(x[1]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     seed ^= hasher(x[2]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -17,10 +23,10 @@ struct hash<alluvion::dg::Vector3r> {
   }
 };
 
-template <>
-struct less<alluvion::dg::Vector3r> {
-  bool operator()(alluvion::dg::Vector3r const& left,
-                  alluvion::dg::Vector3r const& right) const {
+template <typename TF>
+struct less<alluvion::dg::Vector3r<TF>> {
+  bool operator()(alluvion::dg::Vector3r<TF> const& left,
+                  alluvion::dg::Vector3r<TF> const& right) const {
     for (auto i = 0u; i < 3u; ++i) {
       if (left(i) < right(i))
         return true;
@@ -46,56 +52,297 @@ namespace alluvion {
 namespace dg {
 
 enum class NearestEntity;
+template <typename TF>
 class TriangleMesh;
+template <typename TU>
 class Halfedge;
-class MeshDistance : public Distance {
+template <typename TF3, typename TF>
+class MeshDistance : public Distance<TF3, TF> {
   struct Candidate {
     bool operator<(Candidate const& other) const { return b < other.b; }
     unsigned int node_index;
-    F b, w;
+    TF b, w;
   };
 
  public:
-  MeshDistance(TriangleMesh const& mesh, bool precompute_normals = true);
+  using super = Distance<TF3, TF>;
+  MeshDistance(TriangleMesh<TF> const& mesh, bool precompute_normals = true)
+      : m_bsh(mesh.vertex_data(), mesh.face_data()),
+        m_mesh(mesh),
+        m_precomputed_normals(precompute_normals) {
+    auto max_threads = omp_get_max_threads();
+    m_queues.resize(max_threads);
+    m_nearest_face.resize(max_threads);
+    m_cache.resize(max_threads, FunctionValueCache(
+                                    [&](Vector3r<TF> const& xi) {
+                                      return signedDistance(xi);
+                                    },
+                                    10000u));
+    m_ucache.resize(
+        max_threads,
+        FunctionValueCache([&](Vector3r<TF> const& xi) { return distance(xi); },
+                           10000u));
+
+    m_bsh.construct();
+
+    if (m_precomputed_normals) {
+      m_face_normals.resize(m_mesh.nFaces());
+      m_vertex_normals.resize(mesh.nVertices(), Vector3r<TF>::Zero());
+      std::transform(m_mesh.faces().begin(), m_mesh.faces().end(),
+                     m_face_normals.begin(),
+                     [&](std::array<unsigned int, 3> const& face) {
+                       auto const& x0 = m_mesh.vertex(face[0]);
+                       auto const& x1 = m_mesh.vertex(face[1]);
+                       auto const& x2 = m_mesh.vertex(face[2]);
+
+                       auto n = (x1 - x0).cross(x2 - x0).normalized();
+
+                       auto e1 = (x1 - x0).normalized();
+                       auto e2 = (x2 - x1).normalized();
+                       auto e3 = (x0 - x2).normalized();
+
+                       auto alpha = Vector3r<TF>{std::acos(e1.dot(-e3)),
+                                                 std::acos(e2.dot(-e1)),
+                                                 std::acos(e3.dot(-e2))};
+                       m_vertex_normals[face[0]] += alpha[0] * n;
+                       m_vertex_normals[face[1]] += alpha[1] * n;
+                       m_vertex_normals[face[2]] += alpha[2] * n;
+
+                       return n;
+                     });
+    }
+    super::aabb_min_.x = super::aabb_min_.y = super::aabb_min_.z =
+        std::numeric_limits<TF>::max();
+    super::aabb_max_.x = super::aabb_max_.y = super::aabb_max_.z =
+        std::numeric_limits<TF>::lowest();
+    TF max_distance2 = 0;
+    for (dg::Vector3r<TF> const& vertex : m_mesh.vertex_data()) {
+      if (vertex(0) < super::aabb_min_.x) super::aabb_min_.x = vertex(0);
+      if (vertex(1) < super::aabb_min_.y) super::aabb_min_.y = vertex(1);
+      if (vertex(2) < super::aabb_min_.z) super::aabb_min_.z = vertex(2);
+      if (vertex(0) > super::aabb_max_.x) super::aabb_max_.x = vertex(0);
+      if (vertex(1) > super::aabb_max_.y) super::aabb_max_.y = vertex(1);
+      if (vertex(2) > super::aabb_max_.z) super::aabb_max_.z = vertex(2);
+      TF distance2 = vertex.dot(vertex);
+      if (distance2 > max_distance2) max_distance2 = distance2;
+    }
+    super::max_distance_ = sqrt(max_distance2);
+  }
 
   // Returns the shortest unsigned distance from a given point x to
   // the stored mesh.
   // Thread-safe function.
-  F distance(dg::Vector3r const& x, dg::Vector3r* nearest_point = nullptr,
-             unsigned int* nearest_face = nullptr,
-             NearestEntity* ne = nullptr) const;
+  TF distance(dg::Vector3r<TF> const& x,
+              dg::Vector3r<TF>* nearest_point = nullptr,
+              unsigned int* nearest_face = nullptr,
+              NearestEntity* ne = nullptr) const {
+    using namespace std::placeholders;
+
+    auto dist_candidate = std::numeric_limits<TF>::max();
+    auto f = m_nearest_face[omp_get_thread_num()];
+    if (f < m_mesh.nFaces()) {
+      auto t = std::array<Vector3r<TF> const*, 3>{
+          &m_mesh.vertex(m_mesh.faceVertex(f, 0)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 1)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 2))};
+      dist_candidate = std::sqrt(point_triangle_sqdistance(x, t));
+    }
+
+    auto pred = [&](unsigned int node_index, unsigned int) {
+      return predicate(node_index, m_bsh, x, dist_candidate);
+    };
+
+    auto cb = [&](unsigned int node_index, unsigned int) {
+      return callback(node_index, m_bsh, x, dist_candidate);
+    };
+
+    auto pless = [&](std::array<int, 2> const& c) {
+      // return true;
+      auto const& hull0 = m_bsh.hull(c[0]);
+      auto const& hull1 = m_bsh.hull(c[1]);
+      auto d0_2 = (x - hull0.x()).norm() - hull0.r();
+      auto d1_2 = (x - hull1.x()).norm() - hull1.r();
+      return d0_2 < d1_2;
+    };
+
+    while (!m_queues[omp_get_thread_num()].empty())
+      m_queues[omp_get_thread_num()].pop();
+    m_bsh.traverseDepthFirst(pred, cb, pless);
+
+    f = m_nearest_face[omp_get_thread_num()];
+    if (nearest_point) {
+      auto t = std::array<Vector3r<TF> const*, 3>{
+          &m_mesh.vertex(m_mesh.faceVertex(f, 0)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 1)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 2))};
+      auto np = Vector3r<TF>{};
+      auto ne_ = NearestEntity{};
+      auto dist2_ = point_triangle_sqdistance(x, t, &np, &ne_);
+      dist_candidate = std::sqrt(dist2_);
+      if (ne) *ne = ne_;
+      if (nearest_point) *nearest_point = np;
+    }
+    if (nearest_face) *nearest_face = f;
+    return dist_candidate;
+  }
 
   // Requires a closed two-manifold mesh as input data.
   // Thread-safe function.
-  F signedDistance(dg::Vector3r const& x) const override;
-  F signedDistanceCached(dg::Vector3r const& x) const;
+  TF signedDistance(dg::Vector3r<TF> const& x) const override {
+    unsigned int nf;
+    auto ne = NearestEntity{};
+    auto np = Vector3r<TF>{};
+    auto dist = distance(x, &np, &nf, &ne);
 
-  F unsignedDistance(dg::Vector3r const& x) const;
-  F unsignedDistanceCached(dg::Vector3r const& x) const;
+    auto n = Vector3r<TF>{};
+    switch (ne) {
+      case NearestEntity::VN0:
+        n = vertex_normal(m_mesh.faceVertex(nf, 0));
+        break;
+      case NearestEntity::VN1:
+        n = vertex_normal(m_mesh.faceVertex(nf, 1));
+        break;
+      case NearestEntity::VN2:
+        n = vertex_normal(m_mesh.faceVertex(nf, 2));
+        break;
+      case NearestEntity::EN0:
+        n = edge_normal({nf, 0});
+        break;
+      case NearestEntity::EN1:
+        n = edge_normal({nf, 1});
+        break;
+      case NearestEntity::EN2:
+        n = edge_normal({nf, 2});
+        break;
+      case NearestEntity::FN:
+        n = face_normal(nf);
+        break;
+      default:
+        n.setZero();
+        break;
+    }
+
+    if ((x - np).dot(n) < 0.0) dist *= -1.0;
+
+    return dist;
+  }
+  TF signedDistanceCached(dg::Vector3r<TF> const& x) const {
+    return m_cache[omp_get_thread_num()](x);
+  }
+
+  TF unsignedDistance(dg::Vector3r<TF> const& x) const { return distance(x); }
+  TF unsignedDistanceCached(dg::Vector3r<TF> const& x) const {
+    return m_ucache[omp_get_thread_num()](x);
+  }
 
  private:
-  dg::Vector3r vertex_normal(unsigned int v) const;
-  dg::Vector3r edge_normal(Halfedge const& h) const;
-  dg::Vector3r face_normal(unsigned int f) const;
+  dg::Vector3r<TF> vertex_normal(unsigned int v) const {
+    if (m_precomputed_normals) return m_vertex_normals[v];
 
-  void callback(unsigned int node_index, TriangleMeshBSH const& bsh,
-                dg::Vector3r const& x, F& dist) const;
+    auto const& x0 = m_mesh.vertex(v);
+    auto n = Vector3r<TF>{};
+    n.setZero();
+    for (auto h : m_mesh.incident_faces(v)) {
+      assert(m_mesh.source(h) == v);
+      auto ve0 = m_mesh.target(h);
+      auto e0 = (m_mesh.vertex(ve0) - x0).eval();
+      e0.normalize();
+      auto ve1 = m_mesh.target(h.next());
+      auto e1 = (m_mesh.vertex(ve1) - x0).eval();
+      e1.normalize();
+      auto alpha = std::acos((e0.dot(e1)));
+      n += alpha * e0.cross(e1);
+    }
+    return n;
+  }
+  dg::Vector3r<TF> edge_normal(Halfedge<unsigned int> const& h) const {
+    auto o = m_mesh.opposite(h);
 
-  bool predicate(unsigned int node_index, TriangleMeshBSH const& bsh,
-                 dg::Vector3r const& x, F& dist) const;
+    if (m_precomputed_normals) {
+      if (o.isBoundary()) return m_face_normals[h.face()];
+      return m_face_normals[h.face()] + m_face_normals[o.face()];
+    }
+
+    if (o.isBoundary()) return face_normal(h.face());
+    return face_normal(h.face()) + face_normal(o.face());
+  }
+  dg::Vector3r<TF> face_normal(unsigned int f) const {
+    if (m_precomputed_normals) return m_face_normals[f];
+
+    auto const& x0 = m_mesh.vertex(m_mesh.faceVertex(f, 0));
+    auto const& x1 = m_mesh.vertex(m_mesh.faceVertex(f, 1));
+    auto const& x2 = m_mesh.vertex(m_mesh.faceVertex(f, 2));
+
+    return (x1 - x0).cross(x2 - x0).normalized();
+  }
+
+  void callback(unsigned int node_index, TriangleMeshBSH<TF> const& bsh,
+                dg::Vector3r<TF> const& x, TF& dist_candidate) const {
+    auto const& node = m_bsh.node(node_index);
+    auto const& hull = m_bsh.hull(node_index);
+
+    if (!node.isLeaf()) return;
+
+    auto r = hull.r();
+
+    auto temp = (x - hull.x()).eval();
+    auto d_center2 = temp[0] * temp[0] + temp[1] * temp[1] + temp[2] * temp[2];
+
+    auto temp_ = dist_candidate + r;
+    if (d_center2 > temp_ * temp_) return;
+
+    auto dist_candidate_2 = dist_candidate * dist_candidate;
+    auto changed = false;
+    for (auto i = node.begin; i < node.begin + node.n; ++i) {
+      auto f = m_bsh.entity(i);
+      auto t = std::array<Vector3r<TF> const*, 3>{
+          &m_mesh.vertex(m_mesh.faceVertex(f, 0)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 1)),
+          &m_mesh.vertex(m_mesh.faceVertex(f, 2))};
+      auto dist2_ = point_triangle_sqdistance(x, t);
+      if (dist_candidate_2 > dist2_) {
+        dist_candidate_2 = dist2_;
+        changed = true;
+        m_nearest_face[omp_get_thread_num()] = f;
+      }
+    }
+    if (changed) {
+      dist_candidate = std::sqrt(dist_candidate_2);
+    }
+  }
+
+  bool predicate(unsigned int node_index, TriangleMeshBSH<TF> const& bsh,
+                 Vector3r<TF> const& x, F& dist_candidate) const {
+    // If the furthest point on the current candidate hull is closer than the
+    // closest point on the next hull then we can skip it
+    auto const& hull = bsh.hull(node_index);
+    auto const& hull_radius = hull.r();
+    auto const& hull_center = hull.x();
+
+    const auto dist_sq_to_center = (x - hull_center).squaredNorm();
+
+    if (dist_candidate > hull_radius) {
+      const auto l = dist_candidate - hull_radius;
+      if (l * l > dist_sq_to_center)
+        dist_candidate = std::sqrt(dist_sq_to_center) + hull_radius;
+    }
+
+    const auto d = dist_candidate + hull_radius;
+    return dist_sq_to_center <= d * d;
+  }
 
  private:
-  TriangleMesh m_mesh;
-  TriangleMeshBSH m_bsh;
+  TriangleMesh<TF> m_mesh;
+  TriangleMeshBSH<TF> m_bsh;
 
-  using FunctionValueCache = LRUCache<dg::Vector3r, F>;
-  mutable std::vector<TriangleMeshBSH::TraversalQueue> m_queues;
+  using FunctionValueCache = LRUCache<dg::Vector3r<TF>, TF>;
+  mutable std::vector<typename TriangleMeshBSH<TF>::TraversalQueue> m_queues;
   mutable std::vector<unsigned int> m_nearest_face;
   mutable std::vector<FunctionValueCache> m_cache;
   mutable std::vector<FunctionValueCache> m_ucache;
 
-  std::vector<dg::Vector3r> m_face_normals;
-  std::vector<dg::Vector3r> m_vertex_normals;
+  std::vector<dg::Vector3r<TF>> m_face_normals;
+  std::vector<dg::Vector3r<TF>> m_vertex_normals;
   bool m_precomputed_normals;
 };
 

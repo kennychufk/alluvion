@@ -4,22 +4,23 @@
 #include "alluvion/data_type.hpp"
 
 namespace alluvion {
+template <typename TF3, typename TF>
 struct Contact {
   U i;
   U j;
-  F3 cp_i;
-  F3 cp_j;
-  F3 n;
-  F3 t;
-  F3 iiwi_diag;
-  F3 iiwi_off_diag;
-  F3 iiwj_diag;
-  F3 iiwj_off_diag;
-  F friction;
-  F nkninv;
-  F pmax;
-  F goalu;
-  F impulse_sum;
+  TF3 cp_i;
+  TF3 cp_j;
+  TF3 n;
+  TF3 t;
+  TF3 iiwi_diag;
+  TF3 iiwi_off_diag;
+  TF3 iiwj_diag;
+  TF3 iiwj_off_diag;
+  TF friction;
+  TF nkninv;
+  TF pmax;
+  TF goalu;
+  TF impulse_sum;
 };
 }  // namespace alluvion
 

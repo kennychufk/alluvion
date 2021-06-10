@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20.0)
 project(alluvion
   LANGUAGES CXX C CUDA
 )
+set (CMAKE_CUDA_STANDARD 17)
 
 find_package(doctest REQUIRED)
 find_package(pybind11 REQUIRED)

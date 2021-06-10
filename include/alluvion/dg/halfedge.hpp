@@ -6,11 +6,12 @@
 namespace alluvion {
 namespace dg {
 
+template <typename TU>
 class Halfedge {
  public:
   Halfedge() : m_code(3) {}
   Halfedge(Halfedge const&) = default;
-  Halfedge(unsigned int f, unsigned char e) : m_code((f << 2) | e) {
+  Halfedge(TU f, unsigned char e) : m_code((f << 2) | e) {
     // assert(e < 3);
   }
 
@@ -22,13 +23,13 @@ class Halfedge {
     return m_code == other.m_code;
   }
 
-  unsigned int face() const { return m_code >> 2; }
+  TU face() const { return m_code >> 2; }
   unsigned char edge() const { return m_code & 0x3; }
   bool isBoundary() const { return edge() == 3; }
 
  private:
-  Halfedge(unsigned int code) : m_code(code) {}
-  unsigned int m_code;
+  Halfedge(TU code) : m_code(code) {}
+  TU m_code;
 };
 }  // namespace dg
 }  // namespace alluvion

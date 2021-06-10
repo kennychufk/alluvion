@@ -6,8 +6,8 @@
 #include "alluvion/data_type.hpp"
 
 namespace alluvion {
-using VertexList = std::vector<F3>;
-using TexcoordList = std::vector<F2>;
+using VertexList = std::vector<float3>;
+using TexcoordList = std::vector<float2>;
 using FaceList = std::vector<U3>;
 struct Mesh {
   VertexList vertices;
@@ -16,7 +16,7 @@ struct Mesh {
   FaceList faces;
 
   Mesh();
-  void set_uv_sphere(F radius, U num_sectors, U num_stacks);
+  void set_uv_sphere(float radius, U num_sectors, U num_stacks);
   void set_obj(const char* filename);
   void calculate_normals();
   void clear();

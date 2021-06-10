@@ -8,7 +8,7 @@
 #include "alluvion/runner.hpp"
 namespace alluvion {
 Mesh::Mesh() {}
-void Mesh::set_uv_sphere(F radius, U num_sectors, U num_stacks) {
+void Mesh::set_uv_sphere(float radius, U num_sectors, U num_stacks) {
   ///////////////////////////////////////////////////////////////////////////////
   // Sphere.cpp
   // ==========
@@ -21,16 +21,16 @@ void Mesh::set_uv_sphere(F radius, U num_sectors, U num_stacks) {
   ///////////////////////////////////////////////////////////////////////////////
 
   clear();
-  F x, y, z, xy;
-  F nx, ny, nz, length_inv = 1 / radius;
-  F s, t;
+  float x, y, z, xy;
+  float nx, ny, nz, length_inv = 1 / radius;
+  float s, t;
 
-  const F sector_step = 2 * kPi<F> / num_sectors;
-  const F stack_step = kPi<F> / num_stacks;
-  F sector_angle, stack_angle;
+  const float sector_step = 2 * kPi<float> / num_sectors;
+  const float stack_step = kPi<float> / num_stacks;
+  float sector_angle, stack_angle;
 
   for (U i = 0; i <= num_stacks; ++i) {
-    stack_angle = kPi<F> / 2 - i * stack_step;
+    stack_angle = kPi<float> / 2 - i * stack_step;
     xy = radius * cos(stack_angle);
     z = radius * sin(stack_angle);
 
@@ -43,18 +43,18 @@ void Mesh::set_uv_sphere(F radius, U num_sectors, U num_stacks) {
       // vertex position
       x = xy * cos(sector_angle);
       y = xy * sin(sector_angle);
-      vertices.push_back(F3{x, y, z});
+      vertices.push_back(float3{x, y, z});
 
       // normalized vertex normal
       nx = x * length_inv;
       ny = y * length_inv;
       nz = z * length_inv;
-      normals.push_back(F3{nx, ny, nz});
+      normals.push_back(float3{nx, ny, nz});
 
       // vertex tex coord between [0, 1]
-      s = static_cast<F>(j) / num_sectors;
-      t = static_cast<F>(i) / num_stacks;
-      texcoords.push_back(F2{s, t});
+      s = static_cast<float>(j) / num_sectors;
+      t = static_cast<float>(i) / num_stacks;
+      texcoords.push_back(float2{s, t});
     }
   }
 
@@ -84,8 +84,8 @@ void Mesh::set_obj(const char* filename) {
   clear();
   std::vector<U3> tex_faces;
   std::vector<U3> normal_faces;
-  std::vector<F2> texcoords_compact;
-  std::vector<F3> normals_compact;
+  std::vector<float2> texcoords_compact;
+  std::vector<float3> normals_compact;
   std::ifstream file_stream(filename);
   std::stringstream line_stream;
   std::string line;
@@ -106,12 +106,12 @@ void Mesh::set_obj(const char* filename) {
     }
     if (num_tokens == 0) continue;
     if (tokens[0] == "v") {
-      vertices.push_back(from_string<F3>(tokens[1], tokens[2], tokens[3]));
+      vertices.push_back(from_string<float3>(tokens[1], tokens[2], tokens[3]));
     } else if (tokens[0] == "vt") {
-      texcoords_compact.push_back(from_string<F2>(tokens[1], tokens[2]));
+      texcoords_compact.push_back(from_string<float2>(tokens[1], tokens[2]));
     } else if (tokens[0] == "vn") {
       normals_compact.push_back(
-          from_string<F3>(tokens[1], tokens[2], tokens[3]));
+          from_string<float3>(tokens[1], tokens[2], tokens[3]));
     } else if (tokens[0] == "f") {
       for (U face_entry_id = 1; face_entry_id <= 3; ++face_entry_id) {
         face_token_id = 0;
@@ -179,18 +179,18 @@ void Mesh::set_obj(const char* filename) {
 }
 void Mesh::calculate_normals() {
   normals.resize(vertices.size());
-  memset(normals.data(), 0, normals.size() * sizeof(F3));
+  memset(normals.data(), 0, normals.size() * sizeof(float3));
   for (U3 const& face : faces) {
-    F3 const& v0 = vertices[face.x];
-    F3 const& v1 = vertices[face.y];
-    F3 const& v2 = vertices[face.z];
-    F3 normal = cross(v1 - v0, v2 - v0);
+    float3 const& v0 = vertices[face.x];
+    float3 const& v1 = vertices[face.y];
+    float3 const& v2 = vertices[face.z];
+    float3 normal = cross(v1 - v0, v2 - v0);
     normal = normalize(normal);
     normals[face.x] += normal;
     normals[face.y] += normal;
     normals[face.z] += normal;
   }
-  for (F3& normal : normals) {
+  for (float3& normal : normals) {
     normal = normalize(normal);
   }
 }

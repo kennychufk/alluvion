@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "alluvion/constants.hpp"
 #include "alluvion/display.hpp"
 #include "alluvion/graphical_variable.hpp"
 #include "alluvion/pinned_variable.hpp"
@@ -24,6 +25,9 @@ class Store {
   std::unique_ptr<Display> display_;
   std::unordered_map<GLuint, UniqueGraphicalResource> graphical_resource_dict_;
   std::vector<cudaGraphicsResource*> resource_array_;
+  Constf cnf_;
+  Constd cnd_;
+  ConstiN cni_;
 
   void update_resource_array();
 
@@ -105,6 +109,28 @@ class Store {
         std::forward_as_tuple(var->vbo_, var->res_, &(var->ptr_)));
     update_resource_array();
     return var;
+  }
+
+  template <typename TF>
+  Const<TF>& get_cn() {
+    if constexpr (std::is_same_v<TF, float>)
+      return cnf_;
+    else
+      return cnd_;
+  }
+
+  ConstiN& get_cni() { return cni_; }
+
+  template <typename TF>
+  void copy_cn() {
+    Allocator::abort_if_error(
+        cudaMemcpyToSymbol(cni, &cni_, sizeof(cni_), 0, cudaMemcpyDefault));
+    if constexpr (std::is_same_v<TF, float>)
+      Allocator::abort_if_error(
+          cudaMemcpyToSymbol(cnf, &cnf_, sizeof(cnf_), 0, cudaMemcpyDefault));
+    else
+      Allocator::abort_if_error(
+          cudaMemcpyToSymbol(cnd, &cnd_, sizeof(cnd_), 0, cudaMemcpyDefault));
   }
 
   void map_graphical_pointers();

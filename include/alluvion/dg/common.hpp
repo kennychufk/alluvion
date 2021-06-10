@@ -3,13 +3,14 @@
 
 #include <Eigen/Dense>
 
-#include "alluvion/data_type.hpp"
-
 namespace alluvion {
 namespace dg {
-using Vector3r = Eigen::Matrix<F, 3, 1, Eigen::DontAlign>;
-using Matrix3r = Eigen::Matrix<F, 3, 3, Eigen::DontAlign>;
-using AlignedBox3r = Eigen::AlignedBox<F, 3>;
+template <typename TF>
+using Vector3r = Eigen::Matrix<TF, 3, 1, Eigen::DontAlign>;
+template <typename TF>
+using Matrix3r = Eigen::Matrix<TF, 3, 3, Eigen::DontAlign>;
+template <typename TF>
+using AlignedBox3r = Eigen::AlignedBox<TF, 3>;
 }  // namespace dg
 }  // namespace alluvion
 

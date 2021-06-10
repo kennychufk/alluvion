@@ -11,38 +11,43 @@
 namespace alluvion {
 namespace dg {
 
+template <typename TF>
 class DiscreteGrid {
  public:
-  using CoefficientVector = Eigen::Matrix<F, 32, 1>;
-  using ContinuousFunction = std::function<F(Vector3r const&)>;
+  using CoefficientVector = Eigen::Matrix<TF, 32, 1>;
+  using ContinuousFunction = std::function<TF(Vector3r<TF> const&)>;
   using MultiIndex = std::array<unsigned int, 3>;
-  using Predicate = std::function<bool(Vector3r const&, F)>;
-  using SamplePredicate = std::function<bool(Vector3r const&)>;
+  using Predicate = std::function<bool(Vector3r<TF> const&, TF)>;
+  using SamplePredicate = std::function<bool(Vector3r<TF> const&)>;
 
   DiscreteGrid() = default;
-  DiscreteGrid(AlignedBox3r const& domain,
+  DiscreteGrid(AlignedBox3r<TF> const& domain,
                std::array<unsigned int, 3> const& resolution)
       : m_domain(domain), m_resolution(resolution), m_n_fields(0u) {
     auto n = Eigen::Matrix<unsigned int, 3, 1>::Map(resolution.data());
-    m_cell_size = domain.diagonal().cwiseQuotient(n.cast<F>());
+    m_cell_size = domain.diagonal().cwiseQuotient(n.cast<TF>());
     m_inv_cell_size = m_cell_size.cwiseInverse();
     m_n_cells = n.prod();
   }
-  virtual ~DiscreteGrid() = default;
+  ~DiscreteGrid() = default;
 
-  virtual void save(std::string const& filename) const = 0;
-  virtual void load(std::string const& filename) = 0;
+  void save(std::string const& filename) const {};
+  void load(std::string const& filename){};
 
-  virtual unsigned int addFunction(ContinuousFunction const& func,
-                                   bool verbose = false,
-                                   SamplePredicate const& pred = nullptr) = 0;
+  unsigned int addFunction(ContinuousFunction const& func, bool verbose = false,
+                           SamplePredicate const& pred = nullptr) {
+    return 0;
+  };
 
-  F interpolate(Vector3r const& xi, Vector3r* gradient = nullptr) const {
+  TF interpolate(Vector3r<TF> const& xi,
+                 Vector3r<TF>* gradient = nullptr) const {
     return interpolate(0u, xi, gradient);
   }
 
-  virtual F interpolate(unsigned int field_id, Vector3r const& xi,
-                        Vector3r* gradient = nullptr) const = 0;
+  TF interpolate(unsigned int field_id, Vector3r<TF> const& xi,
+                 Vector3r<TF>* gradient = nullptr) const {
+    return 0;
+  }
 
   /**
    * @brief Determines the shape functions for the discretization with ID
@@ -57,11 +62,12 @@ class DiscreteGrid {
    * compute the gradient
    * @return Success of the function.
    */
-  virtual bool determineShapeFunctions(
-      unsigned int field_id, Vector3r const& x,
-      std::array<unsigned int, 32>& cell, Vector3r& c0,
-      Eigen::Matrix<F, 32, 1>& N,
-      Eigen::Matrix<F, 32, 3>* dN = nullptr) const = 0;
+  bool determineShapeFunctions(unsigned int field_id, Vector3r<TF> const& x,
+                               std::array<unsigned int, 32>& cell,
+                               Vector3r<TF>& c0, Eigen::Matrix<TF, 32, 1>& N,
+                               Eigen::Matrix<TF, 32, 3>* dN = nullptr) const {
+    return false;
+  };
 
   /**
    * @brief Evaluates the given discretization with ID field_id at point xi.
@@ -75,34 +81,55 @@ class DiscreteGrid {
    * of the discrete function will be evaluated
    * @param dN (Optional) derivatives of the shape functions, required to
    * compute the gradient
-   * @return F Results of the evaluation of the discrete function at point xi
+   * @return TF Results of the evaluation of the discrete function at point xi
    */
-  virtual F interpolate(unsigned int field_id, Vector3r const& xi,
-                        const std::array<unsigned int, 32>& cell,
-                        const Vector3r& c0, const Eigen::Matrix<F, 32, 1>& N,
-                        Vector3r* gradient = nullptr,
-                        Eigen::Matrix<F, 32, 3>* dN = nullptr) const = 0;
+  TF interpolate(unsigned int field_id, Vector3r<TF> const& xi,
+                 const std::array<unsigned int, 32>& cell,
+                 const Vector3r<TF>& c0, const Eigen::Matrix<TF, 32, 1>& N,
+                 Vector3r<TF>* gradient = nullptr,
+                 Eigen::Matrix<TF, 32, 3>* dN = nullptr) const {
+    return 0;
+  };
 
-  virtual void reduceField(unsigned int field_id, Predicate pred) {}
+  void reduceField(unsigned int field_id, Predicate pred) {}
 
-  MultiIndex singleToMultiIndex(unsigned int i) const;
-  unsigned int multiToSingleIndex(MultiIndex const& ijk) const;
+  MultiIndex singleToMultiIndex(unsigned int l) const {
+    auto n01 = m_resolution[0] * m_resolution[1];
+    auto k = l / n01;
+    auto temp = l % n01;
+    auto j = temp / m_resolution[0];
+    auto i = temp % m_resolution[0];
+    return {{i, j, k}};
+  }
+  unsigned int multiToSingleIndex(MultiIndex const& ijk) const {
+    return m_resolution[1] * m_resolution[0] * ijk[2] +
+           m_resolution[0] * ijk[1] + ijk[0];
+  }
 
-  AlignedBox3r subdomain(MultiIndex const& ijk) const;
-  AlignedBox3r subdomain(unsigned int l) const;
+  AlignedBox3r<TF> subdomain(MultiIndex const& ijk) const {
+    auto origin =
+        m_domain.min() +
+        Eigen::Map<Eigen::Matrix<unsigned int, 3, 1> const>(ijk.data())
+            .cast<TF>()
+            .cwiseProduct(m_cell_size);
+    return {origin, origin + m_cell_size};
+  }
+  AlignedBox3r<TF> subdomain(unsigned int l) const {
+    return subdomain(singleToMultiIndex(l));
+  }
 
-  AlignedBox3r const& domain() const { return m_domain; }
+  AlignedBox3r<TF> const& domain() const { return m_domain; }
   std::array<unsigned int, 3> const& resolution() const {
     return m_resolution;
   };
-  Vector3r const& cellSize() const { return m_cell_size; }
-  Vector3r const& invCellSize() const { return m_inv_cell_size; }
+  Vector3r<TF> const& cellSize() const { return m_cell_size; }
+  Vector3r<TF> const& invCellSize() const { return m_inv_cell_size; }
 
  protected:
-  AlignedBox3r m_domain;
+  AlignedBox3r<TF> m_domain;
   std::array<unsigned int, 3> m_resolution;
-  Vector3r m_cell_size;
-  Vector3r m_inv_cell_size;
+  Vector3r<TF> m_cell_size;
+  Vector3r<TF> m_inv_cell_size;
   std::size_t m_n_cells;
   std::size_t m_n_fields;
 };

@@ -6,6 +6,7 @@
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
 #include "alluvion/dg/gauss_quadrature.hpp"
 #include "alluvion/dg/sph_kernels.hpp"
+#include "alluvion/float_shorthands.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
 
@@ -21,45 +22,47 @@ SCENARIO("testing volume field generation") {
     F r = 1.25;
     F factor = 1.0;
     F margin = 4 * r + map_thickness;
-    Vector3r domain_min(-30 - margin, -20 - margin, -40 - margin);
-    Vector3r domain_max(30 + margin, 20 + margin, 40 + margin);
-    AlignedBox3r domain(domain_min, domain_max);
-    CubicLagrangeDiscreteGrid grid(domain, resolution_array);
+    Vector3r<F> domain_min(-30 - margin, -20 - margin, -40 - margin);
+    Vector3r<F> domain_max(30 + margin, 20 + margin, 40 + margin);
+    AlignedBox3r<F> domain(domain_min, domain_max);
+    CubicLagrangeDiscreteGrid<F> grid(domain, resolution_array);
     grid.addFunction(
-        [sign, map_thickness, particle_radius](Vector3r const &xi) {
+        [sign, map_thickness, particle_radius](Vector3r<F> const &xi) {
           F signed_distance_from_ellipsoid = xi(0) * xi(0) / (25 * 25) +
                                              xi(1) * xi(1) / (15 * 15) +
                                              xi(2) * xi(2) / (35 * 35) - 1.0;
           return sign * (signed_distance_from_ellipsoid - map_thickness -
                          particle_radius * 0.5);
         });
-    CubicKernel::setRadius(r);
+    CubicKernel<F> cubic_kernel;
+    cubic_kernel.setRadius(r);
     auto int_domain =
-        AlignedBox3r(Vector3r::Constant(-r), Vector3r::Constant(r));
+        AlignedBox3r<F>(Vector3r<F>::Constant(-r), Vector3r<F>::Constant(r));
     grid.addFunction(
-        [&](Vector3r const &x) {
+        [&](Vector3r<F> const &x) {
           auto dist = grid.interpolate(0u, x);
           if (dist > (1.0 + 1.0 /*/ factor*/) * r) {
             return 0.0;
           }
 
-          auto integrand = [&grid, &x, &r, &factor](Vector3r const &xi) -> F {
+          auto integrand = [&grid, &x, &r, &factor,
+                            &cubic_kernel](Vector3r<F> const &xi) -> F {
             if (xi.squaredNorm() > r * r) return 0.0;
 
             auto dist = grid.interpolate(0u, x + xi);
 
             if (dist <= 0.0) return 1.0 - 0.1 * dist / r;
             if (dist < 1.0 / factor * r)
-              return CubicKernel::W(factor * dist) / CubicKernel::W_zero();
+              return cubic_kernel.W(factor * dist) / cubic_kernel.W_zero();
             return 0.0;
           };
-          return 0.8 * GaussQuadrature::integrate(integrand, int_domain, 30);
+          return 0.8 * GaussQuadrature<F>::integrate(integrand, int_domain, 30);
         },
         false);
     WHEN("a device implementation is constructed") {
-      CubicLagrangeDiscreteGrid distance_grid_prerequisite(domain,
-                                                           resolution_array);
-      distance_grid_prerequisite.addFunction([](Vector3r const &xi) {
+      CubicLagrangeDiscreteGrid<F> distance_grid_prerequisite(domain,
+                                                              resolution_array);
+      distance_grid_prerequisite.addFunction([](Vector3r<F> const &xi) {
         F signed_distance_from_ellipsoid = xi(0) * xi(0) / (25 * 25) +
                                            xi(1) * xi(1) / (15 * 15) +
                                            xi(2) * xi(2) / (35 * 35) - 1.0;
@@ -84,9 +87,10 @@ SCENARIO("testing volume field generation") {
                                num_nodes * sizeof(F));
 
       // set constants
-      cnst::set_particle_attr(particle_radius, 0.2, 1.0);
-      cnst::set_kernel_radius(r);
-      cnst::set_cubic_discretization_constants();
+      store.get_cn<F>().set_particle_attr(particle_radius, 0.2, 1.0);
+      store.get_cn<F>().set_kernel_radius(r);
+      store.get_cn<F>().set_cubic_discretization_constants();
+      store.copy_cn<F>();
 
       Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(

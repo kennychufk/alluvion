@@ -5,11 +5,17 @@
 
 namespace alluvion {
 namespace dg {
-class SphereDistance : public Distance {
+template <typename TF3, typename TF>
+class SphereDistance : public Distance<TF3, TF> {
  public:
-  SphereDistance(F radius);
-  F signedDistance(dg::Vector3r const& x) const override;
-  F radius_;
+  SphereDistance(TF radius)
+      : radius_(radius),
+        Distance<TF3, TF>(TF3{-radius, -radius, -radius},
+                          TF3{radius, radius, radius}, radius){};
+  TF signedDistance(dg::Vector3r<TF> const& x) const override {
+    return x.norm() - radius_;
+  }
+  TF radius_;
 };
 }  // namespace dg
 }  // namespace alluvion

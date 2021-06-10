@@ -1,4 +1,5 @@
 list(APPEND lib_alluvion_SOURCES
+  ${CMAKE_CURRENT_LIST_DIR}/runner.cu
   ${CMAKE_CURRENT_LIST_DIR}/store.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_device_pointer.cu
   ${CMAKE_CURRENT_LIST_DIR}/unique_pinned_pointer.cu
@@ -11,7 +12,6 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/mesh.cu
   ${CMAKE_CURRENT_LIST_DIR}/allocator.cu
   ${CMAKE_CURRENT_LIST_DIR}/graphical_allocator.cu
-  ${CMAKE_CURRENT_LIST_DIR}/pile.cu
   ${CMAKE_CURRENT_LIST_DIR}/constants.cu
   ${CMAKE_CURRENT_LIST_DIR}/display.cu
   ${CMAKE_CURRENT_LIST_DIR}/shading_program.cu
@@ -19,19 +19,6 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/typesetter.cu
   ${CMAKE_CURRENT_LIST_DIR}/camera.cu
   ${CMAKE_CURRENT_LIST_DIR}/trackball.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/bounding_sphere_hierarchy.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/triangle_mesh.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/entity_iterators.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/entity_containers.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/sphere_distance.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/infinite_cylinder_distance.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/mesh_distance.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/point_triangle_distance.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/discrete_grid.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/cubic_lagrange_discrete_grid.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/volume_integration.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/sph_kernels.cu
-  ${CMAKE_CURRENT_LIST_DIR}/dg/gauss_quadrature.cu
   ${CMAKE_CURRENT_LIST_DIR}/glad.c
 )
 

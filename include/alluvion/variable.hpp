@@ -52,7 +52,6 @@ class Variable {
     if (typeid(M) == typeid(double4)) return 4;
     if (typeid(M) == typeid(I4)) return 4;
     if (typeid(M) == typeid(U4)) return 4;
-    if (typeid(M) == typeid(Contact)) return 0;
     return 0;
   }
   U get_num_primitives() const {
