@@ -4,6 +4,7 @@
 #include <thrust/reduce.h>
 
 #include <limits>
+#include <numeric>
 #include <type_traits>
 #include <unordered_map>
 
@@ -14,7 +15,6 @@
 #include "alluvion/variable.hpp"
 namespace alluvion {
 class Runner {
- private:
  public:
   Runner();
   virtual ~Runner();
@@ -55,6 +55,7 @@ class Runner {
     U block_size = std::min(n, desired_block_size);
     U grid_size = (n + block_size - 1) / block_size;
     f(grid_size, block_size);
+    Allocator::abort_if_error(cudaGetLastError());
   }
 
   template <class Lambda>
@@ -63,21 +64,69 @@ class Runner {
     cudaEvent_t event_start, event_stop;
     float ellapsed;
     float started;
-    cudaEventCreate(&event_start);
-    cudaEventCreate(&event_stop);
+    Allocator::abort_if_error(cudaEventCreate(&event_start));
+    Allocator::abort_if_error(cudaEventCreate(&event_stop));
     U block_size = std::min(n, desired_block_size);
     U grid_size = (n + block_size - 1) / block_size;
-    cudaEventRecord(event_start);
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_start));
     f(grid_size, block_size);
-    cudaEventRecord(event_stop);
-    cudaEventSynchronize(event_stop);
-    cudaEventElapsedTime(&started, abs_start_, event_start);
-    cudaEventElapsedTime(&ellapsed, event_start, event_stop);
-    launch_dict_[name].emplace_back(started, ellapsed);
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_stop));
+    Allocator::abort_if_error(cudaEventSynchronize(event_stop));
+    Allocator::abort_if_error(
+        cudaEventElapsedTime(&started, abs_start_, event_start));
+    Allocator::abort_if_error(
+        cudaEventElapsedTime(&ellapsed, event_start, event_stop));
+    launch_dict_[name][desired_block_size / kWarpSize - 1].emplace_back(
+        started, ellapsed);
+    Allocator::abort_if_error(cudaEventDestroy(event_start));
+    Allocator::abort_if_error(cudaEventDestroy(event_stop));
   }
 
+  template <class Lambda, typename Func>
+  void launch(U n, Lambda f, std::string name, Func func) {
+    if (n == 0) return;
+    cudaFuncAttributes attr;
+    Allocator::abort_if_error(cudaFuncGetAttributes(&attr, func));
+    launch(n,
+           std::min((launch_cursor_ + 1) * kWarpSize,
+                    static_cast<U>(attr.maxThreadsPerBlock)),
+           f, name);
+  }
+
+  bool summarize() {
+    for (std::pair<std::string, std::array<std::vector<LaunchRecord>,
+                                           kNumBlockSizeCandidates>> const&
+             item : launch_dict_) {
+      std::vector<LaunchRecord> const& launch_records =
+          item.second[launch_cursor_];
+      launch_stat_dict_[item.first][launch_cursor_] =
+          launch_records.empty()
+              ? kFMax<float>
+              : std::accumulate(launch_records.begin(), launch_records.end(),
+                                0.f,
+                                [](float acc, LaunchRecord const& record) {
+                                  return acc + record.second;
+                                }) /
+                    launch_records.size();
+    }
+    return ++launch_cursor_ == kNumBlockSizeCandidates;
+  }
+  void export_stat() const;
+  void load_stat();
+
   using LaunchRecord = std::pair<float, float>;
-  std::unordered_map<std::string, std::vector<LaunchRecord>> launch_dict_;
+  constexpr static U kWarpSize = 32;
+  constexpr static U kMaxBlockSize = 1024;  // compute capability >= 2
+  constexpr static U kNumBlockSizeCandidates = kMaxBlockSize / kWarpSize;
+  std::unordered_map<std::string, std::array<std::vector<LaunchRecord>,
+                                             kNumBlockSizeCandidates>>
+      launch_dict_;
+  std::unordered_map<std::string, std::array<float, kNumBlockSizeCandidates>>
+      launch_stat_dict_;
+  std::unordered_map<std::string, U> optimal_block_size_dict_;
+  U launch_cursor_;
   cudaEvent_t abs_start_;
 };
 
@@ -152,6 +201,11 @@ inline __host__ T from_string(std::string const& s0) = delete;
 template <>
 inline __host__ U from_string(std::string const& s0) {
   return stoul(s0);
+}
+
+template <>
+inline __host__ float from_string(std::string const& s0) {
+  return stof(s0);
 }
 
 template <typename T2>
@@ -1368,10 +1422,11 @@ __global__ void compute_viscosity(
       TF3 x_j = particle_x(p_j);
       TF3 xixj = x_i - x_j;
       da += d * cn<TF>().viscosity * cn<TF>().particle_mass /
-            particle_density(p_j) * dot(v_i - particle_v(p_j), xixj) /
+            particle_density(p_j) *
+            dot(xixj, displacement_cubic_kernel_grad(xixj)) /
             (length_sqr(xixj) +
              static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-            displacement_cubic_kernel_grad(xixj);
+            (v_i - particle_v(p_j));
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TF vj =
@@ -1415,22 +1470,22 @@ __global__ void compute_viscosity(
         TF3 v4 = cross(r_omega, x4 - r_x) + r_v;
 
         // compute forces for both sample point
-        TF3 a1 = d * b_viscosity * vol * dot(v_i - v1, xix1) /
+        TF3 a1 = d * b_viscosity * vol * dot(xix1, gradW1) /
                  (length_sqr(xix1) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW1;
-        TF3 a2 = d * b_viscosity * vol * dot(v_i - v2, xix2) /
+                 (v_i - v1);
+        TF3 a2 = d * b_viscosity * vol * dot(xix2, gradW2) /
                  (length_sqr(xix2) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW2;
-        TF3 a3 = d * b_viscosity * vol * dot(v_i - v3, xix3) /
+                 (v_i - v2);
+        TF3 a3 = d * b_viscosity * vol * dot(xix3, gradW3) /
                  (length_sqr(xix3) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW3;
-        TF3 a4 = d * b_viscosity * vol * dot(v_i - v4, xix4) /
+                 (v_i - v3);
+        TF3 a4 = d * b_viscosity * vol * dot(xix4, gradW4) /
                  (length_sqr(xix4) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW4;
+                 (v_i - v4);
         da += a1 + a2 + a3 + a4;
 
         TF3 f1 = -cn<TF>().particle_mass * a1;
@@ -2570,10 +2625,11 @@ __global__ void compute_viscosity_wrapped(
       TF3 x_j = particle_x(p_j);
       TF3 xixj = wrap_x(x_i - x_j);
       da += d * cn<TF>().viscosity * cn<TF>().particle_mass /
-            particle_density(p_j) * dot(v_i - particle_v(p_j), xixj) /
+            particle_density(p_j) *
+            dot(xixj, displacement_cubic_kernel_grad(xixj)) /
             (length_sqr(xixj) +
              static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-            displacement_cubic_kernel_grad(xixj);
+            (v_i - particle_v(p_j));
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TF vj =
@@ -2617,22 +2673,22 @@ __global__ void compute_viscosity_wrapped(
         TF3 v4 = cross(r_omega, x4 - r_x) + r_v;
 
         // compute forces for both sample point
-        TF3 a1 = d * b_viscosity * vol * dot(v_i - v1, xix1) /
+        TF3 a1 = d * b_viscosity * vol * dot(xix1, gradW1) /
                  (length_sqr(xix1) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW1;
-        TF3 a2 = d * b_viscosity * vol * dot(v_i - v2, xix2) /
+                 (v_i - v1);
+        TF3 a2 = d * b_viscosity * vol * dot(xix2, gradW2) /
                  (length_sqr(xix2) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW2;
-        TF3 a3 = d * b_viscosity * vol * dot(v_i - v3, xix3) /
+                 (v_i - v2);
+        TF3 a3 = d * b_viscosity * vol * dot(xix3, gradW3) /
                  (length_sqr(xix3) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW3;
-        TF3 a4 = d * b_viscosity * vol * dot(v_i - v4, xix4) /
+                 (v_i - v3);
+        TF3 a4 = d * b_viscosity * vol * dot(xix4, gradW4) /
                  (length_sqr(xix4) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 gradW4;
+                 (v_i - v4);
         da += a1 + a2 + a3 + a4;
 
         TF3 f1 = -cn<TF>().particle_mass * a1;

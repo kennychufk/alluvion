@@ -28,6 +28,10 @@ void Allocator::set(void* dst, unsigned int num_bytes, int value) {
   abort_if_error(cudaMemset(dst, value, num_bytes));
 }
 
+void Allocator::get_device_properties(cudaDeviceProp* prop, int device) {
+  abort_if_error(cudaGetDeviceProperties(prop, device));
+}
+
 void Allocator::abort_if_error(cudaError_t err) {
   if (err != cudaSuccess) {
     std::cerr << "CUDA API returns the error: " << cudaGetErrorString(err)

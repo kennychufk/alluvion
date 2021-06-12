@@ -35,6 +35,7 @@ class Allocator {
   static void free_pinned(void**);
   static void copy(void* dst, void const* src, unsigned int num_bytes);
   static void set(void* dst, unsigned int num_bytes, int value = 0);
+  static void get_device_properties(cudaDeviceProp* prop, int device);
   static void abort_if_error(cudaError_t err);
 };
 }  // namespace alluvion
