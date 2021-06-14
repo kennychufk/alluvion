@@ -57,14 +57,9 @@ int main(void) {
   // grid
   U3 grid_res{128, 128, 128};
   I3 grid_offset{-64, -64, -64};
-  U max_num_particles_per_cell = 128;
-  U max_num_neighbors_per_particle = 128;
-  const F kCellWidthRelativeToKernelRadius =
-      pow((sqrt(5.0) - 1.0) * 0.5, 1.0 / 3.0);
+  U max_num_particles_per_cell = 64;
+  U max_num_neighbors_per_particle = 64;
   store.get_cni().init_grid_constants(grid_res, grid_offset);
-  store.get_cn<F>().set_cell_width(kernel_radius *
-                                   kCellWidthRelativeToKernelRadius);
-  store.get_cni().set_search_range<F>(2.0 / kCellWidthRelativeToKernelRadius);
   store.get_cni().set_max_num_particles_per_cell(max_num_particles_per_cell);
   store.get_cni().set_max_num_neighbors_per_particle(
       max_num_neighbors_per_particle);
@@ -95,12 +90,12 @@ int main(void) {
   Variable<1, F3> particle_pressure_accel =
       store.create<1, F3>({num_particles});
   Variable<1, F> particle_density_err = store.create<1, F>({num_particles});
-  Variable<4, U> pid = store.create<4, U>(
+  Variable<4, Q> pid = store.create<4, Q>(
       {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
   Variable<3, U> pid_length =
       store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-  Variable<2, U> particle_neighbors =
-      store.create<2, U>({num_particles, max_num_neighbors_per_particle});
+  Variable<2, Q> particle_neighbors =
+      store.create<2, Q>({num_particles, max_num_neighbors_per_particle});
   Variable<1, U> particle_num_neighbors = store.create<1, U>({num_particles});
 
   SolverIi<F3, Q, F> solver_ii(
@@ -144,7 +139,7 @@ int main(void) {
         store.map_graphical_pointers();
         // start of simulation loop
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
-          solver_ii.step();
+          solver_ii.step<0>();
         }
         solver_ii.colorize(0, 2);
         store.unmap_graphical_pointers();

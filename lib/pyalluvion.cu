@@ -212,11 +212,9 @@ PYBIND11_MODULE(_alluvion, m) {
         U3 grid_res{static_cast<U>(kM * 2), static_cast<U>(kQ * 2),
                     static_cast<U>(kQ * 2)};
         I3 grid_offset{-kM, -kQ, -kQ};
-        U max_num_particles_per_cell = 128;
-        U max_num_neighbors_per_particle = 128;
+        U max_num_particles_per_cell = 64;
+        U max_num_neighbors_per_particle = 64;
         store.get_cni().init_grid_constants(grid_res, grid_offset);
-        store.get_cn<F>().set_cell_width(kernel_radius);
-        store.get_cni().set_search_range<F>(2.5_F);
         store.get_cni().set_max_num_particles_per_cell(
             max_num_particles_per_cell);
         store.get_cni().set_max_num_neighbors_per_particle(
@@ -256,11 +254,11 @@ PYBIND11_MODULE(_alluvion, m) {
             store.create<1, F3>({max_num_particles});
         Variable<1, F> particle_density_err =
             store.create<1, F>({max_num_particles});
-        Variable<4, U> pid = store.create<4, U>(
+        Variable<4, Q> pid = store.create<4, Q>(
             {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
         Variable<3, U> pid_length =
             store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-        Variable<2, U> particle_neighbors = store.create<2, U>(
+        Variable<2, Q> particle_neighbors = store.create<2, Q>(
             {max_num_particles, max_num_neighbors_per_particle});
         Variable<1, U> particle_num_neighbors =
             store.create<1, U>({max_num_particles});
@@ -285,8 +283,8 @@ PYBIND11_MODULE(_alluvion, m) {
         U num_samples = num_samples_per_plane * num_sample_planes;
         Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
         Variable<1, F3> sample_data3 = store.create<1, F3>({num_samples});
-        Variable<2, U> sample_neighbors =
-            store.create<2, U>({num_samples, max_num_neighbors_per_particle});
+        Variable<2, Q> sample_neighbors =
+            store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
         Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
         Variable<2, F3> sample_boundary_xj =
             store.create<2, F3>({pile.get_size(), num_samples});
@@ -329,19 +327,19 @@ PYBIND11_MODULE(_alluvion, m) {
                       particle_x, pid, pid_length, solver_ii.num_particles);
                 });
             Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              make_neighbor_list_wrapped<<<grid_size, block_size>>>(
-                  sample_x, particle_x, pid, pid_length, sample_neighbors,
+              make_neighbor_list<1><<<grid_size, block_size>>>(
+                  sample_x, pid, pid_length, sample_neighbors,
                   sample_num_neighbors, num_samples);
             });
             Runner::launch(
                 solver_ii.num_particles, 256, [&](U grid_size, U block_size) {
-                  compute_density_wrapped<<<grid_size, block_size>>>(
+                  compute_density<<<grid_size, block_size>>>(
                       particle_x, particle_neighbors, particle_num_neighbors,
                       particle_density, particle_boundary_xj,
                       particle_boundary_volume, solver_ii.num_particles);
                 });
             Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              sample_fluid_wrapped<<<grid_size, block_size>>>(
+              sample_fluid<<<grid_size, block_size>>>(
                   sample_x, particle_x, particle_density, particle_v,
                   sample_neighbors, sample_num_neighbors, sample_data3,
                   num_samples);
@@ -358,7 +356,7 @@ PYBIND11_MODULE(_alluvion, m) {
             }
           }
 
-          solver_ii.step_wrapped();
+          solver_ii.step<1>();
           t += solver_ii.dt;
           step_id += 1;
         }

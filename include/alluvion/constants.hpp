@@ -22,8 +22,6 @@ constexpr U kMaxNumCellsToSearch = 128;
 
 template <U MaxNumCellsToSearch>
 struct Consti {
-  I3 neighbor_offsets[MaxNumCellsToSearch];
-  U num_cells_to_search;
   U max_num_particles_per_cell;
   U3 grid_res;
   I3 grid_offset;
@@ -42,29 +40,6 @@ struct Consti {
   }
   void set_num_boundaries(U n) { num_boundaries = n; }
   void set_max_num_contacts(U n) { max_num_contacts = n; }
-  template <typename TF>
-  void set_search_range(TF search_radius_relative_to_cell_width) {
-    TF relative_radius_squared = search_radius_relative_to_cell_width *
-                                 search_radius_relative_to_cell_width;
-    int evaluation_extent =
-        static_cast<int>(ceil(search_radius_relative_to_cell_width));
-    num_cells_to_search = 0;
-    for (int i = -evaluation_extent; i <= evaluation_extent; ++i) {
-      for (int j = -evaluation_extent; j <= evaluation_extent; ++j) {
-        for (int k = -evaluation_extent; k <= evaluation_extent; ++k) {
-          if (static_cast<TF>(i * i + j * j + k * k) <=
-              relative_radius_squared) {
-            neighbor_offsets[num_cells_to_search++] = I3{i, j, k};
-          }
-        }
-      }
-    }
-    if (num_cells_to_search > MaxNumCellsToSearch) {
-      std::cerr << "Num of cells to search exceeeds the limit "
-                << MaxNumCellsToSearch << std::endl;
-      abort();
-    }
-  }
 };
 
 template <typename TF>
@@ -96,8 +71,6 @@ struct Const {
 
   TF boundary_epsilon;
   TF dfsph_factor_epsilon;
-
-  TF cell_width;
 
   TF contact_tolerance;
 
@@ -149,8 +122,6 @@ struct Const {
     surface_tension_coeff = st;
     surface_tension_boundary_coeff = stb;
   }
-
-  void set_cell_width(TF width) { cell_width = width; }
 
   void set_gravity(TF3 g) { gravity = g; }
   void set_boundary_epsilon(TF e) { boundary_epsilon = e; }
