@@ -70,15 +70,13 @@ SCENARIO("testing volume field generation") {
       });
       // copy attributes
       U num_nodes = distance_grid_prerequisite.node_data()[0].size();
-      F3 domain_min =
-          make_vector<F3>(domain.min()(0), domain.min()(1), domain.min()(2));
-      F3 domain_max =
-          make_vector<F3>(domain.max()(0), domain.max()(1), domain.max()(2));
+      F3 domain_min = {domain.min()(0), domain.min()(1), domain.min()(2)};
+      F3 domain_max = {domain.max()(0), domain.max()(1), domain.max()(2)};
       U3 resolution = make_uint3(resolution_array[0], resolution_array[1],
                                  resolution_array[2]);
-      F3 cell_size = make_vector<F3>(distance_grid_prerequisite.cellSize()(0),
-                                     distance_grid_prerequisite.cellSize()(1),
-                                     distance_grid_prerequisite.cellSize()(2));
+      F3 cell_size = {distance_grid_prerequisite.cellSize()(0),
+                      distance_grid_prerequisite.cellSize()(1),
+                      distance_grid_prerequisite.cellSize()(2)};
       // allocate device memory
       Store store;
       Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});

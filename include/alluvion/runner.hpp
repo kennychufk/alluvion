@@ -142,26 +142,17 @@ template <typename TF3, typename TF>
 __device__ __host__ TF3 make_vector(TF x, TF y, TF z) = delete;
 
 template <>
-inline __device__ __host__ float3 make_vector<float3>(float x, float y,
-                                                      float z) {
-  return make_float3(x, y, z);
+constexpr __device__ __host__ float3 make_vector<float3>(uint x, uint y,
+                                                         uint z) {
+  return float3{static_cast<float>(x), static_cast<float>(y),
+                static_cast<float>(z)};
 }
 
 template <>
-inline __device__ __host__ float3 make_vector<float3>(uint x, uint y, uint z) {
-  return make_float3(x, y, z);
-}
-
-template <>
-inline __device__ __host__ double3 make_vector<double3>(double x, double y,
-                                                        double z) {
-  return make_double3(x, y, z);
-}
-
-template <>
-inline __device__ __host__ double3 make_vector<double3>(uint x, uint y,
-                                                        uint z) {
-  return make_double3(x, y, z);
+constexpr __device__ __host__ double3 make_vector<double3>(uint x, uint y,
+                                                           uint z) {
+  return double3{static_cast<double>(x), static_cast<double>(y),
+                 static_cast<double>(z)};
 }
 
 template <typename TF3, typename TF>
@@ -287,7 +278,7 @@ inline __device__ TQ hamilton_prod(TQ q0, TQ q1) {
 }
 
 template <typename TQ, typename TF3>
-inline __device__ __host__ void calculate_congruent_matrix(
+constexpr __device__ __host__ void calculate_congruent_matrix(
     TF3 v, TQ q, TF3* congruent_diag, TF3* congruent_off_diag) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   TF qm00 = 1 - 2 * (q.y * q.y + q.z * q.z);
@@ -311,8 +302,8 @@ inline __device__ __host__ void calculate_congruent_matrix(
 }
 
 template <typename TQ, typename TF3>
-inline __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
-                                                   TF3 torque) {
+constexpr __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
+                                                      TF3 torque) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   TF3 inertia_inverse = 1 / inertia;
   TF qm00 = 1 - 2 * (q.y * q.y + q.z * q.z);
@@ -350,7 +341,7 @@ inline __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
 }
 
 template <typename TQ, typename TF3>
-inline __host__ TQ calculate_dq(TF3 omega, TQ q) {
+constexpr __host__ TQ calculate_dq(TF3 omega, TQ q) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   return static_cast<TF>(0.5) *
          TQ{
@@ -362,8 +353,8 @@ inline __host__ TQ calculate_dq(TF3 omega, TQ q) {
 }
 
 template <typename TF3>
-inline __device__ __host__ TF3 apply_congruent(TF3 v, TF3 congruent_diag,
-                                               TF3 congruent_off_diag) {
+constexpr __device__ __host__ TF3 apply_congruent(TF3 v, TF3 congruent_diag,
+                                                  TF3 congruent_off_diag) {
   return TF3{v.x * congruent_diag.x + v.y * congruent_off_diag.x +
                  v.z * congruent_off_diag.y,
              v.x * congruent_off_diag.x + v.y * congruent_diag.y +
@@ -373,11 +364,11 @@ inline __device__ __host__ TF3 apply_congruent(TF3 v, TF3 congruent_diag,
 }
 
 template <typename TF3, typename TF>
-inline __device__ __host__ void calculate_congruent_k(TF3 r, TF mass,
-                                                      TF3 ii_diag,
-                                                      TF3 ii_off_diag,
-                                                      TF3* k_diag,
-                                                      TF3* k_off_diag) {
+constexpr __device__ __host__ void calculate_congruent_k(TF3 r, TF mass,
+                                                         TF3 ii_diag,
+                                                         TF3 ii_off_diag,
+                                                         TF3* k_diag,
+                                                         TF3* k_off_diag) {
   *k_diag = make_zeros<TF3>();
   *k_off_diag = make_zeros<TF3>();
   if (mass != 0) {
@@ -419,7 +410,7 @@ constexpr __device__ Const<TF> const& cn() {
 }
 
 template <typename TF>
-inline __device__ TF distance_cubic_kernel(TF r2) {
+constexpr __device__ TF distance_cubic_kernel(TF r2) {
   TF q2 = r2 / cn<TF>().kernel_radius_sqr;
   TF q = sqrt(r2) / cn<TF>().kernel_radius;
   TF conj = 1 - q;
@@ -432,8 +423,9 @@ inline __device__ TF distance_cubic_kernel(TF r2) {
 }
 
 template <typename TF3>
-inline __device__ std::conditional_t<std::is_same_v<TF3, float3>, float, double>
-displacement_cubic_kernel(TF3 d) {
+constexpr __device__
+    std::conditional_t<std::is_same_v<TF3, float3>, float, double>
+    displacement_cubic_kernel(TF3 d) {
   return distance_cubic_kernel(length_sqr(d));
 }
 
@@ -616,8 +608,7 @@ __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
     I j = p_i / (stepsY * stepsZ);
     I k = (p_i % (stepsY * stepsZ)) / stepsZ;
     I l = p_i % stepsZ;
-    TF3 currPos =
-        make_vector<TF3>(xshift * j, yshift * k, diameter * l) + start;
+    TF3 currPos = TF3{xshift * j, yshift * k, diameter * l} + start;
     TF3 shift_vec = make_zeros<TF3>();
     if (mode == 1) {
       if (k % 2 == 0) {
@@ -643,8 +634,9 @@ __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
 }
 
 template <typename TF3>
-__device__ TF3 index_to_node_position(TF3 domain_min, U3 resolution,
-                                      TF3 cell_size, U l) {
+constexpr __device__ TF3 index_to_node_position(TF3 const& domain_min,
+                                                U3 const& resolution,
+                                                TF3 const& cell_size, U l) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   TF3 x;
   U nv = (resolution.x + 1) * (resolution.y + 1) * (resolution.z + 1);
@@ -1143,10 +1135,9 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
           TF wijk = cn<TF>().kGridWeights[i] * cn<TF>().kGridWeights[j] *
                     cn<TF>().kGridWeights[k];
           TF3 integrand_parameter =
-              cn<TF>().kernel_radius *
-              make_vector<TF3>(cn<TF>().kGridAbscissae[i],
-                               cn<TF>().kGridAbscissae[j],
-                               cn<TF>().kGridAbscissae[k]);
+              cn<TF>().kernel_radius * TF3{cn<TF>().kGridAbscissae[i],
+                                           cn<TF>().kGridAbscissae[j],
+                                           cn<TF>().kGridAbscissae[k]};
           TF dist_in_integrand = interpolate_distance_without_intermediates(
               &distance_nodes, domain_min, domain_max, resolution, cell_size,
               node_offset, x + integrand_parameter);

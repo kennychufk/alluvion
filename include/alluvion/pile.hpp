@@ -48,8 +48,7 @@ class Pile {
     std::vector<TF>& nodes = grid_host.node_data()[0];
     grid_size = nodes.size();
     dg::Vector3r<TF> dg_cell_size = grid_host.cellSize();
-    cell_size =
-        make_vector<TF3>(dg_cell_size(0), dg_cell_size(1), dg_cell_size(2));
+    cell_size = TF3{dg_cell_size(0), dg_cell_size(1), dg_cell_size(2)};
     return nodes;
   }
 

@@ -24,12 +24,10 @@ SCENARIO("testing index-to-node") {
       grid.addFunction([](Vector3r<F> const& xi) { return xi(0); });
       U num_nodes = grid.node_data()[0].size();
 
-      F3 domain_min =
-          make_vector<F3>(domain.min()(0), domain.min()(1), domain.min()(2));
+      F3 domain_min{domain.min()(0), domain.min()(1), domain.min()(2)};
       U3 resolution = make_uint3(resolution_array[0], resolution_array[1],
                                  resolution_array[2]);
-      F3 cell_size = make_vector<F3>(grid.cellSize()(0), grid.cellSize()(1),
-                                     grid.cellSize()(2));
+      F3 cell_size{grid.cellSize()(0), grid.cellSize()(1), grid.cellSize()(2)};
       THEN(
           "gives the same node positions for device and host implementations") {
         Store store;
