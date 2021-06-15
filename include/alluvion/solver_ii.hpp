@@ -244,7 +244,7 @@ struct SolverIi {
     pile.solve_contacts();
   }
 
-  void colorize(TF lower_bound, TF upper_bound) {
+  void colorize_speed(TF lower_bound, TF upper_bound) {
     runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {

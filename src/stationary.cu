@@ -141,7 +141,7 @@ int main(void) {
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
           solver_ii.step<0>();
         }
-        solver_ii.colorize(0, 2);
+        solver_ii.colorize_speed(0, 2);
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));

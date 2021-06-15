@@ -223,7 +223,7 @@ int main(void) {
           solver_ii.step<1>();
           t += solver_ii.dt;
         }
-        solver_ii.colorize(0, 0.004);
+        solver_ii.colorize_speed(0, 0.004);
         pid_length.set_zero();
         Runner::launch(
             solver_ii.num_particles, 256, [&](U grid_size, U block_size) {

@@ -330,7 +330,7 @@ struct SolverDf {
     pile.find_contacts();
     pile.solve_contacts();
   }
-  void colorize(TF lower_bound, TF upper_bound) {
+  void colorize_kappa_v(TF lower_bound, TF upper_bound) {
     runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {
@@ -339,15 +339,16 @@ struct SolverDf {
               upper_bound, num_particles);
         },
         "scale", scale<TF>);
-
-    // runner.launch(
-    //     num_particles,
-    //     [&](U grid_size, U block_size) {
-    //       normalize_vector_magnitude<<<grid_size, block_size>>>(
-    //           particle_v, particle_normalized_attr, lower_bound, upper_bound,
-    //           num_particles);
-    //     },
-    //     "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
+  }
+  void colorize_speed(TF lower_bound, TF upper_bound) {
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          normalize_vector_magnitude<<<grid_size, block_size>>>(
+              particle_v, particle_normalized_attr, lower_bound, upper_bound,
+              num_particles);
+        },
+        "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
   }
   Runner& runner;
   TPile& pile;

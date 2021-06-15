@@ -135,8 +135,8 @@ int main(void) {
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
           solver_df.step<0>();
         }
-        solver_df.colorize(-0.002_F, 0.0_F);
-        // solver_df.colorize(0, 2);
+        solver_df.colorize_kappa_v(-0.002_F, 0.0_F);
+        // solver_df.colorize_speed(0, 2);
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));
