@@ -1205,7 +1205,7 @@ __device__ TF compute_volume_and_boundary_x(
   TF dist;
   // other
   TF volume, nl;
-  bool write_boundary, penetrated;
+  bool write_boundary;
   *boundary_xj = make_zeros<TF3>();
   *d = 0;
   *normal = make_zeros<TF3>();
@@ -1225,17 +1225,16 @@ __device__ TF compute_volume_and_boundary_x(
     nl = length(*normal);
     *normal /= nl;
     volume = interpolate(volume_nodes, node_offset, cells, N);
-    write_boundary =
-        (dist > static_cast<TF>(0.1) * cn<TF>().particle_radius &&
-         dist < cn<TF>().kernel_radius && volume > cn<TF>().boundary_epsilon &&
-         volume != kFMax<TF> && nl > cn<TF>().boundary_epsilon);
+
+    write_boundary = (dist > 0 && dist < cn<TF>().kernel_radius &&
+                      volume > cn<TF>().boundary_epsilon &&
+                      volume != kFMax<TF> && nl > cn<TF>().boundary_epsilon);
     boundary_volume = write_boundary * volume;
-    *boundary_xj = write_boundary * (x - dist * (*normal));
-    penetrated = (dist <= static_cast<TF>(0.1) * cn<TF>().particle_radius &&
-                  nl > cn<TF>().boundary_epsilon);
-    *d = penetrated * -dist;
-    *d = min(*d, static_cast<TF>(0.25) / static_cast<TF>(0.005) *
-                     cn<TF>().particle_radius * dt);
+    *boundary_xj =
+        write_boundary *
+        (x - max(dist + cn<TF>().particle_radius * static_cast<TF>(0.5),
+                 cn<TF>().particle_radius * 2) *
+                 (*normal));
   }
   return boundary_volume;
 }
@@ -1407,14 +1406,6 @@ __global__ void compute_particle_boundary(
         rigid_x, rigid_q, dt, &boundary_xj, &d, &normal);
     particle_boundary_xj(boundary_id, p_i) = boundary_xj;
     particle_boundary_volume(boundary_id, p_i) = boundary_volume;
-    penetrated = (d != 0);
-    if constexpr (wrap == 0)
-      particle_x(p_i) += penetrated * d * normal;
-    else
-      particle_x(p_i) = wrap_x(particle_x(p_i) + penetrated * d * normal);
-    particle_v(p_i) += penetrated *
-                       (static_cast<TF>(0.05) - dot(particle_v(p_i), normal)) *
-                       normal;
   });
 }
 
