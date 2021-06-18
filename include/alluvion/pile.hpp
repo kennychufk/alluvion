@@ -176,6 +176,62 @@ class Pile {
     x_(get_size() - 1) = x;
     omega_(get_size() - 1) = TF3{0, 0, 0};
   }
+  void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
+               TF sign, TF thickness, Mesh const& collision_mesh, TF mass,
+               TF restitution, TF friction, TF boundary_viscosity,
+               TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
+               Mesh const& display_mesh) {
+    mass_[i] = mass;
+    restitution_[i] = restitution;
+    friction_[i] = friction;
+    boundary_viscosity_[i] = boundary_viscosity;
+    inertia_tensor_[i] = inertia_tensor;
+
+    x_mat_[i] = TF3{0, 0, 0};
+    q_mat_[i] = q;
+    q_initial_[i] = q;
+
+    oldx_[i] = x;
+    a_[i] = TF3{0, 0, 0};
+    force_[i] = TF3{0, 0, 0};
+
+    q_[i] = q;
+    torque_[i] = TF3{0, 0, 0};
+
+    distance_list_[i].reset(distance);
+
+    resolution_list_[i] = resolution;
+    sign_list_[i] = sign;
+    thickness_list_[i] = thickness;
+
+    // placeholders
+    store_.remove(distance_grids_[i]);
+    distance_grids_[i] = store_.create<1, TF>({0});
+    store_.remove(volume_grids_[i]);
+    volume_grids_[i] = store_.create<1, TF>({0});
+    domain_min_list_[i] = TF3{0, 0, 0};
+    domain_max_list_[i] = TF3{0, 0, 0};
+    grid_size_list_[i] = 0;
+    cell_size_list_[i] = TF3{0, 0, 0};
+
+    MeshBuffer mesh_buffer;
+    if (store_.has_display()) {
+      mesh_buffer = store_.get_display()->create_mesh_buffer(display_mesh);
+      mesh_buffer =
+          store_.get_display()->remove_mesh_buffer(mesh_buffer_list_[i]);
+    }
+    mesh_buffer_list_[i] = mesh_buffer;
+
+    Variable<1, TF3> collision_vertices_var =
+        store_.create<1, TF3>({static_cast<U>(collision_mesh.vertices.size())});
+    store_.remove(collision_vertex_list_[i]);
+    collision_vertex_list_[i] = collision_vertices_var;
+    collision_vertices_var.set_bytes(collision_mesh.vertices.data());
+
+    v_(get_size() - 1) = TF3{0, 0, 0};
+    x_(get_size() - 1) = x;
+    omega_(get_size() - 1) = TF3{0, 0, 0};
+  }
   void build_grids(TF margin) {
     store_.copy_cn<F>();
     for (U i = 0; i < get_size(); ++i) {

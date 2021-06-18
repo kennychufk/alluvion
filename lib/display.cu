@@ -283,6 +283,10 @@ MeshBuffer Display::create_mesh_buffer(Mesh const &mesh) {
   return mesh_buffer;
 }
 
+void Display::remove_mesh_buffer(MeshBuffer const &mesh_buffer) {
+  mesh_dict_.erase(mesh_buffer.vertex);
+}
+
 void Display::add_shading_program(ShadingProgram *program) {
   programs_.emplace_back(program);
 }

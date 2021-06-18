@@ -9,7 +9,7 @@
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
-#include "alluvion/solver_ii.hpp"
+#include "alluvion/solver_df.hpp"
 #include "alluvion/store.hpp"
 #include "alluvion/typesetter.hpp"
 
@@ -30,8 +30,6 @@ int main(void) {
   F particle_mass =
       cubical_particle_volume * volume_relative_to_cube * density0;
 
-  F cfl_factor = 0.15_F;
-  F cfl_length_scale = particle_radius * 2._F;
   F3 gravity = {0._F, -9.81_F, 0._F};
 
   store.get_cn<F>().set_cubic_discretization_constants();
@@ -56,7 +54,7 @@ int main(void) {
   F R = kernel_radius * kQ;
 
   const char* font_filename = "/usr/share/fonts/truetype/freefont/FreeMono.ttf";
-  Typesetter typesetter(display, font_filename, 0, 48);
+  Typesetter typesetter(display, font_filename, 0, 30);
   typesetter.load_ascii();
 
   display->camera_.setEye(0._F, 0._F, R * 6._F);
@@ -84,8 +82,8 @@ int main(void) {
 
   // particles
   U max_num_particles =
-      static_cast<U>(2._F * kPi<F> * kQ * kQ * kM * kernel_radius *
-                     kernel_radius * kernel_radius * density0 / particle_mass);
+      static_cast<U>(kPi<F> * (R - particle_radius) * (R - particle_radius) *
+                     cylinder_length * density0 / particle_mass);
 
   // grid
   U3 grid_res{static_cast<U>(kM * 2), static_cast<U>(kQ * 2),
@@ -115,17 +113,11 @@ int main(void) {
   Variable<2, F3> particle_torque =
       store.create<2, F3>({pile.get_size(), max_num_particles});
   Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_pressure = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_last_pressure =
+  Variable<1, F> particle_dfsph_factor =
       store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_aii = store.create<1, F>({max_num_particles});
-  Variable<1, F3> particle_dii = store.create<1, F3>({max_num_particles});
-  Variable<1, F3> particle_dij_pj = store.create<1, F3>({max_num_particles});
-  Variable<1, F> particle_sum_tmp = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_adv_density = store.create<1, F>({max_num_particles});
-  Variable<1, F3> particle_pressure_accel =
-      store.create<1, F3>({max_num_particles});
-  Variable<1, F> particle_density_err = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_kappa_v = store.create<1, F>({max_num_particles});
+  Variable<1, F> particle_density_adv = store.create<1, F>({max_num_particles});
   Variable<4, Q> pid = store.create<4, Q>(
       {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
   Variable<3, U> pid_length =
@@ -135,21 +127,20 @@ int main(void) {
   Variable<1, U> particle_num_neighbors =
       store.create<1, U>({max_num_particles});
 
-  SolverIi<F3, Q, F> solver_ii(
+  SolverDf<F3, Q, F> solver_df(
       runner, pile, *particle_x, *particle_normalized_attr, particle_v,
       particle_a, particle_density, particle_boundary_xj,
       particle_boundary_volume, particle_force, particle_torque,
-      particle_cfl_v2, particle_pressure, particle_last_pressure, particle_aii,
-      particle_dii, particle_dij_pj, particle_sum_tmp, particle_adv_density,
-      particle_pressure_accel, particle_density_err, pid, pid_length,
-      particle_neighbors, particle_num_neighbors);
-  solver_ii.dt = 1e-3_F;
-  solver_ii.max_dt = 0.001_F;
-  solver_ii.min_dt = 0.0001_F;
-  solver_ii.cfl = 2e-3_F;
-  solver_ii.particle_radius = particle_radius;
+      particle_cfl_v2, particle_dfsph_factor, particle_kappa, particle_kappa_v,
+      particle_density_adv, pid, pid_length, particle_neighbors,
+      particle_num_neighbors);
+  solver_df.dt = 1e-3_F;
+  solver_df.max_dt = 1e-5_F;
+  solver_df.min_dt = 0.0_F;
+  solver_df.cfl = 6e-3_F;
+  solver_df.particle_radius = particle_radius;
 
-  U initial_num_particles = max_num_particles * 4 / 5;
+  U initial_num_particles = 2700;
   F slice_distance = particle_radius * 2._F;
   U num_slices = static_cast<U>(cylinder_length / slice_distance);
   U num_particles_per_slice = initial_num_particles / num_slices;
@@ -164,7 +155,7 @@ int main(void) {
         cylinder_length * -0.5_F);
   });
   store.unmap_graphical_pointers();
-  solver_ii.num_particles = initial_num_particles;
+  solver_df.num_particles = initial_num_particles;
 
   // sample points
   U num_sample_planes = 14;
@@ -197,7 +188,7 @@ int main(void) {
 
   U step_id = 0;
   F t = 0;
-  U num_emission = static_cast<U>(cylinder_length / (particle_radius * 2._F));
+  U num_emission = 1;
   // U num_emission = max_num_particles * 1 / 20;
   // U num_emission_slices = static_cast<U>(cylinder_length / slice_distance);
   // U num_emission_per_slice = num_emission / num_emission_slices;
@@ -238,9 +229,9 @@ int main(void) {
   F max_particle_speed = 99.9_F;
   F min_particle_speed = 99.9_F;
   F sum_particle_velocity_components = 99.9_F;
-
-  F max_particle_pressure = 99.9_F;
-  F min_particle_pressure = 99.9_F;
+  F last_stationary_t = 0._F;
+  F last_emission_t = 0._F;
+  bool emitted_since_last_stationary = true;
 
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
@@ -253,10 +244,10 @@ int main(void) {
           // if (!finished_filling || step_id % 4000 == 0) {
           //   pid_length.set_zero();
           //   Runner::launch(
-          //       solver_ii.num_particles, 256, [&](U grid_size, U block_size)
+          //       solver_df.num_particles, 256, [&](U grid_size, U block_size)
           //       {
           //         update_particle_grid<<<grid_size, block_size>>>(
-          //             *particle_x, pid, pid_length, solver_ii.num_particles);
+          //             *particle_x, pid, pid_length, solver_df.num_particles);
           //       });
           //   Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
           //     make_neighbor_list<1><<<grid_size, block_size>>>(
@@ -264,13 +255,13 @@ int main(void) {
           //         sample_num_neighbors, num_samples);
           //   });
           //   Runner::launch(
-          //       solver_ii.num_particles, 256, [&](U grid_size, U block_size)
+          //       solver_df.num_particles, 256, [&](U grid_size, U block_size)
           //       {
           //         compute_density<<<grid_size, block_size>>>(
           //             *particle_x, particle_neighbors,
           //             particle_num_neighbors, particle_density,
           //             particle_boundary_xj, particle_boundary_volume,
-          //             solver_ii.num_particles);
+          //             solver_df.num_particles);
           //       });
           //   Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
           //     sample_fluid<<<grid_size, block_size>>>(
@@ -300,10 +291,8 @@ int main(void) {
           // if (finished_filling && t - finished_filling_t > 3._F &&
           //     resting_phase == 2) {
           //   resting_phase++;
-          //   particle_x->write_file("x5-revamp.alu", solver_ii.num_particles);
-          //   particle_v.write_file("v5-revamp.alu", solver_ii.num_particles);
-          //   particle_pressure.write_file("pressure5-revamp.alu",
-          //                                solver_ii.num_particles);
+          //   particle_x->write_file("x5-revamp.alu", solver_df.num_particles);
+          //   particle_v.write_file("v5-revamp.alu", solver_df.num_particles);
           //   std::cout << "Finished resting phase 3." << std::endl;
           // } else if (finished_filling && t - finished_filling_t > 4._F &&
           //            resting_phase == 1 && max_particle_speed < 1e-6_F) {
@@ -321,54 +310,74 @@ int main(void) {
           // }
 
           // ===== [emission
-          F3 emission_velocity = gravity * solver_ii.dt * 500.0_F;
+          F3 emission_velocity = gravity * solver_df.dt * 500.0_F;
           F emission_speed = length(emission_velocity);
           F emission_interval = particle_radius * 2._F / emission_speed;
-          if (!finished_filling && max_density_error < 1.5e-4_F &&
-              t >= next_emission_t && consecutive_density_uniformity < 0) {
+          if (solver_df.num_particles < 2704 && !finished_filling &&
+              max_density_error < 1.5e-4_F && t >= next_emission_t &&
+              t - last_emission_t > 0.5_F &&
+              consecutive_density_uniformity < 0) {
             num_emitted.set_zero();
             Runner::launch(num_emission, 256, [&](U grid_size, U block_size) {
               emit_if_density_lower_than_last<<<grid_size, block_size>>>(
                   *particle_x, particle_v, emission_x, emission_sample_density,
-                  num_emitted, num_emission, solver_ii.num_particles, 0.99_F,
+                  num_emitted, num_emission, solver_df.num_particles, 0.99_F,
                   emission_velocity);
             });
             U num_emitted_host;
             num_emitted.get_bytes(&num_emitted_host);
-            solver_ii.num_particles += num_emitted_host;
+            solver_df.num_particles += num_emitted_host;
             std::cout << "filled " << num_emitted_host << std::endl;
+            last_emission_t = t;
             if (num_emitted_host > 0) {
               next_emission_t = t + emission_interval;
+              emitted_since_last_stationary = true;
+            }
+            if (solver_df.num_particles == 2704) {
+              std::cout << "set gravity to zero" << std::endl;
+              store.get_cn<F>().set_gravity(F3{});
             }
           }
           // ===== ]emission
+          if (t > 10._F && solver_df.num_particles == 2704 &&
+              t - last_stationary_t > 0.2_F) {
+            particle_x->write_file("x5-2704.alu", solver_df.num_particles);
+            should_close = true;
+          }
+          if (min_particle_speed > 2._F || (step_id % 1000 == 0)) {
+            particle_v.set_zero();
+            particle_dfsph_factor.set_zero();
+            particle_kappa.set_zero();
+            particle_kappa_v.set_zero();
+            particle_density_adv.set_zero();
+            last_stationary_t = t;
+            emitted_since_last_stationary = false;
+            std::cout << "last stationary t = " << last_stationary_t
+                      << std::endl;
+          }
 
-          solver_ii.step<1>();
+          solver_df.step<1>();
 
-          t += solver_ii.dt;
+          t += solver_df.dt;
           step_id += 1;
 
           max_density_error =
-              Runner::max(particle_density, solver_ii.num_particles) /
+              Runner::max(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           min_density_error =
-              Runner::min(particle_density, solver_ii.num_particles) /
+              Runner::min(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           max_particle_speed =
-              sqrt(Runner::max(particle_cfl_v2, solver_ii.num_particles));
+              sqrt(Runner::max(particle_cfl_v2, solver_df.num_particles));
           min_particle_speed =
-              sqrt(Runner::min(particle_cfl_v2, solver_ii.num_particles));
+              sqrt(Runner::min(particle_cfl_v2, solver_df.num_particles));
           sum_particle_velocity_components =
               Runner::sum<F>(particle_v.ptr_, particle_v.get_num_primitives());
-          max_particle_pressure =
-              Runner::max(particle_pressure, solver_ii.num_particles);
-          min_particle_pressure =
-              Runner::min(particle_pressure, solver_ii.num_particles);
           F expected_total_volume = kPi<F> * (R - particle_radius) *
                                     (R - particle_radius) * cylinder_length;
-          naive_filled_percentage = solver_ii.num_particles * particle_mass /
+          naive_filled_percentage = solver_df.num_particles * particle_mass /
                                     density0 / expected_total_volume;
           // F lower_density_ratio = min_density / density0;
           // if (lower_density_ratio > 0.98) {
@@ -439,14 +448,8 @@ int main(void) {
           //             << max_particle_speed << " sum of components = "
           //             << sum_particle_velocity_components << std::endl;
           // }
-
-          // if (step_id % 20000 == 0) {
-          //   std::cout << "particle pressure = " << min_particle_pressure <<
-          //   ", "
-          //             << max_particle_pressure << std::endl;
-          // }
         }
-        solver_ii.colorize(0, 2.0);
+        solver_df.colorize_speed(0, 2.0);
         store.unmap_graphical_pointers();
       }));
 
@@ -538,7 +541,7 @@ int main(void) {
               program.get_uniform_location("M"), 1, GL_FALSE,
               glm::value_ptr(glm::translate(glm::mat4(1),
                                             glm::vec3{wrap_length * i, 0, 0})));
-          glDrawArrays(GL_POINTS, 0, solver_ii.num_particles);
+          glDrawArrays(GL_POINTS, 0, solver_df.num_particles);
         }
       }));
 
@@ -561,15 +564,17 @@ int main(void) {
                     1.0f);
 
         std::stringstream time_text;
-        time_text << "num_particles = " << solver_ii.num_particles << "("
+        time_text << "num_particles = " << solver_df.num_particles << "("
                   << std::fixed << std::setprecision(3) << std::setw(5)
                   << naive_filled_percentage << " t: " << std::fixed
                   << std::setprecision(3) << std::setw(6) << t
                   << " dt: " << std::scientific << std::setprecision(3)
-                  << std::setw(6) << solver_ii.dt << " d: (" << std::scientific
+                  << std::setw(6) << solver_df.dt << " d: (" << std::scientific
                   << std::setprecision(3) << std::setw(6) << min_density_error
                   << "," << std::scientific << std::setprecision(3)
-                  << std::setw(6) << max_density_error << ")";
+                  << std::setw(6) << max_density_error << ") v=("
+                  << std::setw(6) << min_particle_speed << ","
+                  << max_particle_speed << ")";
         std::string text = time_text.str();
 
         typesetter.start(display.width_ * 0.1f, display.height_ * 0.05f, 1.0f);

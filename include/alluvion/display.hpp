@@ -62,6 +62,7 @@ class Display {
     return vbo;
   }
   MeshBuffer create_mesh_buffer(Mesh const &mesh);
+  void remove_mesh_buffer(MeshBuffer const &mesh_buffer);
   void add_shading_program(ShadingProgram *program);
   CompleteFramebuffer &get_framebuffer(GLuint fbo);
   CompleteFramebuffer const &get_framebuffer(GLuint fbo) const;

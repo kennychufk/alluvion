@@ -80,6 +80,129 @@ void Mesh::set_uv_sphere(float radius, U num_sectors, U num_stacks) {
   }
 }
 
+void Mesh::set_cylinder(float radius, float height, U num_sectors,
+                        U num_stacks) {
+  ///////////////////////////////////////////////////////////////////////////////
+  // Cylinder.cpp
+  // ============
+  //
+  //  AUTHOR: Song Ho Ahn (song.ahn@gmail.com)
+  // CREATED: 2018-03-27
+  // UPDATED: 2020-03-14
+  ///////////////////////////////////////////////////////////////////////////////
+
+  // clear memory of prev arrays
+  clear();
+
+  float x, y, z;  // vertex position
+
+  // generate 3D vertices of a unit circle on XZ plane
+  std::vector<float> unitCircleVertices;
+  {
+    float sectorStep = 2 * kPi<float> / num_sectors;
+    float sectorAngle;  // radian
+
+    for (int i = 0; i <= num_sectors; ++i) {
+      sectorAngle = i * sectorStep;
+      unitCircleVertices.push_back(cos(sectorAngle));  // x
+      unitCircleVertices.push_back(0);                 // y
+      unitCircleVertices.push_back(sin(sectorAngle));  // z
+    }
+  }
+
+  // get normals for cylinder sides
+  std::vector<float> sideNormals;
+  {
+    float sectorStep = 2 * kPi<float> / num_sectors;
+    float sectorAngle;  // radian
+    // compute the normal vector at 0 degree first
+    // rotate (x0,y0,z0) per sector angle
+    for (int i = 0; i <= num_sectors; ++i) {
+      sectorAngle = i * sectorStep;
+      sideNormals.push_back(cos(sectorAngle));  // nx
+      sideNormals.push_back(0);                 // ny
+      sideNormals.push_back(sin(sectorAngle));  // nz
+    }
+  }
+
+  // put vertices of side cylinder to array by scaling unit circle
+  for (int i = 0; i <= num_stacks; ++i) {
+    y = -(height * 0.5f) +
+        static_cast<float>(i) / num_stacks * height;      // vertex position y
+    float t = 1.0f - static_cast<float>(i) / num_stacks;  // top-to-bottom
+
+    for (int j = 0, k = 0; j <= num_sectors; ++j, k += 3) {
+      x = unitCircleVertices[k];
+      z = unitCircleVertices[k + 2];
+      vertices.push_back(float3{x * radius, y, z * radius});  // position
+      normals.push_back(float3{sideNormals[k], sideNormals[k + 1],
+                               sideNormals[k + 2]});  // normal
+      texcoords.push_back(
+          float2{static_cast<float>(j) / num_sectors, t});  // tex coord
+    }
+  }
+
+  // remember where the base.top vertices start
+  U baseVertexIndex = static_cast<U>(vertices.size());
+
+  // put vertices of base of cylinder
+  y = -height * 0.5f;
+  vertices.push_back(float3{0, y, 0});
+  normals.push_back(float3{0, -1, 0});
+  texcoords.push_back(float2{0.5f, 0.5f});
+  for (int i = 0, j = 0; i < num_sectors; ++i, j += 3) {
+    x = unitCircleVertices[j];
+    z = unitCircleVertices[j + 2];
+    vertices.push_back(float3{x * radius, y, z * radius});
+    normals.push_back(float3{0, -1, 0});
+    texcoords.push_back(
+        float2{-x * 0.5f + 0.5f, -z * 0.5f + 0.5f});  // flip horizontal
+  }
+
+  // remember where the base vertices start
+  U topVertexIndex = static_cast<U>(vertices.size());
+
+  // put vertices of top of cylinder
+  y = height * 0.5f;
+  vertices.push_back(float3{0, y, 0});
+  normals.push_back(float3{0, 1, 0});
+  texcoords.push_back(float2{0.5f, 0.5f});
+  for (int i = 0, j = 0; i < num_sectors; ++i, j += 3) {
+    x = unitCircleVertices[j];
+    z = unitCircleVertices[j + 2];
+    vertices.push_back(float3{x * radius, y, z * radius});
+    normals.push_back(float3{0, 1, 0});
+    texcoords.push_back(float2{x * 0.5f + 0.5f, -z * 0.5f + 0.5f});
+  }
+
+  // put indices for sides
+  U k1, k2;
+  for (U i = 0; i < num_stacks; ++i) {
+    k1 = i * (num_sectors + 1);  // bebinning of current stack
+    k2 = k1 + num_sectors + 1;   // beginning of next stack
+
+    for (U j = 0; j < num_sectors; ++j, ++k1, ++k2) {
+      // 2 trianles per sector
+      faces.push_back(U3{k1, k2, k1 + 1});
+      faces.push_back(U3{k2, k2 + 1, k1 + 1});
+    }
+  }
+
+  for (U i = 0, k = baseVertexIndex + 1; i < num_sectors; ++i, ++k) {
+    if (i < (num_sectors - 1))
+      faces.push_back(U3{baseVertexIndex, k, k + 1});
+    else  // last triangle
+      faces.push_back(U3{baseVertexIndex, k, baseVertexIndex + 1});
+  }
+
+  for (U i = 0, k = topVertexIndex + 1; i < num_sectors; ++i, ++k) {
+    if (i < (num_sectors - 1))
+      faces.push_back(U3{topVertexIndex, k + 1, k});
+    else
+      faces.push_back(U3{topVertexIndex, topVertexIndex + 1, k});
+  }
+}
+
 void Mesh::set_obj(const char* filename) {
   clear();
   std::vector<U3> tex_faces;
