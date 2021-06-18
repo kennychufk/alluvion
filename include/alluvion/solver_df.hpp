@@ -50,7 +50,7 @@ struct SolverDf {
         particle_neighbors(particle_neighbors_arg),
         particle_num_neighbors(particle_num_neighbors_arg) {}
 
-  template <U wrap>
+  template <U wrap, U gravitation>
   void step() {
     particle_force.set_zero();
     particle_torque.set_zero();
@@ -187,13 +187,23 @@ struct SolverDf {
         "divergence_solve_finish", divergence_solve_finish<TF>);
     // ===== ]divergence solve
 
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          clear_acceleration<<<grid_size, block_size>>>(particle_a,
-                                                        num_particles);
-        },
-        "clear_acceleration", clear_acceleration<TF3>);
+    if constexpr (gravitation == 0) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            clear_acceleration<<<grid_size, block_size>>>(particle_a,
+                                                          num_particles);
+          },
+          "clear_acceleration", clear_acceleration<TF3>);
+    } else if constexpr (gravitation == 1) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            apply_axial_gravitation<<<grid_size, block_size>>>(
+                particle_a, particle_x, num_particles);
+          },
+          "apply_axial_gravitation", apply_axial_gravitation<TF3>);
+    }
     // compute_normal
     // compute_surface_tension_fluid
     // compute_surface_tension_boundary

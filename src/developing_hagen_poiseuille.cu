@@ -42,7 +42,7 @@ int main(void) {
   F particle_mass =
       cubical_particle_volume * volume_relative_to_cube * density0;
 
-  F3 pressure_gradient_acc = F3{pressure_gradient_acc_x, 0._F, 0._F};
+  F3 pressure_gradient_acc = F3{0._F, pressure_gradient_acc_x, 0._F};
 
   store.get_cn<F>().set_cubic_discretization_constants();
   store.get_cn<F>().set_kernel_radius(kernel_radius);
@@ -67,7 +67,7 @@ int main(void) {
   F friction = 0._F;
   U max_num_contacts = 512;
   Pile<F3, Q, F> pile(store, max_num_contacts);
-  pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{1, 20, 20}, -1._F, 0,
+  pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F, 0,
            Mesh(), 0._F, restitution, friction, boundary_viscosity, F3{1, 1, 1},
            F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
@@ -81,16 +81,16 @@ int main(void) {
                      kernel_radius * kernel_radius * density0 / particle_mass);
 
   // grid
-  U3 grid_res{static_cast<U>(kM * 2), static_cast<U>(kQ * 2),
+  U3 grid_res{static_cast<U>(kQ * 2), static_cast<U>(kM * 2),
               static_cast<U>(kQ * 2)};
-  I3 grid_offset{-kM, -kQ, -kQ};
+  I3 grid_offset{-kQ, -kM, -kQ};
   U max_num_particles_per_cell = 64;
   U max_num_neighbors_per_particle = 64;
   store.get_cni().init_grid_constants(grid_res, grid_offset);
   store.get_cni().set_max_num_particles_per_cell(max_num_particles_per_cell);
   store.get_cni().set_max_num_neighbors_per_particle(
       max_num_neighbors_per_particle);
-  store.get_cn<F>().set_wrap_length(grid_res.x * kernel_radius);
+  store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
   std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
       store.create_graphical<1, F3>({max_num_particles}));
@@ -344,7 +344,7 @@ int main(void) {
 
         glBindTexture(GL_TEXTURE_1D, colormap_tex);
         for (I i = 0; i <= 0; ++i) {
-          float wrap_length = grid_res.x * kernel_radius;
+          float wrap_length = grid_res.y * kernel_radius;
           glUniformMatrix4fv(
               program.get_uniform_location("M"), 1, GL_FALSE,
               glm::value_ptr(glm::translate(glm::mat4(1),

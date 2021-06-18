@@ -493,21 +493,21 @@ displacement_cohesion_kernel(TF3 d) {
 }
 
 template <typename TI3>
-inline __device__ TI3 wrap_ipos_x(TI3 ipos) {
-  if (ipos.x >= static_cast<I>(cni.grid_res.x)) {
-    ipos.x -= cni.grid_res.x;
-  } else if (ipos.x < 0) {
-    ipos.x += cni.grid_res.x;
+inline __device__ TI3 wrap_ipos_y(TI3 ipos) {
+  if (ipos.y >= static_cast<I>(cni.grid_res.y)) {
+    ipos.y -= cni.grid_res.y;
+  } else if (ipos.y < 0) {
+    ipos.y += cni.grid_res.y;
   }
   return ipos;
 }
 template <typename TF3>
-inline __device__ TF3 wrap_x(TF3 v) {
+inline __device__ TF3 wrap_y(TF3 v) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  if (v.x >= cn<TF>().wrap_max) {
-    v.x -= cn<TF>().wrap_length;
-  } else if (v.x < cn<TF>().wrap_min) {
-    v.x += cn<TF>().wrap_length;
+  if (v.y >= cn<TF>().wrap_max) {
+    v.y -= cn<TF>().wrap_length;
+  } else if (v.y < cn<TF>().wrap_min) {
+    v.y += cn<TF>().wrap_length;
   }
   return v;
 }
@@ -516,20 +516,18 @@ template <typename TF3, typename TF>
 __global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
                                       U num_particles, TF radius,
                                       U num_particles_per_slice,
-                                      TF slice_distance, TF x_min) {
+                                      TF slice_distance, TF y_min) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     U slice_i = p_i / num_particles_per_slice;
     U id_in_rotation_pattern = slice_i / 4;
     U id_in_slice = p_i % num_particles_per_slice;
-    // U num_slices = (num_particles + num_particles_per_slice - 1) /
-    // num_particles_per_slice; TF slice_distance = (x_max - x_min) /
-    // num_slices;
     TF real_in_slice = static_cast<TF>(id_in_slice) +
                        (id_in_rotation_pattern * static_cast<TF>(0.25));
     TF point_r = sqrt(real_in_slice / num_particles_per_slice) * radius;
     TF angle = kPi<TF> * (1 + sqrt(static_cast<TF>(5))) * (real_in_slice);
-    particle_x(p_i) = TF3{slice_distance * slice_i + x_min,
-                          point_r * cos(angle), point_r * sin(angle)};
+    particle_x(p_i) =
+        TF3{point_r * cos(angle), slice_distance * slice_i + y_min,
+            point_r * sin(angle)};
   });
 }
 
@@ -1191,7 +1189,7 @@ __device__ TF compute_volume_and_boundary_x(
   TF3 local_xi =
       rotate_using_quaternion(shifted, quaternion_conjugate(rigid_q));
   if constexpr (wrap == 1)
-    local_xi.x = 0;  // TODO: remove this to see any significant difference
+    local_xi.y = 0;  // TODO: remove this to see any significant difference
   // for resolve
   I3 ipos;
   TF3 inner_x;
@@ -1352,7 +1350,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
 #pragma unroll
     for (U i = 0; i < 27; ++i) {
       I3 neighbor_ipos = ipos + I3{i / 9, (i / 3) % 3, i % 3} - 1;
-      if constexpr (wrap == 1) neighbor_ipos = wrap_ipos_x(neighbor_ipos);
+      if constexpr (wrap == 1) neighbor_ipos = wrap_ipos_y(neighbor_ipos);
       if (within_grid(neighbor_ipos)) {
         U neighbor_occupancy =
             min(pid_length(neighbor_ipos), cni.max_num_particles_per_cell);
@@ -1362,7 +1360,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
           U p_j;
           extract_pid(pid_entry, x_j, p_j);
           TF3 xixj = x - x_j;
-          if constexpr (wrap == 1) xixj = wrap_x(xixj);
+          if constexpr (wrap == 1) xixj = wrap_y(xixj);
           if (p_j != p_i && length_sqr(xixj) < cn<TF>().kernel_radius_sqr) {
             TQ neighbor_entry{xixj.x, xixj.y, xixj.z, 0};
             reinterpret_cast<U&>(neighbor_entry.w) = p_j;
@@ -1386,6 +1384,16 @@ __global__ void clear_acceleration(Variable<1, TF3> particle_a,
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   forThreadMappedToElement(num_particles,
                            [&](U p_i) { particle_a(p_i) = cn<TF>().gravity; });
+}
+
+template <typename TF3>
+__global__ void apply_axial_gravitation(Variable<1, TF3> particle_a,
+                                        Variable<1, TF3> particle_x,
+                                        U num_particles) {
+  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    particle_a(p_i) = TF3{0, particle_x(p_i).y * cn<TF>().axial_gravity, 0};
+  });
 }
 
 template <U wrap, typename TQ, typename TF3, typename TF>
@@ -1955,7 +1963,7 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
     if constexpr (wrap == 0)
       particle_x(p_i) += v * dt;
     else
-      particle_x(p_i) = wrap_x(particle_x(p_i) + v * dt);
+      particle_x(p_i) = wrap_y(particle_x(p_i) + v * dt);
     particle_v(p_i) = v;
   });
 }
@@ -2396,7 +2404,7 @@ __global__ void integrate_velocity(Variable<1, TF3> particle_x,
     if constexpr (wrap == 0)
       particle_x(p_i) += dt * particle_v(p_i);
     else
-      particle_x(p_i) = wrap_x(particle_x(p_i) + particle_v(p_i) * dt);
+      particle_x(p_i) = wrap_y(particle_x(p_i) + particle_v(p_i) * dt);
   });
 }
 
