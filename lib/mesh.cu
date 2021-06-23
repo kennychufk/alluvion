@@ -203,6 +203,84 @@ void Mesh::set_cylinder(float radius, float height, U num_sectors,
   }
 }
 
+void Mesh::set_box(float3 widths, U n) {
+  // https://github.com/glumpy/glumpy/blob/master/glumpy/geometry/primitives.py
+  //  -----------------------------------------------------------------------------
+  //  Copyright (c) 2009-2016 Nicolas P. Rougier. All rights reserved.
+  //  Distributed under the (new) BSD License.
+  //  -----------------------------------------------------------------------------
+  clear();
+
+  float interval = 1.0f / (n - 1);
+  for (U i = 0; i < 6; ++i) {
+    for (U j = 0; j < n; ++j) {
+      float y = -0.5f + interval * j;
+      for (U k = 0; k < n; ++k) {
+        float x = -0.5f + interval * k;
+        float3 normalized_coord;
+        if (i == 0) {
+          normalized_coord = float3{x, y, 0.5};
+          normals.push_back(float3{0, 0, 1});
+        } else if (i == 1) {
+          normalized_coord = float3{x, y, -0.5};
+          normals.push_back(float3{0, 0, -1});
+        } else if (i == 2) {
+          normalized_coord = float3{0.5, x, y};
+          normals.push_back(float3{1, 0, 0});
+        } else if (i == 3) {
+          normalized_coord = float3{-0.5, x, y};
+          normals.push_back(float3{-1, 0, 0});
+        } else if (i == 4) {  // y face switched
+          normalized_coord = float3{x, -0.5, y};
+          normals.push_back(float3{0, -1, 0});
+        } else if (i == 5) {  // y face switched
+          normalized_coord = float3{x, 0.5, y};
+          normals.push_back(float3{0, 1, 0});
+        }
+        vertices.push_back(normalized_coord * widths);
+        texcoords.push_back(float2{interval * k, interval * j});
+      }
+    }
+  }
+
+  std::vector<U> rectangular_index_tail_removed;
+  rectangular_index_tail_removed.reserve((n - 1) * (n - 1));
+  for (U i = 0; i < (n * (n - 1)); ++i) {
+    if ((i + 1) % n != 0) {
+      rectangular_index_tail_removed.push_back(i);
+    }
+  }
+
+  std::vector<U> repeated_index6;
+  for (U i = 0; i < (n - 1) * (n - 1) * 6; ++i) {
+    U inner = i % 6;
+    U mid = (i / 6) % (n - 1);
+    U outer = i / (6 * (n - 1));
+    U offset = 0;
+    if (inner == 1) offset = 1;
+    if (inner == 2 || inner == 4) offset = n + 1;
+    if (inner == 5) offset = n;
+    repeated_index6.push_back(
+        rectangular_index_tail_removed[mid * (n - 1) + outer] + offset);
+  }
+  for (U i = 0; i < repeated_index6.size() * 6; i += 3) {
+    U inner = i % repeated_index6.size();
+    U outer = i / repeated_index6.size();
+    U offset = n * n * outer;
+    bool positive_face = (outer % 2 == 0);  // invert for positive face
+    faces.push_back(
+        U3{repeated_index6[inner] + offset,
+           repeated_index6[inner + (positive_face ? 1 : 2)] + offset,
+           repeated_index6[inner + (positive_face ? 2 : 1)] + offset});
+  }
+}
+
+void Mesh::translate(float3 dx) {
+  for (float3& vertex : vertices) {
+    vertex += dx;
+  }
+}
+
 void Mesh::set_obj(const char* filename) {
   clear();
   std::vector<U3> tex_faces;

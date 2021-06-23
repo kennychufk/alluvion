@@ -217,8 +217,7 @@ class Pile {
     MeshBuffer mesh_buffer;
     if (store_.has_display()) {
       mesh_buffer = store_.get_display()->create_mesh_buffer(display_mesh);
-      mesh_buffer =
-          store_.get_display()->remove_mesh_buffer(mesh_buffer_list_[i]);
+      store_.get_display()->remove_mesh_buffer(mesh_buffer_list_[i]);
     }
     mesh_buffer_list_[i] = mesh_buffer;
 

@@ -68,6 +68,8 @@ struct Const {
   TF surface_tension_boundary_coeff;
 
   TF3 gravity;
+  TF axial_gravity;
+  TF radial_gravity;
 
   TF boundary_epsilon;
   TF dfsph_factor_epsilon;

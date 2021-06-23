@@ -34,3 +34,12 @@ target_link_libraries(developing_hagen_poiseuille
     lib_alluvion
 )
 
+add_executable(stabilizer
+  stabilizer.cu
+)
+
+target_link_libraries(stabilizer
+  PRIVATE
+    lib_alluvion
+)
+

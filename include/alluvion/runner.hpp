@@ -1392,7 +1392,10 @@ __global__ void apply_axial_gravitation(Variable<1, TF3> particle_a,
                                         U num_particles) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    particle_a(p_i) = TF3{0, particle_x(p_i).y * cn<TF>().axial_gravity, 0};
+    TF3 x_i = particle_x(p_i);
+    particle_a(p_i) =
+        TF3{x_i.x * cn<TF>().radial_gravity, x_i.y * cn<TF>().axial_gravity,
+            x_i.z * cn<TF>().radial_gravity};
   });
 }
 

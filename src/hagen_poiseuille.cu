@@ -1,6 +1,8 @@
+#include <cassert>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <limits>
+#include <random>
 
 #include "alluvion/colormaps.hpp"
 #include "alluvion/constants.hpp"
@@ -34,8 +36,8 @@ int main(void) {
   store.get_cn<F>().set_kernel_radius(kernel_radius);
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().axial_gravity = -10.0_F;
+  store.get_cn<F>().radial_gravity = 5.0_F;
   store.get_cn<F>().set_boundary_epsilon(1e-9_F);
-  F target_physical_viscosity = 1e-3_F;
   F viscosity = 5e-6_F;
   F vorticity = 0.01_F;
   F inertia_inverse = 0.1_F;
@@ -47,9 +49,7 @@ int main(void) {
       surface_tension_coeff, surface_tension_boundary_coeff);
 
   I kM = 5;
-  I kMSliced = 2;
   F cylinder_length = 2._F * kM * kernel_radius;
-  F cylinder_length_sliced = 2._F * kMSliced * kernel_radius;
   I kQ = 5;
   F R = kernel_radius * kQ;
 
@@ -81,10 +81,11 @@ int main(void) {
   store.get_cn<F>().set_contact_tolerance(0.05_F);
 
   // particles
-  U max_num_particles =
+  U naive_num_particles =
       static_cast<U>(kPi<F> * (R - particle_radius) * (R - particle_radius) *
                      cylinder_length * density0 / particle_mass);
-
+  U max_num_particles = static_cast<U>(kPi<F> * R * R * cylinder_length *
+                                       density0 / particle_mass);
   // grid
   U3 grid_res{static_cast<U>(kQ * 2), static_cast<U>(kM * 2),
               static_cast<U>(kQ * 2)};
@@ -140,7 +141,7 @@ int main(void) {
   solver_df.cfl = 2e-2_F;
   solver_df.particle_radius = particle_radius;
 
-  U initial_num_particles = max_num_particles * 3 / 4;
+  U initial_num_particles = naive_num_particles;
   F slice_distance = particle_radius * 2._F;
   U num_slices = static_cast<U>(cylinder_length / slice_distance);
   U num_particles_per_slice = initial_num_particles / num_slices;
@@ -168,7 +169,40 @@ int main(void) {
   F min_particle_speed = 99.9_F;
   F sum_particle_velocity_components = 99.9_F;
   F last_stationary_t = 0._F;
-  bool sliced = false;
+
+  F next_emission_t = 5.0_F;
+  F last_emission_t = 0._F;
+  bool speed_ready_before_emission = false;
+
+  std::random_device rd{};
+  std::mt19937 gen{rd()};
+  std::normal_distribution<F> d{0, 0.05};
+
+  U2 target_num_particles_range = U2{0, 7213};
+  U last_saved_num_particles = 0;
+
+  // density sample points
+  U num_sample_slices = 32;
+  U num_samples_per_slice = 16;
+  U num_samples = num_sample_slices * num_samples_per_slice;
+  Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
+  Variable<1, F> sample_data1 = store.create<1, F>({num_samples});
+  std::vector<F> sample_data1_host(num_samples);
+  Variable<2, Q> sample_neighbors =
+      store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
+  Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
+  Variable<2, F3> sample_boundary_xj =
+      store.create<2, F3>({pile.get_size(), num_samples});
+  Runner::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
+    create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
+        sample_x, num_samples, R - particle_radius * 2._F,
+        num_samples_per_slice, cylinder_length / num_sample_slices,
+        cylinder_length * -0.5_F);
+  });
+  std::vector<F3> sample_x_host(num_samples);
+  sample_x.get_bytes(sample_x_host.data());
+  assert(sample_x_host[0].x == sample_x_host[2].z == 0);
+  assert(sample_x_host[0].y == -cylinder_length / 2);
 
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
@@ -193,50 +227,45 @@ int main(void) {
             std::cout << "last stationary t = " << last_stationary_t
                       << std::endl;
           }
-          if (!sliced && max_particle_speed < 5e-4_F && t > 1._F) {
-            std::vector<F3> x_host(solver_df.num_particles);
-            std::vector<F3> x_filtered;
-            particle_x->get_bytes(x_host.data(),
-                                  solver_df.num_particles * sizeof(F3));
-            for (F3 const& x : x_host) {
-              if (abs(x.y) < kMSliced * kernel_radius) {
-                x_filtered.push_back(x);
+          if (!speed_ready_before_emission) {
+            if (min_density_error < -0.5) {
+              if (max_particle_speed < 1e-1_F)
+                speed_ready_before_emission = true;
+            } else if (min_density_error < -0.05) {
+              if (max_particle_speed < 5e-3_F)
+                speed_ready_before_emission = true;
+            } else {
+              if (max_particle_speed < 1e-2_F && min_density_error > -1e-2 &&
+                  max_density_error < 1e-2) {
+                speed_ready_before_emission = true;
               }
             }
-            solver_df.num_particles = x_filtered.size();
-            particle_x->set_bytes(x_filtered.data(),
-                                  x_filtered.size() * sizeof(F3));
-            particle_v.set_zero();
-            particle_dfsph_factor.set_zero();
-            particle_kappa.set_zero();
-            particle_kappa_v.set_zero();
-            particle_density_adv.set_zero();
-
-            grid_res = U3{static_cast<U>(kQ * 2), static_cast<U>(kMSliced * 2),
-                          static_cast<U>(kQ * 2)};
-            I3 grid_offset{-kQ, -kMSliced, -kQ};
-            store.get_cni().init_grid_constants(grid_res, grid_offset);
-            store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
-
-            store.remove(pid);
-            store.remove(pid_length);
-            pid = store.create<4, Q>({grid_res.x, grid_res.y, grid_res.z,
-                                      max_num_particles_per_cell});
-            pid_length =
-                store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-            solver_df.pid = pid;
-            solver_df.pid_length = pid_length;
-
-            // store.get_cn<F>().axial_gravity = 10.0_F;
-            store.copy_cn<F>();
-
-            solver_df.dt = 1e-5_F;
-            solver_df.max_dt = 1e-5_F;
-            solver_df.min_dt = 0.0_F;
-            solver_df.cfl = 2e-4_F;
-
-            std::cout << "sliced" << std::endl;
-            sliced = true;
+          }
+          if (solver_df.num_particles >= target_num_particles_range.x &&
+              solver_df.num_particles <= target_num_particles_range.y &&
+              solver_df.num_particles != last_saved_num_particles) {
+            speed_ready_before_emission = false;
+            if (max_particle_speed < 2e-3 && (t - last_stationary_t > 4)) {
+              std::stringstream filename_stream;
+              filename_stream << "x" << kQ << "-" << kM << "-"
+                              << solver_df.num_particles << ".alu";
+              std::string filename = filename_stream.str();
+              particle_x->write_file(filename.c_str(), solver_df.num_particles);
+              last_saved_num_particles = solver_df.num_particles;
+            }
+          }
+          if (t > next_emission_t && speed_ready_before_emission &&
+              solver_df.num_particles < max_num_particles) {
+            F3 new_particle_pos{0, cylinder_length / 2 - 1e-4, 0};
+            F3 new_particle_v{d(gen), d(gen), d(gen)};
+            next_emission_t = t + particle_radius * 2 / length(new_particle_v);
+            particle_x->set_bytes(&new_particle_pos, sizeof(F3),
+                                  sizeof(F3) * solver_df.num_particles);
+            particle_v.set_bytes(&new_particle_v, sizeof(F3),
+                                 sizeof(F3) * solver_df.num_particles);
+            ++solver_df.num_particles;
+            last_emission_t = t;
+            speed_ready_before_emission = false;
           }
 
           solver_df.step<1, 1>();
@@ -258,11 +287,42 @@ int main(void) {
               sqrt(Runner::min(particle_cfl_v2, solver_df.num_particles));
           sum_particle_velocity_components =
               Runner::sum<F>(particle_v.ptr_, particle_v.get_num_primitives());
+
           F expected_total_volume = kPi<F> * (R - particle_radius) *
-                                    (R - particle_radius) *
-                                    cylinder_length_sliced;
+                                    (R - particle_radius) * cylinder_length;
           naive_filled_percentage = solver_df.num_particles * particle_mass /
                                     density0 / expected_total_volume;
+          if (step_id % 100 == 0) {
+            pid_length.set_zero();
+            Runner::launch(
+                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
+                  update_particle_grid<<<grid_size, block_size>>>(
+                      *particle_x, pid, pid_length, solver_df.num_particles);
+                });
+            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+              make_neighbor_list<1><<<grid_size, block_size>>>(
+                  sample_x, pid, pid_length, sample_neighbors,
+                  sample_num_neighbors, num_samples);
+            });
+            Runner::launch(
+                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
+                  compute_density<<<grid_size, block_size>>>(
+                      *particle_x, particle_neighbors, particle_num_neighbors,
+                      particle_density, particle_boundary_xj,
+                      particle_boundary_volume, solver_df.num_particles);
+                });
+            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+              sample_fluid<<<grid_size, block_size>>>(
+                  sample_x, *particle_x, particle_density, particle_density,
+                  sample_neighbors, sample_num_neighbors, sample_data1,
+                  num_samples);
+            });
+            sample_data1.get_bytes(sample_data1_host.data());
+            for (U i = 0; i < num_samples; i += 127) {
+              std::cout << sample_data1_host[i] << " ";
+            }
+            std::cout << std::endl;
+          }
         }
         solver_df.colorize_speed(0, 2.0);
         store.unmap_graphical_pointers();
@@ -392,7 +452,7 @@ int main(void) {
                   << max_particle_speed << ")";
         std::string text = time_text.str();
 
-        typesetter.start(display.width_ * 0.1f, display.height_ * 0.05f, 1.0f);
+        typesetter.start(display.width_ * 0.02f, display.height_ * 0.05f, 1.0f);
         for (std::string::const_iterator c = text.begin(); c != text.end();
              c++) {
           glBindTexture(GL_TEXTURE_2D, typesetter.place_glyph(*c));

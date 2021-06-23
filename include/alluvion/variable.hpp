@@ -78,14 +78,14 @@ class Variable {
     Allocator::copy(dst, ptr_, num_bytes);
   }
   void get_bytes(void* dst) const { get_bytes(dst, get_num_bytes()); }
-  void set_bytes(void const* src, U num_bytes) {
+  void set_bytes(void const* src, U num_bytes, U byte_offset = 0) {
     if (num_bytes == 0) return;
-    if (num_bytes > get_num_bytes()) {
-      std::cerr << "setting more than allocated: " << num_bytes << " "
-                << get_num_bytes() << std::endl;
+    if (num_bytes + byte_offset > get_num_bytes()) {
+      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
+                << " " << get_num_bytes() << std::endl;
       abort();
     }
-    Allocator::copy(ptr_, src, num_bytes);
+    Allocator::copy(ptr_ + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }

@@ -16,10 +16,12 @@ struct Mesh {
   FaceList faces;
 
   Mesh();
+  void set_box(float3 widths, U n = 2);
   void set_uv_sphere(float radius, U num_sectors, U num_stacks);
   void set_cylinder(float radius, float height, U num_sectors, U num_stacks);
   void set_obj(const char* filename);
   void calculate_normals();
+  void translate(float3 dx);
   void clear();
 };
 }  // namespace alluvion

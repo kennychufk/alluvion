@@ -9,7 +9,7 @@
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
-#include "alluvion/solver_ii.hpp"
+#include "alluvion/solver_df.hpp"
 #include "alluvion/store.hpp"
 
 using namespace alluvion;
@@ -186,7 +186,7 @@ PYBIND11_MODULE(_alluvion, m) {
             viscosity, vorticity, inertia_inverse, viscosity_omega,
             surface_tension_coeff, surface_tension_boundary_coeff);
 
-        I kM = 2;
+        I kM = 5;
         F cylinder_length = 2._F * kM * kernel_radius;
         F R = kernel_radius * kQ;
 
@@ -204,9 +204,8 @@ PYBIND11_MODULE(_alluvion, m) {
         store.get_cn<F>().set_contact_tolerance(0.05_F);
 
         // particles
-        U max_num_particles = static_cast<U>(
-            2._F * kPi<F> * kQ * kQ * kM * kernel_radius * kernel_radius *
-            kernel_radius * density0 / particle_mass);
+        U max_num_particles = static_cast<U>(kPi<F> * R * R * cylinder_length *
+                                             density0 / particle_mass);
 
         // grid
         U3 grid_res{static_cast<U>(kQ * 2), static_cast<U>(kM * 2),
@@ -219,7 +218,7 @@ PYBIND11_MODULE(_alluvion, m) {
             max_num_particles_per_cell);
         store.get_cni().set_max_num_neighbors_per_particle(
             max_num_neighbors_per_particle);
-        store.get_cn<F>().set_wrap_length(grid_res.x * kernel_radius);
+        store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
         Variable<1, F3> particle_x(store.create<1, F3>({max_num_particles}));
         Variable<1, F> particle_normalized_attr(
@@ -238,22 +237,14 @@ PYBIND11_MODULE(_alluvion, m) {
             store.create<2, F3>({pile.get_size(), max_num_particles});
         Variable<1, F> particle_cfl_v2 =
             store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_pressure =
+        Variable<1, F> particle_dfsph_factor =
             store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_last_pressure =
+        Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
+        Variable<1, F> particle_kappa_v =
             store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_aii = store.create<1, F>({max_num_particles});
-        Variable<1, F3> particle_dii = store.create<1, F3>({max_num_particles});
-        Variable<1, F3> particle_dij_pj =
-            store.create<1, F3>({max_num_particles});
-        Variable<1, F> particle_sum_tmp =
+        Variable<1, F> particle_density_adv =
             store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_adv_density =
-            store.create<1, F>({max_num_particles});
-        Variable<1, F3> particle_pressure_accel =
-            store.create<1, F3>({max_num_particles});
-        Variable<1, F> particle_density_err =
-            store.create<1, F>({max_num_particles});
+
         Variable<4, Q> pid = store.create<4, Q>(
             {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
         Variable<3, U> pid_length =
@@ -263,19 +254,18 @@ PYBIND11_MODULE(_alluvion, m) {
         Variable<1, U> particle_num_neighbors =
             store.create<1, U>({max_num_particles});
 
-        SolverIi<F3, Q, F> solver_ii(
+        SolverDf<F3, Q, F> solver_df(
             runner, pile, particle_x, particle_normalized_attr, particle_v,
             particle_a, particle_density, particle_boundary_xj,
             particle_boundary_volume, particle_force, particle_torque,
-            particle_cfl_v2, particle_pressure, particle_last_pressure,
-            particle_aii, particle_dii, particle_dij_pj, particle_sum_tmp,
-            particle_adv_density, particle_pressure_accel, particle_density_err,
-            pid, pid_length, particle_neighbors, particle_num_neighbors);
-        solver_ii.dt = dt;
-        solver_ii.max_dt = 0.005;
-        solver_ii.min_dt = 0.0001;
-        solver_ii.cfl = 0.04;
-        solver_ii.particle_radius = particle_radius;
+            particle_cfl_v2, particle_dfsph_factor, particle_kappa,
+            particle_kappa_v, particle_density_adv, pid, pid_length,
+            particle_neighbors, particle_num_neighbors);
+        solver_df.dt = dt;
+        solver_df.max_dt = 0.005;
+        solver_df.min_dt = 0;
+        solver_df.cfl = 0.04;
+        solver_df.particle_radius = particle_radius;
 
         // sample points
         U num_sample_planes = 14;
@@ -286,10 +276,6 @@ PYBIND11_MODULE(_alluvion, m) {
         Variable<2, Q> sample_neighbors =
             store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
         Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
-        Variable<2, F3> sample_boundary_xj =
-            store.create<2, F3>({pile.get_size(), num_samples});
-        Variable<2, F> sample_boundary_volume =
-            store.create<2, F>({pile.get_size(), num_samples});
         {
           std::vector<F3> sample_x_host(num_samples);
           F distance_between_sample_planes =
@@ -315,16 +301,16 @@ PYBIND11_MODULE(_alluvion, m) {
         I sampling_cursor = 0;
 
         store.copy_cn<F>();
-        solver_ii.num_particles =
+        solver_df.num_particles =
             particle_x.read_file(particle_x_filename.c_str());
 
         while (true) {
           if (t >= sample_ts[sampling_cursor]) {
             pid_length.set_zero();
             Runner::launch(
-                solver_ii.num_particles, 256, [&](U grid_size, U block_size) {
+                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
                   update_particle_grid<<<grid_size, block_size>>>(
-                      particle_x, pid, pid_length, solver_ii.num_particles);
+                      particle_x, pid, pid_length, solver_df.num_particles);
                 });
             Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
               make_neighbor_list<1><<<grid_size, block_size>>>(
@@ -332,11 +318,11 @@ PYBIND11_MODULE(_alluvion, m) {
                   sample_num_neighbors, num_samples);
             });
             Runner::launch(
-                solver_ii.num_particles, 256, [&](U grid_size, U block_size) {
+                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
                   compute_density<<<grid_size, block_size>>>(
                       particle_x, particle_neighbors, particle_num_neighbors,
                       particle_density, particle_boundary_xj,
-                      particle_boundary_volume, solver_ii.num_particles);
+                      particle_boundary_volume, solver_df.num_particles);
                 });
             Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
               sample_fluid<<<grid_size, block_size>>>(
@@ -348,7 +334,7 @@ PYBIND11_MODULE(_alluvion, m) {
             for (I i = 0; i < sample_data3_host.size(); ++i) {
               vx[num_samples_per_plane * sampling_cursor +
                  (i % num_samples_per_plane)] +=
-                  sample_data3_host[i].x / num_sample_planes;
+                  sample_data3_host[i].y / num_sample_planes;
             }
             ++sampling_cursor;
             if (sampling_cursor >= sample_ts.size()) {
@@ -356,8 +342,8 @@ PYBIND11_MODULE(_alluvion, m) {
             }
           }
 
-          solver_ii.step<1>();
-          t += solver_ii.dt;
+          solver_df.step<1, 0>();
+          t += solver_df.dt;
           step_id += 1;
         }
 
