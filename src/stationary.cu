@@ -4,7 +4,9 @@
 
 #include "alluvion/colormaps.hpp"
 #include "alluvion/constants.hpp"
+#include "alluvion/dg/box_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
+#include "alluvion/display_proxy.hpp"
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
@@ -17,10 +19,11 @@ using namespace alluvion::dg;
 int main(void) {
   Store store;
   Display* display = store.create_display(800, 600, "particle view");
+  DisplayProxy display_proxy(display);
   Runner runner;
 
   F particle_radius = 0.025;
-  F kernel_radius = 0.1;
+  F kernel_radius = particle_radius * 4;
   F density0 = 1000.0;
   F particle_mass = 0.1;
   F dt = 2e-3;
@@ -28,19 +31,20 @@ int main(void) {
   store.get_cn<F>().set_cubic_discretization_constants();
   store.get_cn<F>().set_kernel_radius(kernel_radius);
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
-  store.get_cn<F>().set_gravity(gravity);
-  store.get_cn<F>().set_advanced_fluid_attr(0.001, 0.01, 0.1, 0.5, 0.05, 0.01);
+  store.get_cn<F>().gravity = gravity;
+  store.get_cn<F>().viscosity = 0.001;
 
   // rigids
   U max_num_contacts = 512;
   Pile<F3, Q, F> pile(store, max_num_contacts);
   Mesh cube_mesh;
-  cube_mesh.set_obj("cube.obj");
+  cube_mesh.set_box(float3{4, 3, 1.5}, 4);
   Mesh sphere_mesh;
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  pile.add(cube_mesh, U3{80, 60, 30}, -1._F, 0, cube_mesh, 0._F, 1, 0, 0.0,
-           F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1}, Mesh());
+  pile.add(new BoxDistance<F3, F>(F3{4, 3, 1.5}), U3{80, 60, 30}, -1._F, 0,
+           cube_mesh, 0._F, 1, 0, 0.0, F3{1, 1, 1}, F3{0, 1.5, 0},
+           Q{0, 0, 0, 1}, Mesh());
   // pile.add(new SphereDistance<F3, F>(sphere_radius), U3{50, 50, 50}, 1._F, 0,
   //          sphere_mesh, 3.2_F, 0.4, 0, 0.2, F3{1, 1, 1}, F3{0, 0.4, -0},
   //          Q{0, 0, 0, 1}, sphere_mesh);
@@ -48,8 +52,7 @@ int main(void) {
   // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
   pile.set_gravity(gravity);
-  store.get_cni().set_num_boundaries(pile.get_size());
-  store.get_cn<F>().set_contact_tolerance(0.05);
+  store.get_cn<F>().contact_tolerance = particle_radius;
 
   // particles
   U num_particles = 6859;
@@ -59,10 +62,11 @@ int main(void) {
   I3 grid_offset{-64, -64, -64};
   U max_num_particles_per_cell = 64;
   U max_num_neighbors_per_particle = 64;
-  store.get_cni().init_grid_constants(grid_res, grid_offset);
-  store.get_cni().set_max_num_particles_per_cell(max_num_particles_per_cell);
-  store.get_cni().set_max_num_neighbors_per_particle(
-      max_num_neighbors_per_particle);
+  store.get_cni().grid_res = grid_res;
+  store.get_cni().grid_offset = grid_offset;
+  store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
+  store.get_cni().max_num_neighbors_per_particle =
+      max_num_neighbors_per_particle;
 
   std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
       store.create_graphical<1, F3>({num_particles}));
@@ -128,9 +132,6 @@ int main(void) {
   display->camera_.update();
   display->update_trackball_camera();
 
-  GLuint colormap_tex =
-      display->create_colormap(kViridisData.data(), kViridisData.size());
-
   U frame_id = 0;
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
@@ -146,194 +147,10 @@ int main(void) {
         frame_id += 1;
       }));
 
-  // {{{
-#include "alluvion/glsl/particle.frag"
-#include "alluvion/glsl/particle.vert"
-  display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr, kParticleFragmentShaderStr,
-      {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.specular", "material.shininess",
-       "directional_light.direction", "directional_light.ambient",
-       "directional_light.diffuse", "directional_light.specular",
-       "point_lights[0].position", "point_lights[0].constant",
-       "point_lights[0].linear", "point_lights[0].quadratic",
-       "point_lights[0].ambient", "point_lights[0].diffuse",
-       "point_lights[0].specular",
-       //
-       "point_lights[1].position", "point_lights[1].constant",
-       "point_lights[1].linear", "point_lights[1].quadratic",
-       "point_lights[1].ambient", "point_lights[1].diffuse",
-       "point_lights[1].specular"
+  GLuint colormap_tex = display_proxy.create_colormap_viridis();
+  display_proxy.add_particle_shading_program(
+      particle_x->vbo_, particle_normalized_attr->vbo_, colormap_tex,
+      solver_ii.particle_radius, solver_ii);
 
-      },
-      {std::make_tuple(particle_x->vbo_, 3, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, 0)},
-      [&](ShadingProgram& program, Display& display) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
-                           glm::value_ptr(glm::mat4(1)));
-        glUniformMatrix4fv(
-            program.get_uniform_location("P"), 1, GL_FALSE,
-            glm::value_ptr(display.camera_.getProjectionMatrix()));
-        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
-                           glm::value_ptr(display.camera_.getViewMatrix()));
-        glUniform2f(program.get_uniform_location("screen_dimension"),
-                    static_cast<GLfloat>(display.width_),
-                    static_cast<GLfloat>(display.height_));
-        glUniform1f(program.get_uniform_location("particle_radius"),
-                    particle_radius);
-
-        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
-        glUniform3f(program.get_uniform_location("camera_worldspace"),
-                    camera_worldspace[0], camera_worldspace[1],
-                    camera_worldspace[2]);
-        glUniform3f(program.get_uniform_location("directional_light.direction"),
-                    0.2f, 1.0f, 0.3f);
-        glUniform3f(program.get_uniform_location("directional_light.ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
-                    0.4f, 0.4f, 0.4f);
-        glUniform3f(program.get_uniform_location("directional_light.specular"),
-                    0.5f, 0.5f, 0.5f);
-
-        glUniform3f(program.get_uniform_location("point_lights[0].position"),
-                    2.0f, 2.0f, 2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        glUniform3f(program.get_uniform_location("point_lights[1].position"),
-                    2.0f, 1.0f, -2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
-                    1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.specular"), 0.8, 0.9,
-                    0.9);
-        glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
-
-        glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        glDrawArrays(GL_POINTS, 0, num_particles);
-      }));
-
-  // rigid mesh shader
-  // https://github.com/opengl-tutorials/ogl
-#include "alluvion/glsl/mesh_with_normal.frag"
-#include "alluvion/glsl/mesh_with_normal.vert"
-  display->add_shading_program(new ShadingProgram(
-      kMeshWithNormalVertexShaderStr, kMeshWithNormalFragmentShaderStr,
-      {"MVP", "V", "M", "camera_worldspace", "material.diffuse",
-       "material.specular", "material.shininess", "directional_light.direction",
-       "directional_light.ambient", "directional_light.diffuse",
-       "directional_light.specular", "point_lights[0].position",
-       "point_lights[0].constant", "point_lights[0].linear",
-       "point_lights[0].quadratic", "point_lights[0].ambient",
-       "point_lights[0].diffuse", "point_lights[0].specular",
-       //
-       "point_lights[1].position", "point_lights[1].constant",
-       "point_lights[1].linear", "point_lights[1].quadratic",
-       "point_lights[1].ambient", "point_lights[1].diffuse",
-       "point_lights[1].specular"},
-      {std::make_tuple(0, 3, 0), std::make_tuple(0, 3, 0)},
-      [&pile](ShadingProgram& program, Display& display) {
-        glm::mat4 const& projection_matrix =
-            display.camera_.getProjectionMatrix();
-        glm::mat4 const& view_matrix = display.camera_.getViewMatrix();
-        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
-                           glm::value_ptr(view_matrix));
-        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
-        glUniform3f(program.get_uniform_location("camera_worldspace"),
-                    camera_worldspace[0], camera_worldspace[1],
-                    camera_worldspace[2]);
-
-        glUniform3f(program.get_uniform_location("directional_light.direction"),
-                    0.2f, 1.0f, 0.3f);
-        glUniform3f(program.get_uniform_location("directional_light.ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
-                    0.4f, 0.4f, 0.4f);
-        glUniform3f(program.get_uniform_location("directional_light.specular"),
-                    0.5f, 0.5f, 0.5f);
-
-        glUniform3f(program.get_uniform_location("point_lights[0].position"),
-                    2.0f, 2.0f, 2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        glUniform3f(program.get_uniform_location("point_lights[1].position"),
-                    2.0f, 1.0f, -2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        for (U i = 0; i < pile.get_size(); ++i) {
-          MeshBuffer const& mesh_buffer = pile.mesh_buffer_list_[i];
-          if (mesh_buffer.vertex != 0 && mesh_buffer.index != 0) {
-            glm::mat4 model_matrix = pile.get_matrix(i);
-            glm::mat4 mvp_matrix =
-                projection_matrix * view_matrix * model_matrix;
-
-            glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
-                               glm::value_ptr(model_matrix));
-            glUniformMatrix4fv(program.get_uniform_location("MVP"), 1, GL_FALSE,
-                               glm::value_ptr(mvp_matrix));
-            glUniform3f(program.get_uniform_location("material.diffuse"), 0.2,
-                        0.3, 0.87);
-            glUniform3f(program.get_uniform_location("material.specular"), 0.8,
-                        0.9, 0.9);
-            glUniform1f(program.get_uniform_location("material.shininess"),
-                        5.0);
-
-            glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-            glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.normal);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
-            glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices,
-                           GL_UNSIGNED_INT, 0);
-            glDisableVertexAttribArray(0);
-            glDisableVertexAttribArray(1);
-          }
-        }
-      }));
   display->run();
-  // }}}
 }

@@ -1,6 +1,4 @@
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/norm.hpp>
-#include <glm/vec3.hpp>
+#include <glm/gtx/norm.hpp>  // length2
 
 #include "alluvion/trackball.hpp"
 

@@ -44,9 +44,7 @@ int main(void) {
   F viscosity_omega = 0.5_F;
   F surface_tension_coeff = 0.05_F;
   F surface_tension_boundary_coeff = 0.01_F;
-  store.get_cn<F>().set_advanced_fluid_attr(
-      viscosity, vorticity, inertia_inverse, viscosity_omega,
-      surface_tension_coeff, surface_tension_boundary_coeff);
+  store.get_cn<F>().viscosity = viscosity;
 
   I kM = 5;
   F cylinder_length = 2._F * kM * kernel_radius;
@@ -77,8 +75,7 @@ int main(void) {
            F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
-  store.get_cni().set_num_boundaries(pile.get_size());
-  store.get_cn<F>().set_contact_tolerance(0.05_F);
+  store.get_cn<F>().contact_tolerance = particle_radius;
 
   // particles
   U naive_num_particles =
@@ -92,10 +89,11 @@ int main(void) {
   I3 grid_offset{-kQ, -kM, -kQ};
   U max_num_particles_per_cell = 64;
   U max_num_neighbors_per_particle = 64;
-  store.get_cni().init_grid_constants(grid_res, grid_offset);
-  store.get_cni().set_max_num_particles_per_cell(max_num_particles_per_cell);
-  store.get_cni().set_max_num_neighbors_per_particle(
-      max_num_neighbors_per_particle);
+  store.get_cni().grid_res = grid_res;
+  store.get_cni().grid_offset = grid_offset;
+  store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
+  store.get_cni().max_num_neighbors_per_particle =
+      max_num_neighbors_per_particle;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
   std::unique_ptr<GraphicalVariable<1, F3>> particle_x(

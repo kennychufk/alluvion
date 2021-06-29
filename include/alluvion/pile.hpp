@@ -113,18 +113,10 @@ class Pile {
         num_contacts_(store.create<1, U>({1})),
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
         num_contacts_pinned_(store.create_pinned<1, U>({1})) {
-    store.get_cni().set_max_num_contacts(max_num_contacts);
+    store.get_cni().max_num_contacts = max_num_contacts;
   }
 
   virtual ~Pile() {}
-  void add(Mesh const& field_mesh, U3 const& resolution, TF sign, TF thickness,
-           Mesh const& collision_mesh, TF mass, TF restitution, TF friction,
-           TF boundary_viscosity, TF3 const& inertia_tensor, TF3 const& x,
-           TQ const& q, Mesh const& display_mesh) {
-    add(construct_mesh_distance(field_mesh.vertices, field_mesh.faces),
-        resolution, sign, thickness, collision_mesh, mass, restitution,
-        friction, boundary_viscosity, inertia_tensor, x, q, display_mesh);
-  }
   void add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
            TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
            TF friction, TF boundary_viscosity, TF3 const& inertia_tensor,
@@ -232,7 +224,7 @@ class Pile {
     omega_(get_size() - 1) = TF3{0, 0, 0};
   }
   void build_grids(TF margin) {
-    store_.copy_cn<F>();
+    store_.copy_cn<TF>();
     for (U i = 0; i < get_size(); ++i) {
       U& num_nodes = grid_size_list_[i];
       TF3& cell_size = cell_size_list_[i];
@@ -271,6 +263,7 @@ class Pile {
     boundary_viscosity_device_ = store_.create<1, TF>({get_size()});
 
     boundary_viscosity_device_.set_bytes(boundary_viscosity_.data());
+    store_.get_cni().num_boundaries = get_size();
   }
   void reallocate_kinematics_on_pinned() {
     PinnedVariable<1, TF3> x_new = store_.create_pinned<1, TF3>({get_size()});
@@ -294,8 +287,8 @@ class Pile {
   }
   void integrate_kinematics(TF dt) {
     for (U i = 0; i < get_size(); ++i) {
-      if (mass_[i] == 0._F) continue;
-      v_(i) += 1._F / mass_[i] * force_[i] * dt;
+      if (mass_[i] == 0) continue;
+      v_(i) += 1 / mass_[i] * force_[i] * dt;
       omega_(i) += calculate_angular_acceleration(inertia_tensor_[i], q_[i],
                                                   torque_[i]) *
                    dt;
@@ -325,7 +318,7 @@ class Pile {
       Variable<1, TF3>& vertices_i = collision_vertex_list_[i];
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
-        if (i == j || (mass_[i] == 0._F and mass_[i] == 0._F)) continue;
+        if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
         Runner::launch(num_vertices_i, 256, [&](U grid_size, U block_size) {
           collision_test<<<grid_size, block_size>>>(
               i, j, vertices_i, num_contacts_, contacts_, mass_[i],
@@ -375,8 +368,8 @@ class Pile {
         if (correction_magnitude < -contact.impulse_sum) {
           correction_magnitude = -contact.impulse_sum;
         }
-        const TF stiffness = 1._F;
-        if (depth < 0._F) {
+        const TF stiffness = 1;
+        if (depth < 0) {
           correction_magnitude -= stiffness * contact.nkninv * depth;
         }
         TF3 p = correction_magnitude * contact.n;
@@ -393,12 +386,12 @@ class Pile {
           p -= contact.friction * pn * contact.t;
         }
 
-        if (mass_i != 0._F) {
+        if (mass_i != 0) {
           v_(i) += p / mass_i;
           omega_(i) += apply_congruent(cross(r_i, p), contact.iiwi_diag,
                                        contact.iiwi_off_diag);
         }
-        if (mass_j != 0._F) {
+        if (mass_j != 0) {
           v_(j) += -p / mass_j;
           omega_(j) += apply_congruent(cross(r_j, -p), contact.iiwj_diag,
                                        contact.iiwj_off_diag);

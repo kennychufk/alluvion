@@ -29,17 +29,6 @@ struct Consti {
 
   U num_boundaries;
   U max_num_contacts;
-
-  void init_grid_constants(U3 res, I3 offset) {
-    grid_res = res;
-    grid_offset = offset;
-  }
-  void set_max_num_particles_per_cell(U n) { max_num_particles_per_cell = n; }
-  void set_max_num_neighbors_per_particle(U n) {
-    max_num_neighbors_per_particle = n;
-  }
-  void set_num_boundaries(U n) { num_boundaries = n; }
-  void set_max_num_contacts(U n) { max_num_contacts = n; }
 };
 
 template <typename TF>
@@ -116,19 +105,6 @@ struct Const {
     particle_vol = vol;
   }
 
-  void set_advanced_fluid_attr(TF vis, TF vor, TF ii, TF viso, TF st, TF stb) {
-    viscosity = vis;
-    vorticity_coeff = vor;
-    inertia_inverse = ii;
-    viscosity_omega = viso;
-    surface_tension_coeff = st;
-    surface_tension_boundary_coeff = stb;
-  }
-
-  void set_gravity(TF3 g) { gravity = g; }
-  void set_boundary_epsilon(TF e) { boundary_epsilon = e; }
-  void set_dfsph_factor_epsilon(TF e) { dfsph_factor_epsilon = e; }
-  void set_contact_tolerance(TF tolerance) { contact_tolerance = tolerance; }
   void set_wrap_length(TF l) {
     TF wmin = l * static_cast<TF>(-0.5);
     TF wmax = l * static_cast<TF>(0.5);

@@ -1,15 +1,20 @@
+#include <pybind11/detail/common.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
 #include "alluvion/constants.hpp"
+#include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/display.hpp"
+#include "alluvion/display_proxy.hpp"
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/solver_df.hpp"
+#include "alluvion/solver_ii.hpp"
 #include "alluvion/store.hpp"
 
 using namespace alluvion;
@@ -37,6 +42,35 @@ class PyDistance : public Distance<TF3, TF> {
 };
 }  // namespace dg
 }  // namespace alluvion
+
+template <typename TF3, typename TF>
+void declare_vector3(py::module& m, const char* name) {
+  py::class_<TF3>(m, name)
+      .def(py::init<TF, TF, TF>())
+      .def_readwrite("x", &TF3::x)
+      .def_readwrite("y", &TF3::y)
+      .def_readwrite("z", &TF3::z)
+      .def("__repr__", [](TF3 const& v) {
+        std::stringstream stream;
+        stream << "(" << v.x << ", " << v.y << ", " << v.z << ")";
+        return stream.str();
+      });
+}
+
+template <typename TF4, typename TF>
+void declare_vector4(py::module& m, const char* name) {
+  py::class_<TF4>(m, name)
+      .def(py::init<TF, TF, TF, TF>())
+      .def_readwrite("x", &TF4::x)
+      .def_readwrite("y", &TF4::y)
+      .def_readwrite("z", &TF4::z)
+      .def("__repr__", [](TF4 const& v) {
+        std::stringstream stream;
+        stream << "(" << v.x << ", " << v.y << ", " << v.z << ", " << v.w
+               << ")";
+        return stream.str();
+      });
+}
 
 template <unsigned int D, typename M>
 void declare_variable_with_store_creation(py::module& m,
@@ -82,7 +116,25 @@ template <typename TF3, typename TQ, typename TF>
 void declare_pile(py::module& m, const char* name) {
   using TPile = Pile<TF3, TQ, TF>;
   std::string class_name = std::string("Pile") + name;
-  py::class_<TPile>(m, class_name.c_str()).def(py::init<Store&, U>());
+  py::class_<TPile>(m, class_name.c_str())
+      .def(py::init<Store&, U>())
+      .def_readonly("distance_grids", &TPile::distance_grids_)
+      .def_readonly("volume_grids", &TPile::volume_grids_)
+      .def("add", &TPile::add)
+      .def("replace", &TPile::replace)
+      .def("build_grids", &TPile::build_grids)
+      .def("set_gravity", &TPile::set_gravity)
+      .def("reallocate_kinematics_on_device",
+           &TPile::reallocate_kinematics_on_device)
+      .def("reallocate_kinematics_on_pinned",
+           &TPile::reallocate_kinematics_on_pinned)
+      .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
+      .def("integrate_kinematics", &TPile::integrate_kinematics)
+      .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
+      .def("find_contacts", &TPile::find_contacts)
+      .def("solve_contacts", &TPile::solve_contacts)
+      .def("get_size", &TPile::get_size)
+      .def("get_matrix", &TPile::get_matrix);
 }
 
 template <typename TF3, typename TF>
@@ -108,7 +160,98 @@ void declare_sphere_distance(py::module& m, const char* name) {
   using TSphereDistance = dg::SphereDistance<TF3, TF>;
   std::string class_name = std::string("SphereDistance") + name;
   py::class_<TSphereDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<F>());
+      .def(py::init<TF>());
+}
+
+template <typename TF3, typename TF>
+void declare_box_distance(py::module& m, const char* name) {
+  using TBoxDistance = dg::BoxDistance<TF3, TF>;
+  std::string class_name = std::string("BoxDistance") + name;
+  py::class_<TBoxDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
+      .def(py::init<TF3>());
+}
+
+template <typename TF3, typename TF>
+void declare_cylinder_distance(py::module& m, const char* name) {
+  using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+  std::string class_name = std::string("CylinderDistance") + name;
+  py::class_<TCylinderDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
+      .def(py::init<TF, TF, TF>());
+}
+
+template <typename TF>
+void declare_const(py::module& m, const char* name) {
+  using TConst = Const<TF>;
+  std::string class_name = std::string("Const") + name;
+  py::class_<TConst>(m, class_name.c_str())
+      .def("set_cubic_discretization_constants",
+           &TConst::set_cubic_discretization_constants)
+      .def("set_kernel_radius", &TConst::set_kernel_radius)
+      .def("set_particle_attr", &TConst::set_particle_attr)
+      .def("set_wrap_length", &TConst::set_wrap_length)
+      .def_readonly("kernel_radius", &TConst::kernel_radius)
+      .def_readonly("particle_radius", &TConst::particle_radius)
+      .def_readonly("particle_vol", &TConst::particle_vol)
+      .def_readonly("particle_mass", &TConst::particle_mass)
+      .def_readonly("density0", &TConst::density0)
+      .def_readonly("wrap_length", &TConst::wrap_length)
+      .def_readonly("wrap_min", &TConst::wrap_min)
+      .def_readonly("wrap_max", &TConst::wrap_max)
+      .def_readwrite("viscosity", &TConst::viscosity)
+      .def_readwrite("gravity", &TConst::gravity)
+      .def_readwrite("axial_gravity", &TConst::axial_gravity)
+      .def_readwrite("radial_gravity", &TConst::radial_gravity)
+      .def_readwrite("boundary_epsilon", &TConst::boundary_epsilon)
+      .def_readwrite("dfsph_factor_epsilon", &TConst::dfsph_factor_epsilon)
+      .def_readwrite("contact_tolerance", &TConst::contact_tolerance);
+}
+
+template <typename TF>
+void declare_solver(py::module& m, const char* name) {
+  using TSolver = Solver<TF>;
+  std::string class_name = std::string("Solver") + name;
+  py::class_<TSolver>(m, class_name.c_str())
+      .def_readwrite("num_particles", &TSolver::num_particles)
+      .def_readwrite("dt", &TSolver::dt)
+      .def_readwrite("max_dt", &TSolver::max_dt)
+      .def_readwrite("min_dt", &TSolver::min_dt)
+      .def_readwrite("cfl", &TSolver::cfl)
+      .def_readwrite("particle_radius", &TSolver::particle_radius);
+}
+
+template <typename TF3, typename TQ, typename TF>
+void declare_solver_df(py::module& m, const char* name) {
+  using TSolver = Solver<TF>;
+  using TSolverDf = SolverDf<TF3, TQ, TF>;
+  using TPile = Pile<TF3, TQ, TF>;
+  std::string class_name = std::string("SolverDf") + name;
+  py::class_<TSolverDf, TSolver>(m, class_name.c_str())
+      .def(py::init<Runner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
+                    Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
+                    Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
+                    Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
+                    Variable<1, TF>&, Variable<1, TF>&, Variable<1, TF>&,
+                    Variable<4, TQ>&, Variable<3, U>&, Variable<2, TQ>&,
+                    Variable<1, U>&>())
+      .def("step", &TSolverDf::template step<0, 0>);
+}
+
+template <typename TF3, typename TQ, typename TF>
+void declare_solver_ii(py::module& m, const char* name) {
+  using TSolver = Solver<TF>;
+  using TSolverIi = SolverIi<TF3, TQ, TF>;
+  using TPile = Pile<TF3, TQ, TF>;
+  std::string class_name = std::string("SolverIi") + name;
+  py::class_<TSolverIi, TSolver>(m, class_name.c_str())
+      .def(py::init<Runner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
+                    Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
+                    Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
+                    Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
+                    Variable<1, TF>&, Variable<1, TF>&, Variable<1, TF3>&,
+                    Variable<1, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
+                    Variable<1, TF3>&, Variable<1, TF>&, Variable<4, TQ>&,
+                    Variable<3, U>&, Variable<2, TQ>&, Variable<1, U>&>())
+      .def("step", &TSolverIi::template step<0>);
 }
 
 PYBIND11_MODULE(_alluvion, m) {
@@ -123,15 +266,32 @@ PYBIND11_MODULE(_alluvion, m) {
                   bool offscreen) -> void {
                  store.create_display(width, height, title, offscreen);
                })
+          .def("get_display_proxy",
+               [](Store& store) { return DisplayProxy(store.get_display()); })
+          .def_property_readonly("cnfloat", &Store::template get_cn<float>)
+          .def_property_readonly("cndouble", &Store::template get_cn<double>)
+          .def_property_readonly("cni", &Store::template get_cni)
+          .def("copy_cnfloat", &Store::template copy_cn<float>)
+          .def("copy_cndouble", &Store::template copy_cn<double>)
           .def("map_graphical_pointers", &Store::map_graphical_pointers)
           .def("unmap_graphical_pointers", &Store::unmap_graphical_pointers);
 
   declare_variable_with_store_creation<1, float>(m, store_class, "1Dfloat");
   declare_variable_with_store_creation<1, float3>(m, store_class, "1Dfloat3");
+  declare_variable_with_store_creation<2, float>(m, store_class, "2Dfloat");
   declare_variable_with_store_creation<2, float3>(m, store_class, "2Dfloat3");
+  declare_variable_with_store_creation<2, float4>(m, store_class, "2Dfloat4");
+  declare_variable_with_store_creation<4, float4>(m, store_class, "4Dfloat4");
+
   declare_variable_with_store_creation<1, double>(m, store_class, "1Ddouble");
+  declare_variable_with_store_creation<2, double>(m, store_class, "2Ddouble");
   declare_variable_with_store_creation<1, double3>(m, store_class, "1Ddouble3");
   declare_variable_with_store_creation<2, double3>(m, store_class, "2Ddouble3");
+  declare_variable_with_store_creation<2, double4>(m, store_class, "2Ddouble4");
+  declare_variable_with_store_creation<4, double4>(m, store_class, "4Ddouble4");
+
+  declare_variable_with_store_creation<1, uint>(m, store_class, "1Duint");
+  declare_variable_with_store_creation<3, uint>(m, store_class, "3Duint");
 
   py::enum_<NumericType>(m, "NumericType")
       .value("f32", NumericType::f32)
@@ -140,10 +300,102 @@ PYBIND11_MODULE(_alluvion, m) {
       .value("u32", NumericType::u32)
       .value("undefined", NumericType::undefined);
 
-  py::class_<Display>(m, "Display");
+  declare_vector3<float3, float>(m, "float3");
+  declare_vector3<double3, double>(m, "double3");
+  declare_vector3<int3, int>(m, "int3");
+  declare_vector3<uint3, uint>(m, "uint3");
 
-  declare_pile<float3, float4, float4>(m, "float");
-  declare_pile<double3, double4, double4>(m, "double");
+  declare_vector4<float4, float>(m, "float4");
+  declare_vector4<double4, double>(m, "double4");
+
+  py::class_<DisplayProxy>(m, "DisplayProxy")
+      .def("create_colormap_viridis", &DisplayProxy::create_colormap_viridis)
+      .def("add_particle_shading_programfloat",
+           &DisplayProxy::template add_particle_shading_program<float>)
+      .def("add_pile_shading_programfloat",
+           &DisplayProxy::template add_pile_shading_program<float3, float4,
+                                                            float>)
+      .def("add_solver_df_step",
+           [](DisplayProxy& display_proxy, SolverDf<F3, Q, F>& solver_df,
+              Store& store) {
+             display_proxy.display_->add_shading_program(new ShadingProgram(
+                 nullptr, nullptr, {}, {},
+                 [&](ShadingProgram& program, Display& display) {
+                   store.map_graphical_pointers();
+                   // start of simulation loop
+                   for (U frame_interstep = 0; frame_interstep < 10;
+                        ++frame_interstep) {
+                     solver_df.step<0, 0>();
+                   }
+                   solver_df.colorize_kappa_v(-0.002_F, 0.0_F);
+                   // solver_df.colorize_speed(0, 2);
+                   store.unmap_graphical_pointers();
+                 }));
+           })
+      .def("run", &DisplayProxy::run)
+      .def("set_camera", &DisplayProxy::set_camera);
+
+  declare_pile<float3, float4, float>(m, "float");
+  declare_pile<double3, double4, double>(m, "double");
+
+  declare_solver<float>(m, "float");
+  declare_solver<double>(m, "double");
+
+  declare_solver_df<float3, float4, float>(m, "float");
+  declare_solver_df<double3, double4, double>(m, "double");
+
+  declare_solver_ii<float3, float4, float>(m, "float");
+  declare_solver_ii<double3, double4, double>(m, "double");
+
+  declare_const<float>(m, "float");
+  py::class_<ConstiN>(m, "ConstiN")
+      .def_readonly("num_boundaries", &ConstiN::num_boundaries)
+      .def_readonly("max_num_contacts", &ConstiN::max_num_contacts)
+      .def_readwrite("max_num_particles_per_cell",
+                     &ConstiN::max_num_particles_per_cell)
+      .def_readwrite("grid_res", &ConstiN::grid_res)
+      .def_readwrite("grid_offset", &ConstiN::grid_offset)
+      .def_readwrite("max_num_neighbors_per_particle",
+                     &ConstiN::max_num_neighbors_per_particle);
+
+  py::class_<Runner>(m, "Runner")
+      .def(py::init<>())
+      .def("create_fluid_block",
+           [](Runner& runner, U block_size, Variable<1, float3>& particle_x,
+              U num_particles, U offset, int mode, float3 box_min,
+              float3 box_max) {
+             runner.launch(
+                 num_particles, block_size,
+                 [&](U grid_size, U block_size) {
+                   create_fluid_block<F3, F><<<grid_size, block_size>>>(
+                       particle_x, num_particles, offset, mode, box_min,
+                       box_max);
+                 },
+                 "create_fluid_block");
+           })
+      .def("create_fluid_cylinder",
+           [](Runner& runner, U block_size, Variable<1, float3>& particle_x,
+              U num_particles, float radius, U num_particles_per_slice,
+              float slice_distance, float y_min) {
+             runner.launch(
+                 num_particles, block_size,
+                 [&](U grid_size, U block_size) {
+                   create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
+                       particle_x, num_particles, radius,
+                       num_particles_per_slice, slice_distance, y_min);
+                 },
+                 "create_fluid_cylinder");
+           });
+
+  py::class_<Mesh>(m, "Mesh")
+      .def(py::init<>())
+      .def("set_box", &Mesh::set_box)
+      .def("set_uv_sphere", &Mesh::set_uv_sphere)
+      .def("set_cylinder", &Mesh::set_cylinder)
+      .def("set_obj", &Mesh::set_obj)
+      .def("calculate_normals", &Mesh::calculate_normals)
+      .def("translate", &Mesh::translate)
+      .def("clear", &Mesh::clear);
 
   py::module m_dg = m.def_submodule("dg", "Discregrid");
 
@@ -152,6 +404,11 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_sphere_distance<float3, float>(m_dg, "float");
   declare_sphere_distance<double3, double>(m_dg, "double");
+  declare_box_distance<float3, float>(m_dg, "float");
+  declare_box_distance<double3, double>(m_dg, "double");
+  declare_cylinder_distance<float3, float>(m_dg, "float");
+  declare_cylinder_distance<double3, double>(m_dg, "double");
+
   m.def(
       "evaluate_developing_hagen_poiseuille",
       [](I kQ, std::string particle_x_filename, F pressure_gradient_acc_x,
@@ -160,7 +417,7 @@ PYBIND11_MODULE(_alluvion, m) {
         Store store;
         Runner runner;
 
-        F particle_radius = 0.0025_F;
+        F particle_radius = 0.00125_F;
         F kernel_radius = particle_radius * 4.0_F;
         F density0 = 1000.0_F;
         F cubical_particle_volume =
@@ -175,18 +432,11 @@ PYBIND11_MODULE(_alluvion, m) {
         store.get_cn<F>().set_kernel_radius(kernel_radius);
         store.get_cn<F>().set_particle_attr(particle_radius, particle_mass,
                                             density0);
-        store.get_cn<F>().set_gravity(pressure_gradient_acc);
-        store.get_cn<F>().set_boundary_epsilon(1e-9_F);
-        F vorticity = 0.01_F;
-        F inertia_inverse = 0.1_F;
-        F viscosity_omega = 0.5_F;
-        F surface_tension_coeff = 0.05_F;
-        F surface_tension_boundary_coeff = 0.01_F;
-        store.get_cn<F>().set_advanced_fluid_attr(
-            viscosity, vorticity, inertia_inverse, viscosity_omega,
-            surface_tension_coeff, surface_tension_boundary_coeff);
+        store.get_cn<F>().gravity = pressure_gradient_acc;
+        store.get_cn<F>().boundary_epsilon = 1e-9_F;
+        store.get_cn<F>().viscosity = viscosity;
 
-        I kM = 5;
+        I kM = 4;
         F cylinder_length = 2._F * kM * kernel_radius;
         F R = kernel_radius * kQ;
 
@@ -200,8 +450,8 @@ PYBIND11_MODULE(_alluvion, m) {
                  F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
         pile.build_grids(4 * kernel_radius);
         pile.reallocate_kinematics_on_device();
-        store.get_cni().set_num_boundaries(pile.get_size());
-        store.get_cn<F>().set_contact_tolerance(0.05_F);
+        store.get_cni().num_boundaries = pile.get_size();
+        store.get_cn<F>().contact_tolerance = particle_radius;
 
         // particles
         U max_num_particles = static_cast<U>(kPi<F> * R * R * cylinder_length *
@@ -213,11 +463,11 @@ PYBIND11_MODULE(_alluvion, m) {
         I3 grid_offset{-kQ, -kM, -kQ};
         U max_num_particles_per_cell = 64;
         U max_num_neighbors_per_particle = 64;
-        store.get_cni().init_grid_constants(grid_res, grid_offset);
-        store.get_cni().set_max_num_particles_per_cell(
-            max_num_particles_per_cell);
-        store.get_cni().set_max_num_neighbors_per_particle(
-            max_num_neighbors_per_particle);
+        store.get_cni().grid_res = grid_res;
+        store.get_cni().grid_offset = grid_offset;
+        store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
+        store.get_cni().max_num_neighbors_per_particle =
+            max_num_neighbors_per_particle;
         store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
         Variable<1, F3> particle_x(store.create<1, F3>({max_num_particles}));

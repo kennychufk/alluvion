@@ -312,7 +312,7 @@ class MeshDistance : public Distance<TF3, TF> {
   }
 
   bool predicate(unsigned int node_index, TriangleMeshBSH<TF> const& bsh,
-                 Vector3r<TF> const& x, F& dist_candidate) const {
+                 Vector3r<TF> const& x, TF& dist_candidate) const {
     // If the furthest point on the current candidate hull is closer than the
     // closest point on the next hull then we can skip it
     auto const& hull = bsh.hull(node_index);

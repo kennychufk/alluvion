@@ -5,7 +5,7 @@
 #include "alluvion/store.hpp"
 
 namespace alluvion {
-Store::Store() {}
+Store::Store() : cnf_(Constf{0}), cnd_(Constd{0}), cni_(ConstiN{0}) {}
 Store::~Store() {}
 void Store::update_resource_array() {
   resource_array_.resize(graphical_resource_dict_.size());
