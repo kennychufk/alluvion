@@ -1235,7 +1235,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
     I3 ipos = get_ipos(x);
     U num_neighbors = 0;
 #pragma unroll
-    for (U i = 0; i < 27; ++i) {
+    for (I i = 0; i < 27; ++i) {
       I3 neighbor_ipos = ipos + I3{i / 9, (i / 3) % 3, i % 3} - 1;
       if constexpr (wrap == 1) neighbor_ipos = wrap_ipos_y(neighbor_ipos);
       if (within_grid(neighbor_ipos)) {
@@ -1297,7 +1297,6 @@ __global__ void compute_particle_boundary(
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, normal;
     TF d;
-    bool penetrated;
     TF boundary_volume = compute_volume_and_boundary_x<0>(
         &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
         cell_size, num_nodes, node_offset, sign, thickness, particle_x(p_i),
@@ -2434,7 +2433,6 @@ __global__ void compute_sample_boundary(
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF3 boundary_xj, normal;
     TF d;
-    bool penetrated;
     TF boundary_volume = compute_volume_and_boundary_x<0>(
         &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
         cell_size, num_nodes, node_offset, sign, thickness, sample_x(p_i),

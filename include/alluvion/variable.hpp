@@ -85,7 +85,7 @@ class Variable {
                 << " " << get_num_bytes() << std::endl;
       abort();
     }
-    Allocator::copy(ptr_ + byte_offset, src, num_bytes);
+    Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
