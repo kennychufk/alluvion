@@ -195,44 +195,41 @@ class Variable {
   }
 
   constexpr __device__ M& operator()(U i, U j) {
-    return (D == 2) ? *(static_cast<M*>(ptr_) + (i * shape_[1] + j))
-                    : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 2);
+    return *(static_cast<M*>(ptr_) + (i * shape_[1] + j));
   }
 
   constexpr __device__ M& operator()(U i, U j, U k) {
-    return (D == 3) ? *(static_cast<M*>(ptr_) +
-                        ((i * shape_[1] + j) * shape_[2] + k))
-                    : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 3);
+    return *(static_cast<M*>(ptr_) + ((i * shape_[1] + j) * shape_[2] + k));
   }
 
   constexpr __device__ M& operator()(I3 index) {
-    return (D == 3) ? *(static_cast<M*>(ptr_) +
-                        ((index.x * shape_[1] + index.y) * shape_[2] + index.z))
-                    : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 3);
+    return *(static_cast<M*>(ptr_) +
+             ((index.x * shape_[1] + index.y) * shape_[2] + index.z));
   }
 
   constexpr __device__ M& operator()(U i, U j, U k, U l) {
-    return (D == 4) ? *(static_cast<M*>(ptr_) +
-                        (((i * shape_[1] + j) * shape_[2] + k) * shape_[3] + l))
-                    : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 4);
+    return *(static_cast<M*>(ptr_) +
+             (((i * shape_[1] + j) * shape_[2] + k) * shape_[3] + l));
   }
 
   constexpr __device__ M& operator()(U4 index) {
-    return (D == 4)
-               ? *(static_cast<M*>(ptr_) +
-                   (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
-                        shape_[3] +
-                    index.w))
-               : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 4);
+    return *(
+        static_cast<M*>(ptr_) +
+        (((index.x * shape_[1] + index.y) * shape_[2] + index.z) * shape_[3] +
+         index.w));
   }
 
   constexpr __device__ M& operator()(I3 index, U l) {
-    return (D == 4)
-               ? *(static_cast<M*>(ptr_) +
-                   (((index.x * shape_[1] + index.y) * shape_[2] + index.z) *
-                        shape_[3] +
-                    l))
-               : *(static_cast<M*>(ptr_ - 0xffffffff));
+    static_assert(D == 4);
+    return *(
+        static_cast<M*>(ptr_) +
+        (((index.x * shape_[1] + index.y) * shape_[2] + index.z) * shape_[3] +
+         l));
   }
 
   U shape_[D];
