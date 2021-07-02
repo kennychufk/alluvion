@@ -19,8 +19,8 @@ using namespace alluvion::dg;
 int main(void) {
   Store store;
   Display* display = store.create_display(800, 600, "particle view");
-  DisplayProxy display_proxy(display);
-  Runner runner;
+  DisplayProxy<F> display_proxy(display);
+  Runner<F> runner;
 
   F particle_radius = 0.00125;
   F kernel_radius = particle_radius * 4;
@@ -134,7 +134,7 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+  Runner<F>::launch(num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_block<F3, F><<<grid_size, block_size>>>(
         *particle_x, num_particles, 0, 0,
         F3{-0.12 + particle_radius * 2, particle_radius * 2,

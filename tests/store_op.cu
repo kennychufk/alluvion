@@ -24,7 +24,7 @@ SCENARIO("testing the store") {
         CHECK(copied == v);
       }
       THEN("gives the right sum") {
-        F result = Runner::sum<F>(var.ptr_, var.get_num_primitives());
+        F result = Runner<F>::sum<F>(var.ptr_, var.get_num_primitives());
         CHECK(result == 21);
       }
     }
@@ -45,7 +45,7 @@ SCENARIO("testing the store") {
         CHECK(copied == v);
       }
       THEN("gives the right sum") {
-        F result = Runner::sum<F>(var->ptr_, var->get_num_primitives());
+        F result = Runner<F>::sum<F>(var->ptr_, var->get_num_primitives());
         CHECK(result == 21);
       }
     }

@@ -15,6 +15,7 @@ namespace alluvion {
 template <typename TF3, typename TQ, typename TF>
 class Pile {
  private:
+  using TRunner = Runner<TF>;
   static dg::MeshDistance<TF3, TF>* construct_mesh_distance(
       VertexList const& vertices, FaceList const& faces) {
     std::vector<dg::Vector3r<TF>> dg_vertices;
@@ -243,7 +244,7 @@ class Pile {
 
       distance_grid.set_bytes(nodes_host.data());
       volume_grid.set_zero();
-      Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
+      TRunner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(
             volume_grid, distance_grid, domain_min, domain_max,
             resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
@@ -319,7 +320,7 @@ class Pile {
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
         if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
-        Runner::launch(num_vertices_i, 256, [&](U grid_size, U block_size) {
+        TRunner::launch(num_vertices_i, 256, [&](U grid_size, U block_size) {
           collision_test<<<grid_size, block_size>>>(
               i, j, vertices_i, num_contacts_, contacts_, mass_[i],
               inertia_tensor_[i], x_(i), v_(i), q_[i], omega_(i), mass_[j],

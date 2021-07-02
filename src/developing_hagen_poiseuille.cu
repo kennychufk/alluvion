@@ -30,7 +30,7 @@ int main(void) {
 
   Store store;
   Display* display = store.create_display(1920, 1080, "particle view", false);
-  Runner runner;
+  Runner<F> runner;
   GLuint screenshot_fbo = display->create_framebuffer();
 
   F particle_radius = 0.0025_F;
@@ -216,24 +216,24 @@ int main(void) {
         }
         solver_df.colorize_speed(0, 0.004);
         pid_length.set_zero();
-        Runner::launch(
+        Runner<F>::launch(
             solver_df.num_particles, 256, [&](U grid_size, U block_size) {
               update_particle_grid<<<grid_size, block_size>>>(
                   *particle_x, pid, pid_length, solver_df.num_particles);
             });
-        Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+        Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
           make_neighbor_list<1><<<grid_size, block_size>>>(
               sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
               num_samples);
         });
-        Runner::launch(
+        Runner<F>::launch(
             solver_df.num_particles, 256, [&](U grid_size, U block_size) {
               compute_density<<<grid_size, block_size>>>(
                   *particle_x, particle_neighbors, particle_num_neighbors,
                   particle_density, particle_boundary_xj,
                   particle_boundary_volume, solver_df.num_particles);
             });
-        Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+        Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
           sample_fluid<<<grid_size, block_size>>>(
               sample_x, *particle_x, particle_density, particle_v,
               sample_neighbors, sample_num_neighbors, sample_data3,
@@ -253,7 +253,7 @@ int main(void) {
 #include "alluvion/glsl/particle.frag"
 #include "alluvion/glsl/particle.vert"
   display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr, kParticleFragmentShaderStr,
+      kParticleVertexShaderStr.c_str(), kParticleFragmentShaderStr.c_str(),
       {"particle_radius", "screen_dimension", "M", "V", "P",
        "camera_worldspace", "material.specular", "material.shininess",
        "directional_light.direction", "directional_light.ambient",
@@ -269,8 +269,8 @@ int main(void) {
        "point_lights[1].specular"
 
       },
-      {std::make_tuple(particle_x->vbo_, 3, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, 0)},
+      {std::make_tuple(particle_x->vbo_, 3, GL_F, 0),
+       std::make_tuple(particle_normalized_attr->vbo_, 1, GL_F, 0)},
       [&](ShadingProgram& program, Display& display) {
         glBindFramebuffer(GL_FRAMEBUFFER,
                           display.get_framebuffer(screenshot_fbo).fbo_);
@@ -347,12 +347,12 @@ int main(void) {
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
   display->add_shading_program(new ShadingProgram(
-      kGlyphVertexShaderStr, kGlyphFragmentShaderStr,
+      kGlyphVertexShaderStr.c_str(), kGlyphFragmentShaderStr.c_str(),
       {
           "projection",
           "text_color",
       },
-      {std::make_tuple(glyph_quad, 4, 0)},
+      {std::make_tuple(glyph_quad, 4, GL_FLOAT, 0)},
       [&](ShadingProgram& program, Display& display) {
         glm::mat4 projection =
             glm::ortho(0.0f, static_cast<GLfloat>(display.width_), 0.0f,
@@ -384,8 +384,8 @@ int main(void) {
 #include "alluvion/glsl/screen.frag"
 #include "alluvion/glsl/screen.vert"
   display->add_shading_program(new ShadingProgram(
-      kScreenVertexShaderStr, kScreenFragmentShaderStr, {},
-      {std::make_tuple(screen_quad, 4, 0)},
+      kScreenVertexShaderStr.c_str(), kScreenFragmentShaderStr.c_str(), {},
+      {std::make_tuple(screen_quad, 4, GL_FLOAT, 0)},
       [&](ShadingProgram& program, Display& display) {
         // display.get_framebuffer(screenshot_fbo).write("test.bmp");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

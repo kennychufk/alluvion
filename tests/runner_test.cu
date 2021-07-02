@@ -18,7 +18,7 @@ SCENARIO("testing the runner") {
     WHEN("creating fluid block") {
       store.get_cn<F>().set_particle_attr(0.025, 0.0, 0.0);
       store.copy_cn<F>();
-      Runner::launch(num_particles, 256, [&](U grid_size, U block_size) {
+      Runner<F>::launch(num_particles, 256, [&](U grid_size, U block_size) {
         create_fluid_block<F3, F><<<grid_size, block_size>>>(
             var, num_particles, 0, 1, F3{-0.5, 0.0, -0.5}, F3{0.5, 1.0, 0.5});
       });

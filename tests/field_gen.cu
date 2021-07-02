@@ -90,7 +90,7 @@ SCENARIO("testing volume field generation") {
       store.get_cn<F>().set_cubic_discretization_constants();
       store.copy_cn<F>();
 
-      Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
+      Runner<F>::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(
             volume_nodes, distance_nodes, domain_min, domain_max, resolution,
             cell_size, num_nodes, 0, sign, map_thickness);

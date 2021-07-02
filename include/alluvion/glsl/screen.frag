@@ -1,4 +1,4 @@
-const char* kScreenFragmentShaderStr = R"CODE(
+const std::string kScreenFragmentShaderStr = R"CODE(
 #version 330 core
 out vec4 color;
 

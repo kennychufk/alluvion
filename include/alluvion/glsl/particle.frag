@@ -1,4 +1,4 @@
-const char* kParticleFragmentShaderStr = R"CODE(
+const std::string kParticleFragmentShaderStr = R"CODE(
 #version 330 core
 
 in vec3 particle_center_worldspace;

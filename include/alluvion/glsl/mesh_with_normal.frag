@@ -1,4 +1,4 @@
-const char* kMeshWithNormalFragmentShaderStr = R"CODE(
+const std::string kMeshWithNormalFragmentShaderStr = R"CODE(
 #version 330 core
 in vec3 position_worldspace;
 in vec3 normal_cameraspace;

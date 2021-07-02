@@ -33,7 +33,7 @@ SCENARIO("testing index-to-node") {
         Store store;
         Variable<1, F3> device_positions = store.create<1, F3>({num_nodes});
 
-        Runner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
+        Runner<F>::launch(num_nodes, 256, [&](U grid_size, U block_size) {
           get_node_positions<<<grid_size, block_size>>>(
               device_positions, domain_min, resolution, cell_size, num_nodes);
         });

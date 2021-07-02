@@ -9,8 +9,9 @@ namespace alluvion {
 template <typename TF3, typename TQ, typename TF>
 struct SolverDf : public Solver<TF> {
   using TPile = Pile<TF3, TQ, TF>;
+  using TRunner = Runner<TF>;
   using Base = Solver<TF>;
-  SolverDf(Runner& runner_arg, TPile& pile_arg,
+  SolverDf(TRunner& runner_arg, TPile& pile_arg,
            Variable<1, TF3>& particle_x_arg,
            Variable<1, TF>& particle_normalized_attr_arg,
            Variable<1, TF3>& particle_v_arg, Variable<1, TF3>& particle_a_arg,
@@ -179,8 +180,9 @@ struct SolverDf : public Solver<TF> {
           },
           "compute_divergence_solve_density_error",
           compute_divergence_solve_density_error<TQ, TF3, TF>);
-      avg_density_err = Runner::sum(particle_density_adv, Base::num_particles) /
-                        Base::num_particles;
+      avg_density_err =
+          TRunner::sum(particle_density_adv, Base::num_particles) /
+          Base::num_particles;
       ++num_divergence_solve_iteration;
     }
     runner.launch(
@@ -238,7 +240,7 @@ struct SolverDf : public Solver<TF> {
                                                       Base::num_particles);
         },
         "calculate_cfl_v2", calculate_cfl_v2<TF3, TF>);
-    TF particle_max_v2 = Runner::max(particle_cfl_v2, Base::num_particles);
+    TF particle_max_v2 = TRunner::max(particle_cfl_v2, Base::num_particles);
     TF pile_max_v2 = pile.calculate_cfl_v2();
     TF max_v2 = max(particle_max_v2, pile_max_v2);
     Base::dt = Base::cfl * ((Base::particle_radius * 2) / sqrt(max_v2));
@@ -315,10 +317,10 @@ struct SolverDf : public Solver<TF> {
           "compute_pressure_solve_density_error",
           compute_pressure_solve_density_error<TQ, TF3, TF>);
       avg_density_err =
-          Runner::sum(particle_density_adv, Base::num_particles) /
+          TRunner::sum(particle_density_adv, Base::num_particles) /
               Base::num_particles -
-          1._F;  // TODO: add variable to store particle_density_adv - 1
-                 // (better numerical precision)
+          1;  // TODO: add variable to store particle_density_adv - 1
+              // (better numerical precision)
       ++num_pressure_solve_iteration;
     }
     runner.launch(
@@ -339,11 +341,11 @@ struct SolverDf : public Solver<TF> {
 
     // rigids
     for (U i = 0; i < pile.get_size(); ++i) {
-      if (pile.mass_[i] == 0._F) continue;
-      pile.force_[i] = Runner::sum(particle_force, Base::num_particles,
-                                   i * Base::num_particles);
-      pile.torque_[i] = Runner::sum(particle_torque, Base::num_particles,
+      if (pile.mass_[i] == 0) continue;
+      pile.force_[i] = TRunner::sum(particle_force, Base::num_particles,
                                     i * Base::num_particles);
+      pile.torque_[i] = TRunner::sum(particle_torque, Base::num_particles,
+                                     i * Base::num_particles);
     }
 
     pile.integrate_kinematics(Base::dt);
@@ -370,7 +372,7 @@ struct SolverDf : public Solver<TF> {
         },
         "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
   }
-  Runner& runner;
+  TRunner& runner;
   TPile& pile;
 
   Variable<1, TF3>& particle_x;

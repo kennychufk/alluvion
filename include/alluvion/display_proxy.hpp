@@ -2,27 +2,84 @@
 #define ALLUVION_DISPLAY_PROXY_HPP
 
 #include <glm/gtc/type_ptr.hpp>
+#include <regex>
 
+#include "alluvion/colormaps.hpp"
 #include "alluvion/display.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/solver.hpp"
+#include "alluvion/solver_df.hpp"
 
 namespace alluvion {
 // Motivations
 // 1. cannot pass Display* to Python (because not copy-constructible?)
 // 2. avoid circular dependencies: Pile -> Store -> Display
+template <typename TF>
 class DisplayProxy {
  public:
-  DisplayProxy(Display* display);
-  GLuint create_colormap_viridis();
-  template <typename TF>
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  DisplayProxy(Display* display) : display_(display) {}
+  GLuint create_colormap_viridis() {
+    return display_->create_colormap(kViridisData.data(), kViridisData.size());
+  }
+  void add_solver_df_step(SolverDf<TF3, TQ, TF>& solver, Store& store) {
+    display_->add_shading_program(new ShadingProgram(
+        nullptr, nullptr, {}, {},
+        [&](ShadingProgram& program, Display& display) {
+          store.map_graphical_pointers();
+          // start of simulation loop
+          for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
+            solver.template step<0, 0>();
+          }
+          solver.colorize_kappa_v(static_cast<TF>(-0.002),
+                                  static_cast<TF>(0.0));
+          // solver.colorize_speed(0, 2);
+          store.unmap_graphical_pointers();
+        }));
+  }
   void add_particle_shading_program(GLuint x_vbo, GLuint attr_vbo,
                                     GLuint colormap_tex, float particle_radius,
                                     Solver<TF> const& solver) {
 #include "alluvion/glsl/particle.frag"
 #include "alluvion/glsl/particle.vert"
+    std::string vector3_str = "vec3";
+    std::string fp_str = "float";
+    std::string arb_gpu_shader_fp64_str = "";
+    std::string arb_vertex_attrib_64bit_str = "";
+    std::string tf3_to_float3_str = "$1";
+    std::string tf_to_float_str = "$1";
+    GLenum attribute_type = GL_FLOAT;
+    if constexpr (std::is_same_v<TF, double>) {
+      vector3_str = "dvec3";
+      fp_str = "double";
+      arb_gpu_shader_fp64_str = "#extension GL_ARB_gpu_shader_fp64 : enable";
+      arb_vertex_attrib_64bit_str =
+          "#extension GL_ARB_vertex_attrib_64bit : enable";
+      tf3_to_float3_str = "vec3($1)";
+      tf_to_float_str = "float($1)";
+      attribute_type = GL_DOUBLE;
+    }
+    std::string typed_vertex_shader = std::regex_replace(
+        kParticleVertexShaderStr, std::regex("\\bTF3\\b"), vector3_str);
+    typed_vertex_shader =
+        std::regex_replace(typed_vertex_shader, std::regex("\\bTF\\b"), fp_str);
+    typed_vertex_shader = std::regex_replace(typed_vertex_shader,
+                                             std::regex("#ARB_GPU_SHADER_FP64"),
+                                             arb_gpu_shader_fp64_str);
+    typed_vertex_shader = std::regex_replace(
+        typed_vertex_shader, std::regex("#ARB_VERTEX_ATTRIB_64BIT"),
+        arb_vertex_attrib_64bit_str);
+    typed_vertex_shader = std::regex_replace(
+        typed_vertex_shader,
+        std::regex("TF3_TO_FLOAT3\\(([a-zA-Z_][a-zA-Z0-9_]*)\\)"),
+        tf3_to_float3_str);
+    typed_vertex_shader = std::regex_replace(
+        typed_vertex_shader,
+        std::regex("TF_TO_FLOAT\\(([a-zA-Z_][a-zA-Z0-9_]*)\\)"),
+        tf_to_float_str);
     display_->add_shading_program(new ShadingProgram(
-        kParticleVertexShaderStr, kParticleFragmentShaderStr,
+        typed_vertex_shader.c_str(), kParticleFragmentShaderStr.c_str(),
         {"particle_radius", "screen_dimension", "M", "V", "P",
          "camera_worldspace", "material.specular", "material.shininess",
          "directional_light.direction", "directional_light.ambient",
@@ -38,7 +95,8 @@ class DisplayProxy {
          "point_lights[1].specular"
 
         },
-        {std::make_tuple(x_vbo, 3, 0), std::make_tuple(attr_vbo, 1, 0)},
+        {std::make_tuple(x_vbo, 3, attribute_type, 0),
+         std::make_tuple(attr_vbo, 1, attribute_type, 0)},
         [x_vbo, attr_vbo, colormap_tex, particle_radius, &solver](
             ShadingProgram& program, Display& display) {
           glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -106,16 +164,16 @@ class DisplayProxy {
           glBindTexture(GL_TEXTURE_1D, colormap_tex);
           glDrawArrays(GL_POINTS, 0, solver.num_particles);
         }));
-  };
+  }
 
-  template <typename TF3, typename TQ, typename TF>
   void add_pile_shading_program(Pile<TF3, TQ, TF> const& pile) {
     // rigid mesh shader
     // https://github.com/opengl-tutorials/ogl
 #include "alluvion/glsl/mesh_with_normal.frag"
 #include "alluvion/glsl/mesh_with_normal.vert"
     display_->add_shading_program(new ShadingProgram(
-        kMeshWithNormalVertexShaderStr, kMeshWithNormalFragmentShaderStr,
+        kMeshWithNormalVertexShaderStr.c_str(),
+        kMeshWithNormalFragmentShaderStr.c_str(),
         {"MVP", "V", "M", "camera_worldspace", "material.diffuse",
          "material.specular", "material.shininess",
          "directional_light.direction", "directional_light.ambient",
@@ -129,7 +187,8 @@ class DisplayProxy {
          "point_lights[1].linear", "point_lights[1].quadratic",
          "point_lights[1].ambient", "point_lights[1].diffuse",
          "point_lights[1].specular"},
-        {std::make_tuple(0, 3, 0), std::make_tuple(0, 3, 0)},
+        {std::make_tuple(0, 3, GL_FLOAT, 0),
+         std::make_tuple(0, 3, GL_FLOAT, 0)},
         [&pile](ShadingProgram& program, Display& display) {
           glm::mat4 const& projection_matrix =
               display.camera_.getProjectionMatrix();
@@ -215,8 +274,13 @@ class DisplayProxy {
           }
         }));
   }
-  void run();
-  void set_camera(float3 camera_pos, float3 center);
+  void run() { return display_->run(); }
+  void set_camera(float3 camera_pos, float3 center) {
+    display_->camera_.setEye(camera_pos.x, camera_pos.y, camera_pos.z);
+    display_->camera_.setCenter(center.x, center.y, center.z);
+    display_->camera_.update();
+    display_->update_trackball_camera();
+  }
 
   Display* display_;
 };

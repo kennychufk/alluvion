@@ -21,7 +21,7 @@ using namespace alluvion::dg;
 int main(void) {
   Store store;
   Display* display = store.create_display(800, 600, "particle view");
-  Runner runner;
+  Runner<F> runner;
 
   F particle_radius = 0.0025_F;
   F kernel_radius = particle_radius * 4.0_F;
@@ -37,7 +37,7 @@ int main(void) {
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().axial_gravity = -10.0_F;
   store.get_cn<F>().radial_gravity = 5.0_F;
-  store.get_cn<F>().set_boundary_epsilon(1e-9_F);
+  store.get_cn<F>().boundary_epsilon = 1e-9_F;
   F viscosity = 5e-6_F;
   F vorticity = 0.01_F;
   F inertia_inverse = 0.1_F;
@@ -147,7 +147,7 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  Runner::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
+  Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
         *particle_x, initial_num_particles, R - particle_radius * 2._F,
         num_particles_per_slice, particle_radius * 2._F,
@@ -191,7 +191,7 @@ int main(void) {
   Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
   Variable<2, F3> sample_boundary_xj =
       store.create<2, F3>({pile.get_size(), num_samples});
-  Runner::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
+  Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
         sample_x, num_samples, R - particle_radius * 2._F,
         num_samples_per_slice, cylinder_length / num_sample_slices,
@@ -272,19 +272,19 @@ int main(void) {
           step_id += 1;
 
           max_density_error =
-              Runner::max(particle_density, solver_df.num_particles) /
+              Runner<F>::max(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           min_density_error =
-              Runner::min(particle_density, solver_df.num_particles) /
+              Runner<F>::min(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           max_particle_speed =
-              sqrt(Runner::max(particle_cfl_v2, solver_df.num_particles));
+              sqrt(Runner<F>::max(particle_cfl_v2, solver_df.num_particles));
           min_particle_speed =
-              sqrt(Runner::min(particle_cfl_v2, solver_df.num_particles));
-          sum_particle_velocity_components =
-              Runner::sum<F>(particle_v.ptr_, particle_v.get_num_primitives());
+              sqrt(Runner<F>::min(particle_cfl_v2, solver_df.num_particles));
+          sum_particle_velocity_components = Runner<F>::sum<F>(
+              particle_v.ptr_, particle_v.get_num_primitives());
 
           F expected_total_volume = kPi<F> * (R - particle_radius) *
                                     (R - particle_radius) * cylinder_length;
@@ -292,24 +292,24 @@ int main(void) {
                                     density0 / expected_total_volume;
           if (step_id % 100 == 0) {
             pid_length.set_zero();
-            Runner::launch(
+            Runner<F>::launch(
                 solver_df.num_particles, 256, [&](U grid_size, U block_size) {
                   update_particle_grid<<<grid_size, block_size>>>(
                       *particle_x, pid, pid_length, solver_df.num_particles);
                 });
-            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+            Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
               make_neighbor_list<1><<<grid_size, block_size>>>(
                   sample_x, pid, pid_length, sample_neighbors,
                   sample_num_neighbors, num_samples);
             });
-            Runner::launch(
+            Runner<F>::launch(
                 solver_df.num_particles, 256, [&](U grid_size, U block_size) {
                   compute_density<<<grid_size, block_size>>>(
                       *particle_x, particle_neighbors, particle_num_neighbors,
                       particle_density, particle_boundary_xj,
                       particle_boundary_volume, solver_df.num_particles);
                 });
-            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
+            Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
               sample_fluid<<<grid_size, block_size>>>(
                   sample_x, *particle_x, particle_density, particle_density,
                   sample_neighbors, sample_num_neighbors, sample_data1,
@@ -330,7 +330,7 @@ int main(void) {
 #include "alluvion/glsl/particle.frag"
 #include "alluvion/glsl/particle.vert"
   display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr, kParticleFragmentShaderStr,
+      kParticleVertexShaderStr.c_str(), kParticleFragmentShaderStr.c_str(),
       {"particle_radius", "screen_dimension", "M", "V", "P",
        "camera_worldspace", "material.specular", "material.shininess",
        "directional_light.direction", "directional_light.ambient",
@@ -346,8 +346,8 @@ int main(void) {
        "point_lights[1].specular"
 
       },
-      {std::make_tuple(particle_x->vbo_, 3, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, 0)},
+      {std::make_tuple(particle_x->vbo_, 3, GL_F, 0),
+       std::make_tuple(particle_normalized_attr->vbo_, 1, GL_F, 0)},
       [&](ShadingProgram& program, Display& display) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUniformMatrix4fv(
@@ -421,12 +421,12 @@ int main(void) {
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
   display->add_shading_program(new ShadingProgram(
-      kGlyphVertexShaderStr, kGlyphFragmentShaderStr,
+      kGlyphVertexShaderStr.c_str(), kGlyphFragmentShaderStr.c_str(),
       {
           "projection",
           "text_color",
       },
-      {std::make_tuple(glyph_quad, 4, 0)},
+      {std::make_tuple(glyph_quad, 4, GL_FLOAT, 0)},
       [&](ShadingProgram& program, Display& display) {
         glm::mat4 projection =
             glm::ortho(0.0f, static_cast<GLfloat>(display.width_), 0.0f,

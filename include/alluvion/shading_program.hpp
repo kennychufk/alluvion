@@ -17,7 +17,7 @@ class Display;
 class ShadingProgram {
  public:
   using ProgramCallback = std::function<void(ShadingProgram&, Display&)>;
-  using VertexAttribSpec = std::tuple<GLuint, GLint, GLsizei>;
+  using VertexAttribSpec = std::tuple<GLuint, GLint, GLenum, GLsizei>;
 
  private:
   std::unordered_map<std::string, GLint> uniform_dict_;

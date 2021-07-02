@@ -10,7 +10,6 @@
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/display.hpp"
 #include "alluvion/display_proxy.hpp"
-#include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/solver_df.hpp"
@@ -118,6 +117,11 @@ void declare_pile(py::module& m, const char* name) {
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
       .def(py::init<Store&, U>())
+      .def_readwrite("mass", &TPile::mass_)
+      .def_readwrite("restitution", &TPile::restitution_)
+      .def_readwrite("friction", &TPile::friction_)
+      .def_readwrite("boundary_viscosity", &TPile::boundary_viscosity_)
+      .def_readwrite("inertia_tensor", &TPile::inertia_tensor_)
       .def_readonly("distance_grids", &TPile::distance_grids_)
       .def_readonly("volume_grids", &TPile::volume_grids_)
       .def("add", &TPile::add)
@@ -224,9 +228,10 @@ void declare_solver_df(py::module& m, const char* name) {
   using TSolver = Solver<TF>;
   using TSolverDf = SolverDf<TF3, TQ, TF>;
   using TPile = Pile<TF3, TQ, TF>;
+  using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<Runner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
+      .def(py::init<TRunner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
                     Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
                     Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
                     Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
@@ -241,9 +246,10 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TSolver = Solver<TF>;
   using TSolverIi = SolverIi<TF3, TQ, TF>;
   using TPile = Pile<TF3, TQ, TF>;
+  using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<Runner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
+      .def(py::init<TRunner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
                     Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
                     Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
                     Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
@@ -252,6 +258,35 @@ void declare_solver_ii(py::module& m, const char* name) {
                     Variable<1, TF3>&, Variable<1, TF>&, Variable<4, TQ>&,
                     Variable<3, U>&, Variable<2, TQ>&, Variable<1, U>&>())
       .def("step", &TSolverIi::template step<0>);
+}
+
+template <typename TF>
+void declare_display_proxy(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  using TDisplayProxy = DisplayProxy<TF>;
+  using TSolverIi = SolverIi<TF3, TQ, TF>;
+  using TSolverDf = SolverDf<TF3, TQ, TF>;
+  std::string class_name = std::string("DisplayProxy") + name;
+  py::class_<TDisplayProxy>(m, class_name.c_str())
+      .def("create_colormap_viridis", &TDisplayProxy::create_colormap_viridis)
+      .def("add_particle_shading_program",
+           &TDisplayProxy::add_particle_shading_program)
+      .def("add_pile_shading_program", &TDisplayProxy::add_pile_shading_program)
+      .def("add_solver_df_step", &TDisplayProxy::add_solver_df_step)
+      .def("run", &TDisplayProxy::run)
+      .def("set_camera", &TDisplayProxy::set_camera);
+}
+
+template <typename TF>
+void declare_runner(py::module& m, const char* name) {
+  using TRunner = Runner<TF>;
+  std::string class_name = std::string("Runner") + name;
+  py::class_<TRunner>(m, class_name.c_str())
+      .def(py::init<>())
+      .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block)
+      .def("launch_create_fluid_cylinder",
+           &TRunner::launch_create_fluid_cylinder);
 }
 
 PYBIND11_MODULE(_alluvion, m) {
@@ -266,8 +301,14 @@ PYBIND11_MODULE(_alluvion, m) {
                   bool offscreen) -> void {
                  store.create_display(width, height, title, offscreen);
                })
-          .def("get_display_proxy",
-               [](Store& store) { return DisplayProxy(store.get_display()); })
+          .def("get_display_proxyfloat",
+               [](Store& store) {
+                 return DisplayProxy<float>(store.get_display());
+               })
+          .def("get_display_proxydouble",
+               [](Store& store) {
+                 return DisplayProxy<double>(store.get_display());
+               })
           .def_property_readonly("cnfloat", &Store::template get_cn<float>)
           .def_property_readonly("cndouble", &Store::template get_cn<double>)
           .def_property_readonly("cni", &Store::template get_cni)
@@ -308,33 +349,6 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_vector4<float4, float>(m, "float4");
   declare_vector4<double4, double>(m, "double4");
 
-  py::class_<DisplayProxy>(m, "DisplayProxy")
-      .def("create_colormap_viridis", &DisplayProxy::create_colormap_viridis)
-      .def("add_particle_shading_programfloat",
-           &DisplayProxy::template add_particle_shading_program<float>)
-      .def("add_pile_shading_programfloat",
-           &DisplayProxy::template add_pile_shading_program<float3, float4,
-                                                            float>)
-      .def("add_solver_df_step",
-           [](DisplayProxy& display_proxy, SolverDf<F3, Q, F>& solver_df,
-              Store& store) {
-             display_proxy.display_->add_shading_program(new ShadingProgram(
-                 nullptr, nullptr, {}, {},
-                 [&](ShadingProgram& program, Display& display) {
-                   store.map_graphical_pointers();
-                   // start of simulation loop
-                   for (U frame_interstep = 0; frame_interstep < 10;
-                        ++frame_interstep) {
-                     solver_df.step<0, 0>();
-                   }
-                   solver_df.colorize_kappa_v(-0.002_F, 0.0_F);
-                   // solver_df.colorize_speed(0, 2);
-                   store.unmap_graphical_pointers();
-                 }));
-           })
-      .def("run", &DisplayProxy::run)
-      .def("set_camera", &DisplayProxy::set_camera);
-
   declare_pile<float3, float4, float>(m, "float");
   declare_pile<double3, double4, double>(m, "double");
 
@@ -347,7 +361,12 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_solver_ii<float3, float4, float>(m, "float");
   declare_solver_ii<double3, double4, double>(m, "double");
 
+  declare_display_proxy<float>(m, "float");
+  declare_display_proxy<double>(m, "double");
+
   declare_const<float>(m, "float");
+  declare_const<double>(m, "double");
+
   py::class_<ConstiN>(m, "ConstiN")
       .def_readonly("num_boundaries", &ConstiN::num_boundaries)
       .def_readonly("max_num_contacts", &ConstiN::max_num_contacts)
@@ -358,34 +377,8 @@ PYBIND11_MODULE(_alluvion, m) {
       .def_readwrite("max_num_neighbors_per_particle",
                      &ConstiN::max_num_neighbors_per_particle);
 
-  py::class_<Runner>(m, "Runner")
-      .def(py::init<>())
-      .def("create_fluid_block",
-           [](Runner& runner, U block_size, Variable<1, float3>& particle_x,
-              U num_particles, U offset, int mode, float3 box_min,
-              float3 box_max) {
-             runner.launch(
-                 num_particles, block_size,
-                 [&](U grid_size, U block_size) {
-                   create_fluid_block<F3, F><<<grid_size, block_size>>>(
-                       particle_x, num_particles, offset, mode, box_min,
-                       box_max);
-                 },
-                 "create_fluid_block");
-           })
-      .def("create_fluid_cylinder",
-           [](Runner& runner, U block_size, Variable<1, float3>& particle_x,
-              U num_particles, float radius, U num_particles_per_slice,
-              float slice_distance, float y_min) {
-             runner.launch(
-                 num_particles, block_size,
-                 [&](U grid_size, U block_size) {
-                   create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
-                       particle_x, num_particles, radius,
-                       num_particles_per_slice, slice_distance, y_min);
-                 },
-                 "create_fluid_cylinder");
-           });
+  declare_runner<float>(m, "float");
+  declare_runner<double>(m, "double");
 
   py::class_<Mesh>(m, "Mesh")
       .def(py::init<>())
@@ -408,195 +401,4 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_box_distance<double3, double>(m_dg, "double");
   declare_cylinder_distance<float3, float>(m_dg, "float");
   declare_cylinder_distance<double3, double>(m_dg, "double");
-
-  m.def(
-      "evaluate_developing_hagen_poiseuille",
-      [](I kQ, std::string particle_x_filename, F pressure_gradient_acc_x,
-         F viscosity, F boundary_viscosity, F dt,
-         std::vector<F> const& sample_ts) -> std::vector<F> {
-        Store store;
-        Runner runner;
-
-        F particle_radius = 0.00125_F;
-        F kernel_radius = particle_radius * 4.0_F;
-        F density0 = 1000.0_F;
-        F cubical_particle_volume =
-            8 * particle_radius * particle_radius * particle_radius;
-        F volume_relative_to_cube = 0.8_F;
-        F particle_mass =
-            cubical_particle_volume * volume_relative_to_cube * density0;
-
-        F3 pressure_gradient_acc = F3{0._F, pressure_gradient_acc_x, 0._F};
-
-        store.get_cn<F>().set_cubic_discretization_constants();
-        store.get_cn<F>().set_kernel_radius(kernel_radius);
-        store.get_cn<F>().set_particle_attr(particle_radius, particle_mass,
-                                            density0);
-        store.get_cn<F>().gravity = pressure_gradient_acc;
-        store.get_cn<F>().boundary_epsilon = 1e-9_F;
-        store.get_cn<F>().viscosity = viscosity;
-
-        I kM = 4;
-        F cylinder_length = 2._F * kM * kernel_radius;
-        F R = kernel_radius * kQ;
-
-        // rigids
-        F restitution = 1._F;
-        F friction = 0._F;
-        U max_num_contacts = 512;
-        Pile<F3, Q, F> pile(store, max_num_contacts);
-        pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F,
-                 0, Mesh(), 0._F, restitution, friction, boundary_viscosity,
-                 F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
-        pile.build_grids(4 * kernel_radius);
-        pile.reallocate_kinematics_on_device();
-        store.get_cni().num_boundaries = pile.get_size();
-        store.get_cn<F>().contact_tolerance = particle_radius;
-
-        // particles
-        U max_num_particles = static_cast<U>(kPi<F> * R * R * cylinder_length *
-                                             density0 / particle_mass);
-
-        // grid
-        U3 grid_res{static_cast<U>(kQ * 2), static_cast<U>(kM * 2),
-                    static_cast<U>(kQ * 2)};
-        I3 grid_offset{-kQ, -kM, -kQ};
-        U max_num_particles_per_cell = 64;
-        U max_num_neighbors_per_particle = 64;
-        store.get_cni().grid_res = grid_res;
-        store.get_cni().grid_offset = grid_offset;
-        store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
-        store.get_cni().max_num_neighbors_per_particle =
-            max_num_neighbors_per_particle;
-        store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
-
-        Variable<1, F3> particle_x(store.create<1, F3>({max_num_particles}));
-        Variable<1, F> particle_normalized_attr(
-            store.create<1, F>({max_num_particles}));
-        Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
-        Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
-        Variable<1, F> particle_density =
-            store.create<1, F>({max_num_particles});
-        Variable<2, F3> particle_boundary_xj =
-            store.create<2, F3>({pile.get_size(), max_num_particles});
-        Variable<2, F> particle_boundary_volume =
-            store.create<2, F>({pile.get_size(), max_num_particles});
-        Variable<2, F3> particle_force =
-            store.create<2, F3>({pile.get_size(), max_num_particles});
-        Variable<2, F3> particle_torque =
-            store.create<2, F3>({pile.get_size(), max_num_particles});
-        Variable<1, F> particle_cfl_v2 =
-            store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_dfsph_factor =
-            store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_kappa_v =
-            store.create<1, F>({max_num_particles});
-        Variable<1, F> particle_density_adv =
-            store.create<1, F>({max_num_particles});
-
-        Variable<4, Q> pid = store.create<4, Q>(
-            {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
-        Variable<3, U> pid_length =
-            store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-        Variable<2, Q> particle_neighbors = store.create<2, Q>(
-            {max_num_particles, max_num_neighbors_per_particle});
-        Variable<1, U> particle_num_neighbors =
-            store.create<1, U>({max_num_particles});
-
-        SolverDf<F3, Q, F> solver_df(
-            runner, pile, particle_x, particle_normalized_attr, particle_v,
-            particle_a, particle_density, particle_boundary_xj,
-            particle_boundary_volume, particle_force, particle_torque,
-            particle_cfl_v2, particle_dfsph_factor, particle_kappa,
-            particle_kappa_v, particle_density_adv, pid, pid_length,
-            particle_neighbors, particle_num_neighbors);
-        solver_df.dt = dt;
-        solver_df.max_dt = 0.005;
-        solver_df.min_dt = 0;
-        solver_df.cfl = 0.04;
-        solver_df.particle_radius = particle_radius;
-
-        // sample points
-        U num_sample_planes = 14;
-        U num_samples_per_plane = 31;
-        U num_samples = num_samples_per_plane * num_sample_planes;
-        Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
-        Variable<1, F3> sample_data3 = store.create<1, F3>({num_samples});
-        Variable<2, Q> sample_neighbors =
-            store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
-        Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
-        {
-          std::vector<F3> sample_x_host(num_samples);
-          F distance_between_sample_planes =
-              cylinder_length / num_sample_planes;
-          for (I i = 0; i < num_samples; ++i) {
-            I plane_id = i / num_samples_per_plane;
-            I id_in_plane = i % num_samples_per_plane;
-            sample_x_host[i] = F3{
-                R * 2._F / (num_samples_per_plane + 1) *
-                    (id_in_plane - static_cast<I>(num_samples_per_plane) / 2),
-                cylinder_length * -0.5_F +
-                    distance_between_sample_planes * plane_id,
-                0._F};
-          }
-          sample_x.set_bytes(sample_x_host.data());
-        }
-        std::vector<F3> sample_data3_host(num_samples);
-        std::vector<F> vx(num_samples_per_plane * sample_ts.size());
-
-        U step_id = 0;
-        F t = 0;
-
-        I sampling_cursor = 0;
-
-        store.copy_cn<F>();
-        solver_df.num_particles =
-            particle_x.read_file(particle_x_filename.c_str());
-
-        while (true) {
-          if (t >= sample_ts[sampling_cursor]) {
-            pid_length.set_zero();
-            Runner::launch(
-                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
-                  update_particle_grid<<<grid_size, block_size>>>(
-                      particle_x, pid, pid_length, solver_df.num_particles);
-                });
-            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              make_neighbor_list<1><<<grid_size, block_size>>>(
-                  sample_x, pid, pid_length, sample_neighbors,
-                  sample_num_neighbors, num_samples);
-            });
-            Runner::launch(
-                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
-                  compute_density<<<grid_size, block_size>>>(
-                      particle_x, particle_neighbors, particle_num_neighbors,
-                      particle_density, particle_boundary_xj,
-                      particle_boundary_volume, solver_df.num_particles);
-                });
-            Runner::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              sample_fluid<<<grid_size, block_size>>>(
-                  sample_x, particle_x, particle_density, particle_v,
-                  sample_neighbors, sample_num_neighbors, sample_data3,
-                  num_samples);
-            });
-            sample_data3.get_bytes(sample_data3_host.data());
-            for (I i = 0; i < sample_data3_host.size(); ++i) {
-              vx[num_samples_per_plane * sampling_cursor +
-                 (i % num_samples_per_plane)] +=
-                  sample_data3_host[i].y / num_sample_planes;
-            }
-            ++sampling_cursor;
-            if (sampling_cursor >= sample_ts.size()) {
-              return vx;
-            }
-          }
-
-          solver_df.step<1, 0>();
-          t += solver_df.dt;
-          step_id += 1;
-        }
-
-        return vx;
-      });
 }

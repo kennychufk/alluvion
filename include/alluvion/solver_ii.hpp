@@ -9,8 +9,9 @@ namespace alluvion {
 template <typename TF3, typename TQ, typename TF>
 struct SolverIi : public Solver<TF> {
   using TPile = Pile<TF3, TQ, TF>;
+  using TRunner = Runner<TF>;
   using Base = Solver<TF>;
-  SolverIi(Runner& runner_arg, TPile& pile_arg,
+  SolverIi(TRunner& runner_arg, TPile& pile_arg,
            Variable<1, TF3>& particle_x_arg,
            Variable<1, TF>& particle_normalized_attr_arg,
            Variable<1, TF3>& particle_v_arg, Variable<1, TF3>& particle_a_arg,
@@ -147,7 +148,7 @@ struct SolverIi : public Solver<TF> {
                                                       Base::num_particles);
         },
         "calculate_cfl_v2", calculate_cfl_v2<TF3, TF>);
-    TF particle_max_v2 = Runner::max(particle_cfl_v2, Base::num_particles);
+    TF particle_max_v2 = TRunner::max(particle_cfl_v2, Base::num_particles);
     TF pile_max_v2 = pile.calculate_cfl_v2();
     TF max_v2 = max(particle_max_v2, pile_max_v2);
     Base::dt = Base::cfl * ((Base::particle_radius * 2) / sqrt(max_v2));
@@ -210,8 +211,9 @@ struct SolverIi : public Solver<TF> {
           },
           "pressure_solve_iteration1_summarize",
           pressure_solve_iteration1_summarize<TF>);
-      avg_density_err = Runner::sum(particle_density_err, Base::num_particles) /
-                        Base::num_particles;
+      avg_density_err =
+          TRunner::sum(particle_density_err, Base::num_particles) /
+          Base::num_particles;
       ++num_solve_iteration;
     }
     runner.launch(
@@ -237,11 +239,11 @@ struct SolverIi : public Solver<TF> {
 
     // rigids
     for (U i = 0; i < pile.get_size(); ++i) {
-      if (pile.mass_[i] == 0._F) continue;
-      pile.force_[i] = Runner::sum(particle_force, Base::num_particles,
-                                   i * Base::num_particles);
-      pile.torque_[i] = Runner::sum(particle_torque, Base::num_particles,
+      if (pile.mass_[i] == 0) continue;
+      pile.force_[i] = TRunner::sum(particle_force, Base::num_particles,
                                     i * Base::num_particles);
+      pile.torque_[i] = TRunner::sum(particle_torque, Base::num_particles,
+                                     i * Base::num_particles);
     }
 
     pile.integrate_kinematics(Base::dt);
@@ -259,7 +261,7 @@ struct SolverIi : public Solver<TF> {
         },
         "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
   }
-  Runner& runner;
+  TRunner& runner;
   TPile& pile;
 
   Variable<1, TF3>& particle_x;

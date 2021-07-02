@@ -3,8 +3,11 @@
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <numeric>
+#include <sstream>
 #include <type_traits>
 #include <unordered_map>
 
@@ -14,122 +17,6 @@
 #include "alluvion/helper_math.h"
 #include "alluvion/variable.hpp"
 namespace alluvion {
-class Runner {
- public:
-  Runner();
-  virtual ~Runner();
-  template <typename T, typename BinaryFunction>
-  static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
-                  U offset = 0) {
-    return thrust::reduce(
-        thrust::device_ptr<T>(static_cast<T*>(ptr)) + offset,
-        thrust::device_ptr<T>(static_cast<T*>(ptr)) + (offset + num_elements),
-        init, binary_op);
-  }
-
-  template <typename T>
-  static T sum(void* ptr, U num_elements, U offset = 0) {
-    return reduce(ptr, num_elements, T{}, thrust::plus<T>(), offset);
-  }
-
-  template <U D, typename M>
-  static M sum(Variable<D, M> var, U num_elements, U offset = 0) {
-    return reduce(var.ptr_, num_elements, M{}, thrust::plus<M>(), offset);
-  }
-
-  template <U D, typename M>
-  static M max(Variable<D, M> var, U num_elements, U offset = 0) {
-    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::lowest(),
-                  thrust::maximum<M>(), offset);
-  }
-
-  template <U D, typename M>
-  static M min(Variable<D, M> var, U num_elements, U offset = 0) {
-    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::max(),
-                  thrust::minimum<M>(), offset);
-  }
-
-  template <class Lambda>
-  static void launch(U n, U desired_block_size, Lambda f) {
-    if (n == 0) return;
-    U block_size = std::min(n, desired_block_size);
-    U grid_size = (n + block_size - 1) / block_size;
-    f(grid_size, block_size);
-    Allocator::abort_if_error(cudaGetLastError());
-  }
-
-  template <class Lambda>
-  void launch(U n, U desired_block_size, Lambda f, std::string name) {
-    if (n == 0) return;
-    cudaEvent_t event_start, event_stop;
-    float ellapsed;
-    float started;
-    Allocator::abort_if_error(cudaEventCreate(&event_start));
-    Allocator::abort_if_error(cudaEventCreate(&event_stop));
-    U block_size = std::min(n, desired_block_size);
-    U grid_size = (n + block_size - 1) / block_size;
-    Allocator::abort_if_error(cudaGetLastError());
-    Allocator::abort_if_error(cudaEventRecord(event_start));
-    f(grid_size, block_size);
-    Allocator::abort_if_error(cudaGetLastError());
-    Allocator::abort_if_error(cudaEventRecord(event_stop));
-    Allocator::abort_if_error(cudaEventSynchronize(event_stop));
-    Allocator::abort_if_error(
-        cudaEventElapsedTime(&started, abs_start_, event_start));
-    Allocator::abort_if_error(
-        cudaEventElapsedTime(&ellapsed, event_start, event_stop));
-    launch_dict_[name][desired_block_size / kWarpSize - 1].emplace_back(
-        started, ellapsed);
-    Allocator::abort_if_error(cudaEventDestroy(event_start));
-    Allocator::abort_if_error(cudaEventDestroy(event_stop));
-  }
-
-  template <class Lambda, typename Func>
-  void launch(U n, Lambda f, std::string name, Func func) {
-    if (n == 0) return;
-    cudaFuncAttributes attr;
-    Allocator::abort_if_error(cudaFuncGetAttributes(&attr, func));
-    launch(n,
-           std::min((launch_cursor_ + 1) * kWarpSize,
-                    static_cast<U>(attr.maxThreadsPerBlock)),
-           f, name);
-  }
-
-  bool summarize() {
-    for (std::pair<std::string, std::array<std::vector<LaunchRecord>,
-                                           kNumBlockSizeCandidates>> const&
-             item : launch_dict_) {
-      std::vector<LaunchRecord> const& launch_records =
-          item.second[launch_cursor_];
-      launch_stat_dict_[item.first][launch_cursor_] =
-          launch_records.empty()
-              ? kFMax<float>
-              : std::accumulate(launch_records.begin(), launch_records.end(),
-                                0.f,
-                                [](float acc, LaunchRecord const& record) {
-                                  return acc + record.second;
-                                }) /
-                    launch_records.size();
-    }
-    return ++launch_cursor_ == kNumBlockSizeCandidates;
-  }
-  void export_stat() const;
-  void load_stat();
-
-  using LaunchRecord = std::pair<float, float>;
-  constexpr static U kWarpSize = 32;
-  constexpr static U kMaxBlockSize = 1024;  // compute capability >= 2
-  constexpr static U kNumBlockSizeCandidates = kMaxBlockSize / kWarpSize;
-  std::unordered_map<std::string, std::array<std::vector<LaunchRecord>,
-                                             kNumBlockSizeCandidates>>
-      launch_dict_;
-  std::unordered_map<std::string, std::array<float, kNumBlockSizeCandidates>>
-      launch_stat_dict_;
-  std::unordered_map<std::string, U> optimal_block_size_dict_;
-  U launch_cursor_;
-  cudaEvent_t abs_start_;
-};
-
 template <class Lambda>
 __device__ void forThreadMappedToElement(U element_count, Lambda f) {
   U tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -2624,6 +2511,187 @@ __global__ void scale(Variable<1, TF> original, Variable<1, TF> scaled,
     scaled(i) = (original(i) - lower_bound) / (upper_bound - lower_bound);
   });
 }
+
+template <typename TF>
+class Runner {
+ public:
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  Runner() : launch_cursor_(0) {
+    Allocator::abort_if_error(cudaEventCreate(&abs_start_));
+    Allocator::abort_if_error(cudaEventRecord(abs_start_));
+  }
+  virtual ~Runner() { cudaEventDestroy(abs_start_); }
+  template <typename T, typename BinaryFunction>
+  static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
+                  U offset = 0) {
+    return thrust::reduce(
+        thrust::device_ptr<T>(static_cast<T*>(ptr)) + offset,
+        thrust::device_ptr<T>(static_cast<T*>(ptr)) + (offset + num_elements),
+        init, binary_op);
+  }
+
+  template <typename T>
+  static T sum(void* ptr, U num_elements, U offset = 0) {
+    return reduce(ptr, num_elements, T{}, thrust::plus<T>(), offset);
+  }
+
+  template <U D, typename M>
+  static M sum(Variable<D, M> var, U num_elements, U offset = 0) {
+    return reduce(var.ptr_, num_elements, M{}, thrust::plus<M>(), offset);
+  }
+
+  template <U D, typename M>
+  static M max(Variable<D, M> var, U num_elements, U offset = 0) {
+    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::lowest(),
+                  thrust::maximum<M>(), offset);
+  }
+
+  template <U D, typename M>
+  static M min(Variable<D, M> var, U num_elements, U offset = 0) {
+    return reduce(var.ptr_, num_elements, std::numeric_limits<M>::max(),
+                  thrust::minimum<M>(), offset);
+  }
+
+  template <class Lambda>
+  static void launch(U n, U desired_block_size, Lambda f) {
+    if (n == 0) return;
+    U block_size = std::min(n, desired_block_size);
+    U grid_size = (n + block_size - 1) / block_size;
+    f(grid_size, block_size);
+    Allocator::abort_if_error(cudaGetLastError());
+  }
+
+  template <class Lambda>
+  void launch(U n, U desired_block_size, Lambda f, std::string name) {
+    if (n == 0) return;
+    cudaEvent_t event_start, event_stop;
+    float ellapsed;
+    float started;
+    Allocator::abort_if_error(cudaEventCreate(&event_start));
+    Allocator::abort_if_error(cudaEventCreate(&event_stop));
+    U block_size = std::min(n, desired_block_size);
+    U grid_size = (n + block_size - 1) / block_size;
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_start));
+    f(grid_size, block_size);
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_stop));
+    Allocator::abort_if_error(cudaEventSynchronize(event_stop));
+    Allocator::abort_if_error(
+        cudaEventElapsedTime(&started, abs_start_, event_start));
+    Allocator::abort_if_error(
+        cudaEventElapsedTime(&ellapsed, event_start, event_stop));
+    launch_dict_[name][desired_block_size / kWarpSize - 1].emplace_back(
+        started, ellapsed);
+    Allocator::abort_if_error(cudaEventDestroy(event_start));
+    Allocator::abort_if_error(cudaEventDestroy(event_stop));
+  }
+
+  template <class Lambda, typename Func>
+  void launch(U n, Lambda f, std::string name, Func func) {
+    if (n == 0) return;
+    cudaFuncAttributes attr;
+    Allocator::abort_if_error(cudaFuncGetAttributes(&attr, func));
+    launch(n,
+           std::min((launch_cursor_ + 1) * kWarpSize,
+                    static_cast<U>(attr.maxThreadsPerBlock)),
+           f, name);
+  }
+
+  bool summarize() {
+    for (std::pair<std::string, std::array<std::vector<LaunchRecord>,
+                                           kNumBlockSizeCandidates>> const&
+             item : launch_dict_) {
+      std::vector<LaunchRecord> const& launch_records =
+          item.second[launch_cursor_];
+      launch_stat_dict_[item.first][launch_cursor_] =
+          launch_records.empty()
+              ? kFMax<float>
+              : std::accumulate(launch_records.begin(), launch_records.end(),
+                                0.f,
+                                [](float acc, LaunchRecord const& record) {
+                                  return acc + record.second;
+                                }) /
+                    launch_records.size();
+    }
+    return ++launch_cursor_ == kNumBlockSizeCandidates;
+  }
+  void export_stat() const {
+    std::ofstream stream("kernel-stat.yaml", std::ios::trunc);
+    for (auto const& item : launch_stat_dict_) {
+      stream << item.first << ": ";
+      stream << "[";
+      for (auto const& mean : item.second) {
+        stream << std::setprecision(std::numeric_limits<float>::max_digits10)
+               << mean << ", ";
+      }
+      stream << "]" << std::endl;
+    }
+  };
+  void load_stat() {
+    std::ifstream stream("kernel-stat.yaml");
+    std::string line;
+    std::stringstream line_stream;
+    std::string function_name;
+    std::string elapsed_str;
+    stream.exceptions(std::ios_base::badbit);
+    while (std::getline(stream, line)) {
+      line_stream.clear();
+      line_stream.str(line);
+      std::getline(line_stream, function_name, ':');
+      std::getline(line_stream, elapsed_str, '[');
+      U optimal_index;
+      float min_elapsed = kFMax<float>;
+      for (U i = 0; i < kNumBlockSizeCandidates &&
+                    std::getline(line_stream, elapsed_str, ',');
+           ++i) {
+        float elapsed = from_string<float>(elapsed_str);
+        if (elapsed < min_elapsed) {
+          min_elapsed = elapsed;
+          optimal_index = i;
+        }
+      }
+      optimal_block_size_dict_[function_name] = (optimal_index + 1) * kWarpSize;
+    }
+  };
+  void launch_create_fluid_block(U block_size, Variable<1, TF3>& particle_x,
+                                 U num_particles, U offset, int mode,
+                                 TF3 box_min, TF3 box_max) {
+    launch(
+        num_particles, block_size,
+        [&](U grid_size, U block_size) {
+          create_fluid_block<TF3, TF><<<grid_size, block_size>>>(
+              particle_x, num_particles, offset, mode, box_min, box_max);
+        },
+        "create_fluid_block");
+  }
+  void launch_create_fluid_cylinder(U block_size, Variable<1, TF3>& particle_x,
+                                    U num_particles, TF radius,
+                                    U num_particles_per_slice,
+                                    TF slice_distance, TF y_min) {
+    launch(
+        num_particles, block_size,
+        [&](U grid_size, U block_size) {
+          create_fluid_cylinder<TF3, TF><<<grid_size, block_size>>>(
+              particle_x, num_particles, radius, num_particles_per_slice,
+              slice_distance, y_min);
+        },
+        "create_fluid_cylinder");
+  }
+
+  using LaunchRecord = std::pair<float, float>;
+  constexpr static U kWarpSize = 32;
+  constexpr static U kMaxBlockSize = 1024;  // compute capability >= 2
+  constexpr static U kNumBlockSizeCandidates = kMaxBlockSize / kWarpSize;
+  std::unordered_map<std::string, std::array<std::vector<LaunchRecord>,
+                                             kNumBlockSizeCandidates>>
+      launch_dict_;
+  std::unordered_map<std::string, std::array<float, kNumBlockSizeCandidates>>
+      launch_stat_dict_;
+  std::unordered_map<std::string, U> optimal_block_size_dict_;
+  U launch_cursor_;
+  cudaEvent_t abs_start_;
+};
 
 }  // namespace alluvion
 

@@ -21,7 +21,8 @@ using namespace alluvion::dg;
 int main(int argc, char* argv[]) {
   Store store;
   Display* display = store.create_display(800, 600, "particle view");
-  Runner runner;
+  DisplayProxy<F> display_proxy(display);
+  Runner<F> runner;
 
   F particle_radius = 0.0025_F;
   F kernel_radius = particle_radius * 4.0_F;
@@ -57,9 +58,6 @@ int main(int argc, char* argv[]) {
   display->camera_.setEye(0._F, 0._F, R * 6._F);
   display->camera_.setClipPlanes(particle_radius * 10._F, R * 20._F);
   display->update_trackball_camera();
-
-  GLuint colormap_tex =
-      display->create_colormap(kViridisData.data(), kViridisData.size());
 
   GLuint glyph_quad = display->create_dynamic_array_buffer<float4>(6, nullptr);
 
@@ -184,19 +182,19 @@ int main(int argc, char* argv[]) {
           step_id += 1;
 
           max_density_error =
-              Runner::max(particle_density, solver_df.num_particles) /
+              Runner<F>::max(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           min_density_error =
-              Runner::min(particle_density, solver_df.num_particles) /
+              Runner<F>::min(particle_density, solver_df.num_particles) /
                   density0 -
               1;
           max_particle_speed =
-              sqrt(Runner::max(particle_cfl_v2, solver_df.num_particles));
+              sqrt(Runner<F>::max(particle_cfl_v2, solver_df.num_particles));
           min_particle_speed =
-              sqrt(Runner::min(particle_cfl_v2, solver_df.num_particles));
-          sum_particle_velocity_components =
-              Runner::sum<F>(particle_v.ptr_, particle_v.get_num_primitives());
+              sqrt(Runner<F>::min(particle_cfl_v2, solver_df.num_particles));
+          sum_particle_velocity_components = Runner<F>::sum<F>(
+              particle_v.ptr_, particle_v.get_num_primitives());
 
           F expected_total_volume = kPi<F> * (R - particle_radius) *
                                     (R - particle_radius) * cylinder_length;
@@ -205,107 +203,20 @@ int main(int argc, char* argv[]) {
         store.unmap_graphical_pointers();
       }));
 
-  // {{{
-#include "alluvion/glsl/particle.frag"
-#include "alluvion/glsl/particle.vert"
-  display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr, kParticleFragmentShaderStr,
-      {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.specular", "material.shininess",
-       "directional_light.direction", "directional_light.ambient",
-       "directional_light.diffuse", "directional_light.specular",
-       "point_lights[0].position", "point_lights[0].constant",
-       "point_lights[0].linear", "point_lights[0].quadratic",
-       "point_lights[0].ambient", "point_lights[0].diffuse",
-       "point_lights[0].specular",
-       //
-       "point_lights[1].position", "point_lights[1].constant",
-       "point_lights[1].linear", "point_lights[1].quadratic",
-       "point_lights[1].ambient", "point_lights[1].diffuse",
-       "point_lights[1].specular"
-
-      },
-      {std::make_tuple(particle_x->vbo_, 3, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, 0)},
-      [&](ShadingProgram& program, Display& display) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniformMatrix4fv(
-            program.get_uniform_location("P"), 1, GL_FALSE,
-            glm::value_ptr(display.camera_.getProjectionMatrix()));
-        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
-                           glm::value_ptr(display.camera_.getViewMatrix()));
-        glUniform2f(program.get_uniform_location("screen_dimension"),
-                    static_cast<GLfloat>(display.width_),
-                    static_cast<GLfloat>(display.height_));
-        glUniform1f(program.get_uniform_location("particle_radius"),
-                    particle_radius);
-
-        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
-        glUniform3f(program.get_uniform_location("camera_worldspace"),
-                    camera_worldspace[0], camera_worldspace[1],
-                    camera_worldspace[2]);
-        glUniform3f(program.get_uniform_location("directional_light.direction"),
-                    0.2f, 1.0f, 0.3f);
-        glUniform3f(program.get_uniform_location("directional_light.ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
-                    0.4f, 0.4f, 0.4f);
-        glUniform3f(program.get_uniform_location("directional_light.specular"),
-                    0.5f, 0.5f, 0.5f);
-
-        glUniform3f(program.get_uniform_location("point_lights[0].position"),
-                    2.0f, 2.0f, 2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        glUniform3f(program.get_uniform_location("point_lights[1].position"),
-                    2.0f, 1.0f, -2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
-                    1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.specular"), 0.8f,
-                    0.9f, 0.9f);
-        glUniform1f(program.get_uniform_location("material.shininess"), 5.0f);
-
-        glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        for (I i = 0; i <= 0; ++i) {
-          float wrap_length = grid_res.y * kernel_radius;
-          glUniformMatrix4fv(
-              program.get_uniform_location("M"), 1, GL_FALSE,
-              glm::value_ptr(glm::translate(glm::mat4(1),
-                                            glm::vec3{wrap_length * i, 0, 0})));
-          glDrawArrays(GL_POINTS, 0, solver_df.num_particles);
-        }
-      }));
+  GLuint colormap_tex = display_proxy.create_colormap_viridis();
+  display_proxy.add_particle_shading_program(
+      particle_x->vbo_, particle_normalized_attr->vbo_, colormap_tex,
+      solver_df.particle_radius, solver_df);
 
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
   display->add_shading_program(new ShadingProgram(
-      kGlyphVertexShaderStr, kGlyphFragmentShaderStr,
+      kGlyphVertexShaderStr.c_str(), kGlyphFragmentShaderStr.c_str(),
       {
           "projection",
           "text_color",
       },
-      {std::make_tuple(glyph_quad, 4, 0)},
+      {std::make_tuple(glyph_quad, 4, GL_FLOAT, 0)},
       [&](ShadingProgram& program, Display& display) {
         glm::mat4 projection =
             glm::ortho(0.0f, static_cast<GLfloat>(display.width_), 0.0f,

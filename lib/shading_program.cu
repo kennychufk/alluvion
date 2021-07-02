@@ -50,8 +50,20 @@ ShadingProgram::ShadingProgram(
         VertexAttribSpec const& spec = vertex_attrib_specs[i];
         glBindBuffer(GL_ARRAY_BUFFER, std::get<0>(spec));
         glEnableVertexAttribArray(i);
-        glVertexAttribPointer(i, std::get<1>(spec), GL_FLOAT, GL_FALSE,
-                              std::get<2>(spec), 0);
+        GLenum type = std::get<2>(spec);
+        if (type == GL_FLOAT) {
+          glVertexAttribPointer(i, std::get<1>(spec), type, GL_FALSE,
+                                std::get<3>(spec), 0);
+        } else if (type == GL_DOUBLE) {
+          glVertexAttribLPointer(i, std::get<1>(spec), type, std::get<3>(spec),
+                                 0);
+        } else {
+          // not yet implemented
+          std::cerr << "Binding GL_ARRAY_BUFFER of type other than GL_FLOAT "
+                       "and GL_DOUBLE is not yet implemented"
+                    << std::endl;
+          abort();
+        }
       }
       glBindBuffer(GL_ARRAY_BUFFER, 0);
       glBindVertexArray(0);
