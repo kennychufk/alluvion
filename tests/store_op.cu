@@ -13,18 +13,18 @@ using namespace alluvion;
 SCENARIO("testing the store") {
   GIVEN("a store with a variable") {
     Store store;
-    Variable<1, F3> var = store.create<1, F3>({2});
-    REQUIRE(var.get_num_primitives() == 6);
+    std::unique_ptr<Variable<1, F3>> var(store.create<1, F3>({2}));
+    REQUIRE(var->get_num_primitives() == 6);
     WHEN("setting from host") {
       std::vector<F> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-      var.set_bytes(v.data(), v.size() * sizeof(F));
+      var->set_bytes(v.data(), v.size() * sizeof(F));
       THEN("getting from device gives the same data") {
         std::vector<F> copied(6);
-        var.get_bytes(copied.data(), copied.size() * sizeof(F));
+        var->get_bytes(copied.data(), copied.size() * sizeof(F));
         CHECK(copied == v);
       }
       THEN("gives the right sum") {
-        F result = Runner<F>::sum<F>(var.ptr_, var.get_num_primitives());
+        F result = Runner<F>::sum<F>(var->ptr_, var->get_num_primitives());
         CHECK(result == 21);
       }
     }

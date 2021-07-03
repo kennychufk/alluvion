@@ -42,12 +42,12 @@ class Store {
   bool has_display() const;
 
   template <unsigned int D, typename M>
-  Variable<D, M> create(std::array<unsigned int, D> const& shape) {
-    Variable<D, M> var(shape);
-    if (var.ptr_) {
+  Variable<D, M>* create(std::array<unsigned int, D> const& shape) {
+    Variable<D, M>* var = new Variable<D, M>(shape);
+    if (var->ptr_) {
       pointer_dict_.emplace(std::piecewise_construct,
-                            std::forward_as_tuple(var.ptr_),
-                            std::forward_as_tuple(var.ptr_));
+                            std::forward_as_tuple(var->ptr_),
+                            std::forward_as_tuple(var->ptr_));
     }
     return var;
   }

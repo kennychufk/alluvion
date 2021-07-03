@@ -78,7 +78,8 @@ void declare_variable_with_store_creation(py::module& m,
   using VariableClass = Variable<D, M>;
   using GraphicalVariableClass = GraphicalVariable<D, M>;
   std::string create_func_name = std::string("create") + name;
-  store_class.def(create_func_name.c_str(), &Store::create<D, M>);
+  store_class.def(create_func_name.c_str(), &Store::create<D, M>,
+                  py::return_value_policy::take_ownership);
   std::string create_graphical_func_name =
       std::string("create_graphical") + name;
   store_class.def(create_graphical_func_name.c_str(),
@@ -121,10 +122,18 @@ void declare_pile(py::module& m, const char* name) {
       .def_readwrite("restitution", &TPile::restitution_)
       .def_readwrite("friction", &TPile::friction_)
       .def_readwrite("inertia_tensor", &TPile::inertia_tensor_)
-      .def_readonly("distance_grids", &TPile::distance_grids_)
-      .def_readonly("volume_grids", &TPile::volume_grids_)
-      .def("add", &TPile::add)
-      .def("replace", &TPile::replace)
+      .def_property_readonly("distance_grids", &TPile::get_distance_grids)
+      .def_property_readonly("volume_grids", &TPile::get_volume_grids)
+      .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
+           py::arg("sign"), py::arg("thickness"), py::arg("collision_mesh"),
+           py::arg("mass"), py::arg("restitution"), py::arg("friction"),
+           py::arg("inertia_tensor"), py::arg("x"), py::arg("q"),
+           py::arg("display_mesh"))
+      .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
+           py::arg("resolution"), py::arg("sign"), py::arg("thickness"),
+           py::arg("collision_mesh"), py::arg("mass"), py::arg("restitution"),
+           py::arg("friction"), py::arg("inertia_tensor"), py::arg("x"),
+           py::arg("q"), py::arg("display_mesh"))
       .def("build_grids", &TPile::build_grids)
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
@@ -233,13 +242,67 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
-                    Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
-                    Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
-                    Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
-                    Variable<1, TF>&, Variable<1, TF>&, Variable<1, TF>&,
-                    Variable<4, TQ>&, Variable<3, U>&, Variable<2, TQ>&,
-                    Variable<1, U>&>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool>())
+      .def_property_readonly(
+          "particle_x",
+          [](TSolverDf const& solver) { return solver.particle_x.get(); })
+      .def_property_readonly("particle_normalized_attr",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_normalized_attr.get();
+                             })
+      .def_property_readonly(
+          "particle_v",
+          [](TSolverDf const& solver) { return solver.particle_v.get(); })
+      .def_property_readonly(
+          "particle_a",
+          [](TSolverDf const& solver) { return solver.particle_a.get(); })
+      .def_property_readonly(
+          "particle_density",
+          [](TSolverDf const& solver) { return solver.particle_density.get(); })
+      .def_property_readonly("particle_boundary_xj",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_boundary_xj.get();
+                             })
+      .def_property_readonly("particle_boundary_volume",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_boundary_volume.get();
+                             })
+      .def_property_readonly(
+          "particle_force",
+          [](TSolverDf const& solver) { return solver.particle_force.get(); })
+      .def_property_readonly(
+          "particle_torque",
+          [](TSolverDf const& solver) { return solver.particle_torque.get(); })
+      .def_property_readonly(
+          "particle_cfl_v2",
+          [](TSolverDf const& solver) { return solver.particle_cfl_v2.get(); })
+      .def_property_readonly("particle_dfsph_factor",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_dfsph_factor.get();
+                             })
+      .def_property_readonly(
+          "particle_kappa",
+          [](TSolverDf const& solver) { return solver.particle_kappa.get(); })
+      .def_property_readonly(
+          "particle_kappa_v",
+          [](TSolverDf const& solver) { return solver.particle_kappa_v.get(); })
+      .def_property_readonly("particle_density_adv",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_density_adv.get();
+                             })
+      .def_property_readonly(
+          "pid", [](TSolverDf const& solver) { return solver.pid.get(); })
+      .def_property_readonly(
+          "pid_length",
+          [](TSolverDf const& solver) { return solver.pid_length.get(); })
+      .def_property_readonly("particle_neighbors",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_neighbors.get();
+                             })
+      .def_property_readonly("particle_num_neighbors",
+                             [](TSolverDf const& solver) {
+                               return solver.particle_num_neighbors.get();
+                             })
       .def("step", &TSolverDf::template step<0, 0>);
 }
 
@@ -253,14 +316,85 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Variable<1, TF3>&, Variable<1, TF>&,
-                    Variable<1, TF3>&, Variable<1, TF3>&, Variable<1, TF>&,
-                    Variable<2, TF3>&, Variable<2, TF>&, Variable<2, TF3>&,
-                    Variable<2, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
-                    Variable<1, TF>&, Variable<1, TF>&, Variable<1, TF3>&,
-                    Variable<1, TF3>&, Variable<1, TF>&, Variable<1, TF>&,
-                    Variable<1, TF3>&, Variable<1, TF>&, Variable<4, TQ>&,
-                    Variable<3, U>&, Variable<2, TQ>&, Variable<1, U>&>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool>())
+      .def_property_readonly(
+          "particle_x",
+          [](TSolverIi const& solver) { return solver.particle_x.get(); })
+      .def_property_readonly("particle_normalized_attr",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_normalized_attr.get();
+                             })
+      .def_property_readonly(
+          "particle_v",
+          [](TSolverIi const& solver) { return solver.particle_v.get(); })
+      .def_property_readonly(
+          "particle_a",
+          [](TSolverIi const& solver) { return solver.particle_a.get(); })
+      .def_property_readonly(
+          "particle_density",
+          [](TSolverIi const& solver) { return solver.particle_density.get(); })
+      .def_property_readonly("particle_boundary_xj",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_boundary_xj.get();
+                             })
+      .def_property_readonly("particle_boundary_volume",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_boundary_volume.get();
+                             })
+      .def_property_readonly(
+          "particle_force",
+          [](TSolverIi const& solver) { return solver.particle_force.get(); })
+      .def_property_readonly(
+          "particle_torque",
+          [](TSolverIi const& solver) { return solver.particle_torque.get(); })
+      .def_property_readonly(
+          "particle_cfl_v2",
+          [](TSolverIi const& solver) { return solver.particle_cfl_v2.get(); })
+      .def_property_readonly("particle_pressure",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_pressure.get();
+                             })
+      .def_property_readonly("particle_last_pressure",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_last_pressure.get();
+                             })
+      .def_property_readonly(
+          "particle_aii",
+          [](TSolverIi const& solver) { return solver.particle_aii.get(); })
+      .def_property_readonly(
+          "particle_dii",
+          [](TSolverIi const& solver) { return solver.particle_dii.get(); })
+      .def_property_readonly(
+          "particle_dij_pj",
+          [](TSolverIi const& solver) { return solver.particle_dij_pj.get(); })
+      .def_property_readonly(
+          "particle_sum_tmp",
+          [](TSolverIi const& solver) { return solver.particle_sum_tmp.get(); })
+      .def_property_readonly("particle_adv_density",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_adv_density.get();
+                             })
+      .def_property_readonly("particle_pressure_accel",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_pressure_accel.get();
+                             })
+      .def_property_readonly("particle_density_err",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_density_err.get();
+                             })
+      .def_property_readonly(
+          "pid", [](TSolverIi const& solver) { return solver.pid.get(); })
+      .def_property_readonly(
+          "pid_length",
+          [](TSolverIi const& solver) { return solver.pid_length.get(); })
+      .def_property_readonly("particle_neighbors",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_neighbors.get();
+                             })
+      .def_property_readonly("particle_num_neighbors",
+                             [](TSolverIi const& solver) {
+                               return solver.particle_num_neighbors.get();
+                             })
       .def("step", &TSolverIi::template step<0>);
 }
 

@@ -69,60 +69,21 @@ int main(void) {
   store.get_cni().max_num_neighbors_per_particle =
       max_num_neighbors_per_particle;
 
-  std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
-      store.create_graphical<1, F3>({num_particles}));
-  std::unique_ptr<GraphicalVariable<1, F>> particle_normalized_attr(
-      store.create_graphical<1, F>({num_particles}));
-  Variable<1, F3> particle_v = store.create<1, F3>({num_particles});
-  Variable<1, F3> particle_a = store.create<1, F3>({num_particles});
-  Variable<1, F> particle_density = store.create<1, F>({num_particles});
-  Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({pile.get_size(), num_particles});
-  Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({pile.get_size(), num_particles});
-  Variable<2, F3> particle_force =
-      store.create<2, F3>({pile.get_size(), num_particles});
-  Variable<2, F3> particle_torque =
-      store.create<2, F3>({pile.get_size(), num_particles});
-  Variable<1, F> particle_cfl_v2 = store.create<1, F>({num_particles});
-  Variable<1, F> particle_pressure = store.create<1, F>({num_particles});
-  Variable<1, F> particle_last_pressure = store.create<1, F>({num_particles});
-  Variable<1, F> particle_aii = store.create<1, F>({num_particles});
-  Variable<1, F3> particle_dii = store.create<1, F3>({num_particles});
-  Variable<1, F3> particle_dij_pj = store.create<1, F3>({num_particles});
-  Variable<1, F> particle_sum_tmp = store.create<1, F>({num_particles});
-  Variable<1, F> particle_adv_density = store.create<1, F>({num_particles});
-  Variable<1, F3> particle_pressure_accel =
-      store.create<1, F3>({num_particles});
-  Variable<1, F> particle_density_err = store.create<1, F>({num_particles});
-  Variable<4, Q> pid = store.create<4, Q>(
-      {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
-  Variable<3, U> pid_length =
-      store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-  Variable<2, Q> particle_neighbors =
-      store.create<2, Q>({num_particles, max_num_neighbors_per_particle});
-  Variable<1, U> particle_num_neighbors = store.create<1, U>({num_particles});
-
-  SolverIi<F> solver_ii(
-      runner, pile, *particle_x, *particle_normalized_attr, particle_v,
-      particle_a, particle_density, particle_boundary_xj,
-      particle_boundary_volume, particle_force, particle_torque,
-      particle_cfl_v2, particle_pressure, particle_last_pressure, particle_aii,
-      particle_dii, particle_dij_pj, particle_sum_tmp, particle_adv_density,
-      particle_pressure_accel, particle_density_err, pid, pid_length,
-      particle_neighbors, particle_num_neighbors);
-  solver_ii.num_particles = num_particles;
-  solver_ii.dt = dt;
-  solver_ii.max_dt = 0.005;
-  solver_ii.min_dt = 0.0001;
-  solver_ii.cfl = 0.4;
-  solver_ii.particle_radius = particle_radius;
+  SolverIi<F> solver(runner, pile, store, num_particles, grid_res,
+                     max_num_particles_per_cell, max_num_neighbors_per_particle,
+                     true);
+  solver.num_particles = num_particles;
+  solver.dt = dt;
+  solver.max_dt = 0.005;
+  solver.min_dt = 0.0001;
+  solver.cfl = 0.4;
+  solver.particle_radius = particle_radius;
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
   Runner<F>::launch(num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_block<F3, F>
-        <<<grid_size, block_size>>>(*particle_x, num_particles, 0, 0,
+        <<<grid_size, block_size>>>(*solver.particle_x, num_particles, 0, 0,
                                     F3{-1.95, -0.0, -0.5}, F3{-0.95, 1.0, 0.5});
   });
 
@@ -141,17 +102,17 @@ int main(void) {
         store.map_graphical_pointers();
         // start of simulation loop
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
-          solver_ii.step<0>();
+          solver.step<0>();
         }
-        solver_ii.colorize_speed(0, 2);
+        solver.colorize_speed(0, 2);
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));
 
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
-      particle_x->vbo_, particle_normalized_attr->vbo_, colormap_tex,
-      solver_ii.particle_radius, solver_ii);
+      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      solver.particle_radius, solver);
 
   display->run();
 }

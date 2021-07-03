@@ -79,10 +79,13 @@ SCENARIO("testing volume field generation") {
                       distance_grid_prerequisite.cellSize()(2)};
       // allocate device memory
       Store store;
-      Variable<1, F> distance_nodes = store.create<1, F>({num_nodes});
-      Variable<1, F> volume_nodes = store.create<1, F>({num_nodes});
-      distance_nodes.set_bytes(distance_grid_prerequisite.node_data()[0].data(),
-                               num_nodes * sizeof(F));
+      std::unique_ptr<Variable<1, F>> distance_nodes(
+          store.create<1, F>({num_nodes}));
+      std::unique_ptr<Variable<1, F>> volume_nodes(
+          store.create<1, F>({num_nodes}));
+      distance_nodes->set_bytes(
+          distance_grid_prerequisite.node_data()[0].data(),
+          num_nodes * sizeof(F));
 
       // set constants
       store.get_cn<F>().set_particle_attr(particle_radius, 0.2, 1.0);
@@ -92,13 +95,13 @@ SCENARIO("testing volume field generation") {
 
       Runner<F>::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(
-            volume_nodes, distance_nodes, domain_min, domain_max, resolution,
+            *volume_nodes, *distance_nodes, domain_min, domain_max, resolution,
             cell_size, num_nodes, 0, sign, map_thickness);
       });
 
       std::vector<F> device_volume_nodes_copied(num_nodes);
-      volume_nodes.get_bytes(device_volume_nodes_copied.data(),
-                             device_volume_nodes_copied.size() * sizeof(F));
+      volume_nodes->get_bytes(device_volume_nodes_copied.data(),
+                              device_volume_nodes_copied.size() * sizeof(F));
       for (U l = 0; l < num_nodes; ++l) {
         if (device_volume_nodes_copied[l] > 1e-5) {
           std::cout << l << " " << device_volume_nodes_copied[l] << " "

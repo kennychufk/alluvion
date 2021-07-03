@@ -39,7 +39,8 @@ class DisplayProxy {
           store.unmap_graphical_pointers();
         }));
   }
-  void add_particle_shading_program(GLuint x_vbo, GLuint attr_vbo,
+  void add_particle_shading_program(Variable<1, TF3> const& x,
+                                    Variable<1, TF> const& attr,
                                     GLuint colormap_tex, float particle_radius,
                                     Solver<TF> const& solver) {
 #include "alluvion/glsl/particle.frag"
@@ -96,10 +97,14 @@ class DisplayProxy {
          "point_lights[1].specular"
 
         },
-        {std::make_tuple(x_vbo, 3, attribute_type, 0),
-         std::make_tuple(attr_vbo, 1, attribute_type, 0)},
-        [x_vbo, attr_vbo, colormap_tex, particle_radius, &solver](
-            ShadingProgram& program, Display& display) {
+        {std::make_tuple(
+             reinterpret_cast<GraphicalVariable<1, TF3> const&>(x).vbo_, 3,
+             attribute_type, 0),
+         std::make_tuple(
+             reinterpret_cast<GraphicalVariable<1, TF> const&>(attr).vbo_, 1,
+             attribute_type, 0)},
+        [colormap_tex, particle_radius, &solver](ShadingProgram& program,
+                                                 Display& display) {
           glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
           glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                              glm::value_ptr(glm::mat4(1)));

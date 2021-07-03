@@ -8,6 +8,7 @@
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
+#include "alluvion/display_proxy.hpp"
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
@@ -21,6 +22,7 @@ using namespace alluvion::dg;
 int main(void) {
   Store store;
   Display* display = store.create_display(800, 600, "particle view");
+  DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
 
   F particle_radius = 0.0025_F;
@@ -60,9 +62,6 @@ int main(void) {
   display->camera_.setClipPlanes(particle_radius * 10._F, R * 20._F);
   display->update_trackball_camera();
 
-  GLuint colormap_tex =
-      display->create_colormap(kViridisData.data(), kViridisData.size());
-
   GLuint glyph_quad = display->create_dynamic_array_buffer<float4>(6, nullptr);
 
   // rigids
@@ -96,48 +95,14 @@ int main(void) {
       max_num_neighbors_per_particle;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
-      store.create_graphical<1, F3>({max_num_particles}));
-  std::unique_ptr<GraphicalVariable<1, F>> particle_normalized_attr(
-      store.create_graphical<1, F>({max_num_particles}));
-  Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
-  Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
-  Variable<1, F> particle_density = store.create<1, F>({max_num_particles});
-  Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_force =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_torque =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_dfsph_factor =
-      store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa_v = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_density_adv = store.create<1, F>({max_num_particles});
-  Variable<4, Q> pid = store.create<4, Q>(
-      {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
-  Variable<3, U> pid_length =
-      store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-  Variable<2, Q> particle_neighbors =
-      store.create<2, Q>({max_num_particles, max_num_neighbors_per_particle});
-  Variable<1, U> particle_num_neighbors =
-      store.create<1, U>({max_num_particles});
-
-  SolverDf<F> solver_df(runner, pile, *particle_x, *particle_normalized_attr,
-                        particle_v, particle_a, particle_density,
-                        particle_boundary_xj, particle_boundary_volume,
-                        particle_force, particle_torque, particle_cfl_v2,
-                        particle_dfsph_factor, particle_kappa, particle_kappa_v,
-                        particle_density_adv, pid, pid_length,
-                        particle_neighbors, particle_num_neighbors);
-  solver_df.dt = 1e-3_F;
-  solver_df.max_dt = 1e-3_F;
-  solver_df.min_dt = 0.0_F;
-  solver_df.cfl = 2e-2_F;
-  solver_df.particle_radius = particle_radius;
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
+                     max_num_particles_per_cell, max_num_neighbors_per_particle,
+                     true);
+  solver.dt = 1e-3_F;
+  solver.max_dt = 1e-3_F;
+  solver.min_dt = 0.0_F;
+  solver.cfl = 2e-2_F;
+  solver.particle_radius = particle_radius;
 
   U initial_num_particles = naive_num_particles;
   F slice_distance = particle_radius * 2._F;
@@ -149,12 +114,12 @@ int main(void) {
   store.map_graphical_pointers();
   Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
-        *particle_x, initial_num_particles, R - particle_radius * 2._F,
+        *solver.particle_x, initial_num_particles, R - particle_radius * 2._F,
         num_particles_per_slice, particle_radius * 2._F,
         cylinder_length * -0.5_F);
   });
   store.unmap_graphical_pointers();
-  solver_df.num_particles = initial_num_particles;
+  solver.num_particles = initial_num_particles;
 
   U step_id = 0;
   F t = 0;
@@ -183,22 +148,22 @@ int main(void) {
   U num_sample_slices = 32;
   U num_samples_per_slice = 16;
   U num_samples = num_sample_slices * num_samples_per_slice;
-  Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
-  Variable<1, F> sample_data1 = store.create<1, F>({num_samples});
+  std::unique_ptr<Variable<1, F3>> sample_x(store.create<1, F3>({num_samples}));
+  std::unique_ptr<Variable<1, F>> sample_data1(
+      store.create<1, F>({num_samples}));
   std::vector<F> sample_data1_host(num_samples);
-  Variable<2, Q> sample_neighbors =
-      store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
-  Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
-  Variable<2, F3> sample_boundary_xj =
-      store.create<2, F3>({pile.get_size(), num_samples});
+  std::unique_ptr<Variable<2, Q>> sample_neighbors(
+      store.create<2, Q>({num_samples, max_num_neighbors_per_particle}));
+  std::unique_ptr<Variable<1, U>> sample_num_neighbors(
+      store.create<1, U>({num_samples}));
   Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
     create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
-        sample_x, num_samples, R - particle_radius * 2._F,
+        *sample_x, num_samples, R - particle_radius * 2._F,
         num_samples_per_slice, cylinder_length / num_sample_slices,
         cylinder_length * -0.5_F);
   });
   std::vector<F3> sample_x_host(num_samples);
-  sample_x.get_bytes(sample_x_host.data());
+  sample_x->get_bytes(sample_x_host.data());
   assert(sample_x_host[0].x == sample_x_host[2].z == 0);
   assert(sample_x_host[0].y == -cylinder_length / 2);
 
@@ -210,17 +175,17 @@ int main(void) {
 
         store.map_graphical_pointers();
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
-          if (t > 10._F && solver_df.num_particles == 2704 &&
+          if (t > 10._F && solver.num_particles == 2704 &&
               t - last_stationary_t > 0.2_F) {
-            // particle_x->write_file("x5-2704.alu", solver_df.num_particles);
+            // particle_x->write_file("x5-2704.alu", solver.num_particles);
             // should_close = true;
           }
           if (min_particle_speed > 2._F || (step_id % 10000 == 0)) {
-            particle_v.set_zero();
-            particle_dfsph_factor.set_zero();
-            particle_kappa.set_zero();
-            particle_kappa_v.set_zero();
-            particle_density_adv.set_zero();
+            solver.particle_v->set_zero();
+            solver.particle_dfsph_factor->set_zero();
+            solver.particle_kappa->set_zero();
+            solver.particle_kappa_v->set_zero();
+            solver.particle_density_adv->set_zero();
             last_stationary_t = t;
             std::cout << "last stationary t = " << last_stationary_t
                       << std::endl;
@@ -239,184 +204,100 @@ int main(void) {
               }
             }
           }
-          if (solver_df.num_particles >= target_num_particles_range.x &&
-              solver_df.num_particles <= target_num_particles_range.y &&
-              solver_df.num_particles != last_saved_num_particles) {
+          if (solver.num_particles >= target_num_particles_range.x &&
+              solver.num_particles <= target_num_particles_range.y &&
+              solver.num_particles != last_saved_num_particles) {
             speed_ready_before_emission = false;
             if (max_particle_speed < 2e-3 && (t - last_stationary_t > 4)) {
               std::stringstream filename_stream;
               filename_stream << "x" << kQ << "-" << kM << "-"
-                              << solver_df.num_particles << ".alu";
+                              << solver.num_particles << ".alu";
               std::string filename = filename_stream.str();
-              particle_x->write_file(filename.c_str(), solver_df.num_particles);
-              last_saved_num_particles = solver_df.num_particles;
+              solver.particle_x->write_file(filename.c_str(),
+                                            solver.num_particles);
+              last_saved_num_particles = solver.num_particles;
             }
           }
           if (t > next_emission_t && speed_ready_before_emission &&
-              solver_df.num_particles < max_num_particles) {
+              solver.num_particles < max_num_particles) {
             F3 new_particle_pos{0, cylinder_length / 2 - 1e-4, 0};
             F3 new_particle_v{d(gen), d(gen), d(gen)};
             next_emission_t = t + particle_radius * 2 / length(new_particle_v);
-            particle_x->set_bytes(&new_particle_pos, sizeof(F3),
-                                  sizeof(F3) * solver_df.num_particles);
-            particle_v.set_bytes(&new_particle_v, sizeof(F3),
-                                 sizeof(F3) * solver_df.num_particles);
-            ++solver_df.num_particles;
+            solver.particle_x->set_bytes(&new_particle_pos, sizeof(F3),
+                                         sizeof(F3) * solver.num_particles);
+            solver.particle_v->set_bytes(&new_particle_v, sizeof(F3),
+                                         sizeof(F3) * solver.num_particles);
+            ++solver.num_particles;
             last_emission_t = t;
             speed_ready_before_emission = false;
           }
 
-          solver_df.step<1, 1>();
+          solver.step<1, 1>();
 
-          t += solver_df.dt;
+          t += solver.dt;
           step_id += 1;
 
           max_density_error =
-              Runner<F>::max(particle_density, solver_df.num_particles) /
+              Runner<F>::max(*solver.particle_density, solver.num_particles) /
                   density0 -
               1;
           min_density_error =
-              Runner<F>::min(particle_density, solver_df.num_particles) /
+              Runner<F>::min(*solver.particle_density, solver.num_particles) /
                   density0 -
               1;
-          max_particle_speed =
-              sqrt(Runner<F>::max(particle_cfl_v2, solver_df.num_particles));
-          min_particle_speed =
-              sqrt(Runner<F>::min(particle_cfl_v2, solver_df.num_particles));
+          max_particle_speed = sqrt(
+              Runner<F>::max(*solver.particle_cfl_v2, solver.num_particles));
+          min_particle_speed = sqrt(
+              Runner<F>::min(*solver.particle_cfl_v2, solver.num_particles));
           sum_particle_velocity_components = Runner<F>::sum<F>(
-              particle_v.ptr_, particle_v.get_num_primitives());
+              solver.particle_v->ptr_, solver.particle_v->get_num_primitives());
 
           F expected_total_volume = kPi<F> * (R - particle_radius) *
                                     (R - particle_radius) * cylinder_length;
-          naive_filled_percentage = solver_df.num_particles * particle_mass /
+          naive_filled_percentage = solver.num_particles * particle_mass /
                                     density0 / expected_total_volume;
           if (step_id % 100 == 0) {
-            pid_length.set_zero();
-            Runner<F>::launch(
-                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
-                  update_particle_grid<<<grid_size, block_size>>>(
-                      *particle_x, pid, pid_length, solver_df.num_particles);
-                });
+            solver.pid_length->set_zero();
+            Runner<F>::launch(solver.num_particles, 256,
+                              [&](U grid_size, U block_size) {
+                                update_particle_grid<<<grid_size, block_size>>>(
+                                    *solver.particle_x, *solver.pid,
+                                    *solver.pid_length, solver.num_particles);
+                              });
             Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
               make_neighbor_list<1><<<grid_size, block_size>>>(
-                  sample_x, pid, pid_length, sample_neighbors,
-                  sample_num_neighbors, num_samples);
+                  *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
+                  *sample_num_neighbors, num_samples);
             });
             Runner<F>::launch(
-                solver_df.num_particles, 256, [&](U grid_size, U block_size) {
+                solver.num_particles, 256, [&](U grid_size, U block_size) {
                   compute_density<<<grid_size, block_size>>>(
-                      *particle_x, particle_neighbors, particle_num_neighbors,
-                      particle_density, particle_boundary_xj,
-                      particle_boundary_volume, solver_df.num_particles);
+                      *solver.particle_x, *solver.particle_neighbors,
+                      *solver.particle_num_neighbors, *solver.particle_density,
+                      *solver.particle_boundary_xj,
+                      *solver.particle_boundary_volume, solver.num_particles);
                 });
             Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
               sample_fluid<<<grid_size, block_size>>>(
-                  sample_x, *particle_x, particle_density, particle_density,
-                  sample_neighbors, sample_num_neighbors, sample_data1,
-                  num_samples);
+                  *sample_x, *solver.particle_x, *solver.particle_density,
+                  *solver.particle_density, *sample_neighbors,
+                  *sample_num_neighbors, *sample_data1, num_samples);
             });
-            sample_data1.get_bytes(sample_data1_host.data());
+            sample_data1->get_bytes(sample_data1_host.data());
             for (U i = 0; i < num_samples; i += 127) {
               std::cout << sample_data1_host[i] << " ";
             }
             std::cout << std::endl;
           }
         }
-        solver_df.colorize_speed(0, 2.0);
+        solver.colorize_speed(0, 2.0);
         store.unmap_graphical_pointers();
       }));
 
-  // {{{
-#include "alluvion/glsl/particle.frag"
-#include "alluvion/glsl/particle.vert"
-  display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr.c_str(), kParticleFragmentShaderStr.c_str(),
-      {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.specular", "material.shininess",
-       "directional_light.direction", "directional_light.ambient",
-       "directional_light.diffuse", "directional_light.specular",
-       "point_lights[0].position", "point_lights[0].constant",
-       "point_lights[0].linear", "point_lights[0].quadratic",
-       "point_lights[0].ambient", "point_lights[0].diffuse",
-       "point_lights[0].specular",
-       //
-       "point_lights[1].position", "point_lights[1].constant",
-       "point_lights[1].linear", "point_lights[1].quadratic",
-       "point_lights[1].ambient", "point_lights[1].diffuse",
-       "point_lights[1].specular"
-
-      },
-      {std::make_tuple(particle_x->vbo_, 3, GL_F, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, GL_F, 0)},
-      [&](ShadingProgram& program, Display& display) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniformMatrix4fv(
-            program.get_uniform_location("P"), 1, GL_FALSE,
-            glm::value_ptr(display.camera_.getProjectionMatrix()));
-        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
-                           glm::value_ptr(display.camera_.getViewMatrix()));
-        glUniform2f(program.get_uniform_location("screen_dimension"),
-                    static_cast<GLfloat>(display.width_),
-                    static_cast<GLfloat>(display.height_));
-        glUniform1f(program.get_uniform_location("particle_radius"),
-                    particle_radius);
-
-        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
-        glUniform3f(program.get_uniform_location("camera_worldspace"),
-                    camera_worldspace[0], camera_worldspace[1],
-                    camera_worldspace[2]);
-        glUniform3f(program.get_uniform_location("directional_light.direction"),
-                    0.2f, 1.0f, 0.3f);
-        glUniform3f(program.get_uniform_location("directional_light.ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
-                    0.4f, 0.4f, 0.4f);
-        glUniform3f(program.get_uniform_location("directional_light.specular"),
-                    0.5f, 0.5f, 0.5f);
-
-        glUniform3f(program.get_uniform_location("point_lights[0].position"),
-                    2.0f, 2.0f, 2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        glUniform3f(program.get_uniform_location("point_lights[1].position"),
-                    2.0f, 1.0f, -2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
-                    1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.specular"), 0.8f,
-                    0.9f, 0.9f);
-        glUniform1f(program.get_uniform_location("material.shininess"), 5.0f);
-
-        glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        for (I i = 0; i <= 0; ++i) {
-          float wrap_length = grid_res.y * kernel_radius;
-          glUniformMatrix4fv(
-              program.get_uniform_location("M"), 1, GL_FALSE,
-              glm::value_ptr(glm::translate(glm::mat4(1),
-                                            glm::vec3{wrap_length * i, 0, 0})));
-          glDrawArrays(GL_POINTS, 0, solver_df.num_particles);
-        }
-      }));
+  GLuint colormap_tex = display_proxy.create_colormap_viridis();
+  display_proxy.add_particle_shading_program(
+      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      solver.particle_radius, solver);
 
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
@@ -437,12 +318,12 @@ int main(void) {
                     1.0f);
 
         std::stringstream time_text;
-        time_text << "num_particles = " << solver_df.num_particles << "("
+        time_text << "num_particles = " << solver.num_particles << "("
                   << std::fixed << std::setprecision(3) << std::setw(5)
                   << naive_filled_percentage << " t: " << std::fixed
                   << std::setprecision(3) << std::setw(6) << t
                   << " dt: " << std::scientific << std::setprecision(3)
-                  << std::setw(6) << solver_df.dt << " d: (" << std::scientific
+                  << std::setw(6) << solver.dt << " d: (" << std::scientific
                   << std::setprecision(3) << std::setw(6) << min_density_error
                   << "," << std::scientific << std::setprecision(3)
                   << std::setw(6) << max_density_error << ") v=("
@@ -463,5 +344,4 @@ int main(void) {
         glBindTexture(GL_TEXTURE_2D, 0);
       }));
   display->run();
-  // }}}
 }

@@ -91,52 +91,18 @@ int main(int argc, char* argv[]) {
       max_num_neighbors_per_particle;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
-      store.create_graphical<1, F3>({max_num_particles}));
-  std::unique_ptr<GraphicalVariable<1, F>> particle_normalized_attr(
-      store.create_graphical<1, F>({max_num_particles}));
-  Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
-  Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
-  Variable<1, F> particle_density = store.create<1, F>({max_num_particles});
-  Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_force =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_torque =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_dfsph_factor =
-      store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa_v = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_density_adv = store.create<1, F>({max_num_particles});
-  Variable<4, Q> pid = store.create<4, Q>(
-      {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
-  Variable<3, U> pid_length =
-      store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-  Variable<2, Q> particle_neighbors =
-      store.create<2, Q>({max_num_particles, max_num_neighbors_per_particle});
-  Variable<1, U> particle_num_neighbors =
-      store.create<1, U>({max_num_particles});
-
-  SolverDf<F> solver_df(runner, pile, *particle_x, *particle_normalized_attr,
-                        particle_v, particle_a, particle_density,
-                        particle_boundary_xj, particle_boundary_volume,
-                        particle_force, particle_torque, particle_cfl_v2,
-                        particle_dfsph_factor, particle_kappa, particle_kappa_v,
-                        particle_density_adv, pid, pid_length,
-                        particle_neighbors, particle_num_neighbors);
-  solver_df.dt = 1e-3_F;
-  solver_df.max_dt = 1e-4_F;
-  solver_df.min_dt = 0.0_F;
-  solver_df.cfl = 2e-3_F;
-  solver_df.particle_radius = particle_radius;
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
+                     max_num_particles_per_cell, max_num_neighbors_per_particle,
+                     true);
+  solver.dt = 1e-3_F;
+  solver.max_dt = 1e-4_F;
+  solver.min_dt = 0.0_F;
+  solver.cfl = 2e-3_F;
+  solver.particle_radius = particle_radius;
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  solver_df.num_particles = particle_x->read_file(argv[1]);
+  solver.num_particles = solver.particle_x->read_file(argv[1]);
   store.unmap_graphical_pointers();
 
   U step_id = 0;
@@ -163,51 +129,51 @@ int main(int argc, char* argv[]) {
         store.map_graphical_pointers();
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
           if (min_particle_speed > 2._F || (step_id % 10000 == 0)) {
-            particle_v.set_zero();
-            particle_dfsph_factor.set_zero();
-            particle_kappa.set_zero();
-            particle_kappa_v.set_zero();
-            particle_density_adv.set_zero();
+            solver.particle_v->set_zero();
+            solver.particle_dfsph_factor->set_zero();
+            solver.particle_kappa->set_zero();
+            solver.particle_kappa_v->set_zero();
+            solver.particle_density_adv->set_zero();
             last_stationary_t = t;
             std::cout << "last stationary t = " << last_stationary_t
                       << std::endl;
           }
           if (t > 6) {
-            particle_x->write_file(argv[2], solver_df.num_particles);
+            solver.particle_x->write_file(argv[2], solver.num_particles);
             should_close = true;
           }
 
-          solver_df.step<1, 0>();
+          solver.step<1, 0>();
 
-          t += solver_df.dt;
+          t += solver.dt;
           step_id += 1;
 
           max_density_error =
-              Runner<F>::max(particle_density, solver_df.num_particles) /
+              Runner<F>::max(*solver.particle_density, solver.num_particles) /
                   density0 -
               1;
           min_density_error =
-              Runner<F>::min(particle_density, solver_df.num_particles) /
+              Runner<F>::min(*solver.particle_density, solver.num_particles) /
                   density0 -
               1;
-          max_particle_speed =
-              sqrt(Runner<F>::max(particle_cfl_v2, solver_df.num_particles));
-          min_particle_speed =
-              sqrt(Runner<F>::min(particle_cfl_v2, solver_df.num_particles));
+          max_particle_speed = sqrt(
+              Runner<F>::max(*solver.particle_cfl_v2, solver.num_particles));
+          min_particle_speed = sqrt(
+              Runner<F>::min(*solver.particle_cfl_v2, solver.num_particles));
           sum_particle_velocity_components = Runner<F>::sum<F>(
-              particle_v.ptr_, particle_v.get_num_primitives());
+              solver.particle_v->ptr_, solver.particle_v->get_num_primitives());
 
           F expected_total_volume = kPi<F> * (R - particle_radius) *
                                     (R - particle_radius) * cylinder_length;
         }
-        solver_df.colorize_speed(0, 2.0);
+        solver.colorize_speed(0, 2.0);
         store.unmap_graphical_pointers();
       }));
 
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
-      particle_x->vbo_, particle_normalized_attr->vbo_, colormap_tex,
-      solver_df.particle_radius, solver_df);
+      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      solver.particle_radius, solver);
 
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
@@ -228,10 +194,10 @@ int main(int argc, char* argv[]) {
                     1.0f);
 
         std::stringstream time_text;
-        time_text << "num_particles = " << solver_df.num_particles
+        time_text << "num_particles = " << solver.num_particles
                   << " t: " << std::fixed << std::setprecision(3)
                   << std::setw(6) << t << " dt: " << std::scientific
-                  << std::setprecision(3) << std::setw(6) << solver_df.dt
+                  << std::setprecision(3) << std::setw(6) << solver.dt
                   << " d: (" << std::scientific << std::setprecision(3)
                   << std::setw(6) << min_density_error << "," << std::scientific
                   << std::setprecision(3) << std::setw(6) << max_density_error

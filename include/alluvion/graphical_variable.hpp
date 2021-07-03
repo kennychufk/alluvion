@@ -12,6 +12,7 @@ class GraphicalVariable : public Variable<D, M> {
     std::copy(std::begin(shape), std::end(shape), std::begin(Base::shape_));
     GraphicalAllocator::allocate<M>(&vbo_, &res_, Base::get_linear_shape());
   }
+  virtual ~GraphicalVariable() {}
 
   GLuint vbo_;
   cudaGraphicsResource* res_;

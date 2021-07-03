@@ -80,21 +80,21 @@ class Pile {
   std::vector<U3> resolution_list_;
   std::vector<TF> sign_list_;
   std::vector<TF> thickness_list_;
-  std::vector<Variable<1, TF>> distance_grids_;
-  std::vector<Variable<1, TF>> volume_grids_;
+  std::vector<std::unique_ptr<Variable<1, TF>>> distance_grids_;
+  std::vector<std::unique_ptr<Variable<1, TF>>> volume_grids_;
   std::vector<TF3> domain_min_list_;
   std::vector<TF3> domain_max_list_;
   std::vector<U> grid_size_list_;
   std::vector<TF3> cell_size_list_;
 
   std::vector<MeshBuffer> mesh_buffer_list_;
-  std::vector<Variable<1, TF3>> collision_vertex_list_;
+  std::vector<std::unique_ptr<Variable<1, TF3>>> collision_vertex_list_;
 
-  Variable<1, TF3> x_device_;
-  Variable<1, TF3> v_device_;
-  Variable<1, TF3> omega_device_;
-  Variable<1, TContact> contacts_;
-  Variable<1, U> num_contacts_;
+  std::unique_ptr<Variable<1, TF3>> x_device_;
+  std::unique_ptr<Variable<1, TF3>> v_device_;
+  std::unique_ptr<Variable<1, TF3>> omega_device_;
+  std::unique_ptr<Variable<1, TContact>> contacts_;
+  std::unique_ptr<Variable<1, U>> num_contacts_;
   PinnedVariable<1, TContact> contacts_pinned_;
   PinnedVariable<1, U> num_contacts_pinned_;
   TF3 gravity_;
@@ -144,8 +144,8 @@ class Pile {
     thickness_list_.push_back(thickness);
 
     // placeholders
-    distance_grids_.push_back(store_.create<1, TF>({0}));
-    volume_grids_.push_back(store_.create<1, TF>({0}));
+    distance_grids_.emplace_back(store_.create<1, TF>({0}));
+    volume_grids_.emplace_back(store_.create<1, TF>({0}));
     domain_min_list_.push_back(TF3{0, 0, 0});
     domain_max_list_.push_back(TF3{0, 0, 0});
     grid_size_list_.push_back(0);
@@ -157,10 +157,10 @@ class Pile {
     }
     mesh_buffer_list_.push_back(mesh_buffer);
 
-    Variable<1, TF3> collision_vertices_var =
+    Variable<1, TF3>* collision_vertices_var =
         store_.create<1, TF3>({static_cast<U>(collision_mesh.vertices.size())});
-    collision_vertex_list_.push_back(collision_vertices_var);
-    collision_vertices_var.set_bytes(collision_mesh.vertices.data());
+    collision_vertex_list_.emplace_back(collision_vertices_var);
+    collision_vertices_var->set_bytes(collision_mesh.vertices.data());
 
     reallocate_kinematics_on_pinned();
     v_(get_size() - 1) = TF3{0, 0, 0};
@@ -194,10 +194,10 @@ class Pile {
     thickness_list_[i] = thickness;
 
     // placeholders
-    store_.remove(distance_grids_[i]);
-    distance_grids_[i] = store_.create<1, TF>({0});
-    store_.remove(volume_grids_[i]);
-    volume_grids_[i] = store_.create<1, TF>({0});
+    store_.remove(*distance_grids_[i]);
+    distance_grids_[i].reset(store_.create<1, TF>({0}));
+    store_.remove(*volume_grids_[i]);
+    volume_grids_[i].reset(store_.create<1, TF>({0}));
     domain_min_list_[i] = TF3{0, 0, 0};
     domain_max_list_[i] = TF3{0, 0, 0};
     grid_size_list_[i] = 0;
@@ -210,11 +210,11 @@ class Pile {
     }
     mesh_buffer_list_[i] = mesh_buffer;
 
-    Variable<1, TF3> collision_vertices_var =
+    Variable<1, TF3>* collision_vertices_var =
         store_.create<1, TF3>({static_cast<U>(collision_mesh.vertices.size())});
-    store_.remove(collision_vertex_list_[i]);
-    collision_vertex_list_[i] = collision_vertices_var;
-    collision_vertices_var.set_bytes(collision_mesh.vertices.data());
+    store_.remove(*collision_vertex_list_[i]);
+    collision_vertex_list_[i].reset(collision_vertices_var);
+    collision_vertices_var->set_bytes(collision_mesh.vertices.data());
 
     v_(get_size() - 1) = TF3{0, 0, 0};
     x_(get_size() - 1) = x;
@@ -231,18 +231,18 @@ class Pile {
           *distance_list_[i], resolution_list_[i], margin, sign_list_[i],
           thickness_list_[i], domain_min, domain_max, num_nodes, cell_size);
 
-      store_.remove(distance_grids_[i]);
-      store_.remove(volume_grids_[i]);
-      Variable<1, TF> distance_grid = store_.create<1, TF>({num_nodes});
-      Variable<1, TF> volume_grid = store_.create<1, TF>({num_nodes});
-      distance_grids_[i] = distance_grid;
-      volume_grids_[i] = volume_grid;
+      store_.remove(*distance_grids_[i]);
+      store_.remove(*volume_grids_[i]);
+      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+      Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
+      distance_grids_[i].reset(distance_grid);
+      volume_grids_[i].reset(volume_grid);
 
-      distance_grid.set_bytes(nodes_host.data());
-      volume_grid.set_zero();
+      distance_grid->set_bytes(nodes_host.data());
+      volume_grid->set_zero();
       TRunner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
         update_volume_field<<<grid_size, block_size>>>(
-            volume_grid, distance_grid, domain_min, domain_max,
+            *volume_grid, *distance_grid, domain_min, domain_max,
             resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
             thickness_list_[i]);
       });
@@ -250,12 +250,12 @@ class Pile {
   }
   void set_gravity(TF3 gravity) { gravity_ = gravity; }
   void reallocate_kinematics_on_device() {
-    store_.remove(x_device_);
-    store_.remove(v_device_);
-    store_.remove(omega_device_);
-    x_device_ = store_.create<1, TF3>({get_size()});
-    v_device_ = store_.create<1, TF3>({get_size()});
-    omega_device_ = store_.create<1, TF3>({get_size()});
+    store_.remove(*x_device_);
+    store_.remove(*v_device_);
+    store_.remove(*omega_device_);
+    x_device_.reset(store_.create<1, TF3>({get_size()}));
+    v_device_.reset(store_.create<1, TF3>({get_size()}));
+    omega_device_.reset(store_.create<1, TF3>({get_size()}));
 
     store_.get_cni().num_boundaries = get_size();
   }
@@ -275,9 +275,9 @@ class Pile {
     omega_ = omega_new;
   }
   void copy_kinematics_to_device() {
-    x_device_.set_bytes(x_.ptr_);
-    v_device_.set_bytes(v_.ptr_);
-    omega_device_.set_bytes(omega_.ptr_);
+    x_device_->set_bytes(x_.ptr_);
+    v_device_->set_bytes(v_.ptr_);
+    omega_device_->set_bytes(omega_.ptr_);
   }
   void integrate_kinematics(TF dt) {
     for (U i = 0; i < get_size(); ++i) {
@@ -307,19 +307,19 @@ class Pile {
     return max_v2;
   }
   void find_contacts() {
-    num_contacts_.set_zero();
+    num_contacts_->set_zero();
     for (U i = 0; i < get_size(); ++i) {
-      Variable<1, TF3>& vertices_i = collision_vertex_list_[i];
+      Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
         if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
         TRunner::launch(num_vertices_i, 256, [&](U grid_size, U block_size) {
           collision_test<<<grid_size, block_size>>>(
-              i, j, vertices_i, num_contacts_, contacts_, mass_[i],
+              i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
               inertia_tensor_[i], x_(i), v_(i), q_[i], omega_(i), mass_[j],
               inertia_tensor_[j], x_(j), v_(j), q_[j], omega_(j), q_initial_[j],
               q_mat_[j], x_mat_[j], restitution_[i] * restitution_[j],
-              friction_[i] + friction_[j], distance_grids_[j],
+              friction_[i] + friction_[j], *distance_grids_[j],
               domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
               cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
         });
@@ -327,9 +327,10 @@ class Pile {
     }
   }
   void solve_contacts() {
-    num_contacts_.get_bytes(num_contacts_pinned_.ptr_);
+    num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
     U num_contacts = num_contacts_pinned_(0);
-    contacts_.get_bytes(contacts_pinned_.ptr_, num_contacts * sizeof(TContact));
+    contacts_->get_bytes(contacts_pinned_.ptr_,
+                         num_contacts * sizeof(TContact));
     for (U solve_iter = 0; solve_iter < 5; ++solve_iter) {
       for (U contact_key = 0; contact_key < num_contacts; ++contact_key) {
         TContact& contact = contacts_pinned_(contact_key);
@@ -394,6 +395,22 @@ class Pile {
     }
   }
   U get_size() const { return distance_grids_.size(); }
+  std::vector<Variable<1, TF>> get_distance_grids() const {
+    std::vector<Variable<1, TF>> grid_copy;
+    grid_copy.reserve(get_size());
+    for (std::unique_ptr<Variable<1, TF>> const& grid : distance_grids_) {
+      grid_copy.push_back(*grid);
+    }
+    return grid_copy;
+  }
+  std::vector<Variable<1, TF>> get_volume_grids() const {
+    std::vector<Variable<1, TF>> grid_copy;
+    grid_copy.reserve(get_size());
+    for (std::unique_ptr<Variable<1, TF>> const& grid : volume_grids_) {
+      grid_copy.push_back(*grid);
+    }
+    return grid_copy;
+  }
   glm::mat4 get_matrix(U i) const {
     TQ const& q = q_[i];
     TF3 const& translation = x_(i);
@@ -420,7 +437,7 @@ class Pile {
   template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {
-      f(i, distance_grids_[i], volume_grids_[i], x_(i), q_[i],
+      f(i, *distance_grids_[i], *volume_grids_[i], x_(i), q_[i],
         domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
         cell_size_list_[i], grid_size_list_[i], sign_list_[i],
         thickness_list_[i]);

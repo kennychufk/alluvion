@@ -31,16 +31,18 @@ SCENARIO("testing index-to-node") {
       THEN(
           "gives the same node positions for device and host implementations") {
         Store store;
-        Variable<1, F3> device_positions = store.create<1, F3>({num_nodes});
+        std::unique_ptr<Variable<1, F3>> device_positions(
+            store.create<1, F3>({num_nodes}));
 
         Runner<F>::launch(num_nodes, 256, [&](U grid_size, U block_size) {
           get_node_positions<<<grid_size, block_size>>>(
-              device_positions, domain_min, resolution, cell_size, num_nodes);
+              *device_positions, domain_min, resolution, cell_size, num_nodes);
         });
 
         std::vector<F3> device_positions_copied(num_nodes);
-        device_positions.get_bytes(device_positions_copied.data(),
-                                   device_positions_copied.size() * sizeof(F3));
+        device_positions->get_bytes(
+            device_positions_copied.data(),
+            device_positions_copied.size() * sizeof(F3));
 
         for (U l = 0; l < num_nodes; ++l) {
           Vector3r<F> host_position = grid.indexToNodePosition(l);

@@ -8,6 +8,7 @@
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
+#include "alluvion/display_proxy.hpp"
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
@@ -30,6 +31,7 @@ int main(void) {
 
   Store store;
   Display* display = store.create_display(1920, 1080, "particle view", false);
+  DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
   GLuint screenshot_fbo = display->create_framebuffer();
 
@@ -90,63 +92,26 @@ int main(void) {
       max_num_neighbors_per_particle;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  std::unique_ptr<GraphicalVariable<1, F3>> particle_x(
-      store.create_graphical<1, F3>({max_num_particles}));
-  std::unique_ptr<GraphicalVariable<1, F>> particle_normalized_attr(
-      store.create_graphical<1, F>({max_num_particles}));
-  Variable<1, F3> particle_v = store.create<1, F3>({max_num_particles});
-  Variable<1, F3> particle_a = store.create<1, F3>({max_num_particles});
-  Variable<1, F> particle_density = store.create<1, F>({max_num_particles});
-  Variable<2, F3> particle_boundary_xj =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F> particle_boundary_volume =
-      store.create<2, F>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_force =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<2, F3> particle_torque =
-      store.create<2, F3>({pile.get_size(), max_num_particles});
-  Variable<1, F> particle_cfl_v2 = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_dfsph_factor =
-      store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_kappa_v = store.create<1, F>({max_num_particles});
-  Variable<1, F> particle_density_adv = store.create<1, F>({max_num_particles});
-
-  Variable<4, Q> pid = store.create<4, Q>(
-      {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell});
-  Variable<3, U> pid_length =
-      store.create<3, U>({grid_res.x, grid_res.y, grid_res.z});
-  Variable<2, Q> particle_neighbors =
-      store.create<2, Q>({max_num_particles, max_num_neighbors_per_particle});
-  Variable<1, U> particle_num_neighbors =
-      store.create<1, U>({max_num_particles});
-
-  SolverDf<F> solver_df(runner, pile, *particle_x, *particle_normalized_attr,
-                        particle_v, particle_a, particle_density,
-                        particle_boundary_xj, particle_boundary_volume,
-                        particle_force, particle_torque, particle_cfl_v2,
-                        particle_dfsph_factor, particle_kappa, particle_kappa_v,
-                        particle_density_adv, pid, pid_length,
-                        particle_neighbors, particle_num_neighbors);
-  solver_df.dt = dt;
-  solver_df.max_dt = 0.001_F;
-  solver_df.min_dt = 0.0001_F;
-  solver_df.cfl = 0.4_F;
-  solver_df.particle_radius = particle_radius;
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
+                     max_num_particles_per_cell, max_num_neighbors_per_particle,
+                     true);
+  solver.dt = dt;
+  solver.max_dt = 0.001_F;
+  solver.min_dt = 0.0001_F;
+  solver.cfl = 0.4_F;
+  solver.particle_radius = particle_radius;
 
   // sample points
   U num_sample_planes = 14;
   U num_samples_per_plane = 31;
   U num_samples = num_samples_per_plane * num_sample_planes;
-  Variable<1, F3> sample_x = store.create<1, F3>({num_samples});
-  Variable<1, F3> sample_data3 = store.create<1, F3>({num_samples});
-  Variable<2, Q> sample_neighbors =
-      store.create<2, Q>({num_samples, max_num_neighbors_per_particle});
-  Variable<1, U> sample_num_neighbors = store.create<1, U>({num_samples});
-  Variable<2, F3> sample_boundary_xj =
-      store.create<2, F3>({pile.get_size(), num_samples});
-  Variable<2, F> sample_boundary_volume =
-      store.create<2, F>({pile.get_size(), num_samples});
+  std::unique_ptr<Variable<1, F3>> sample_x(store.create<1, F3>({num_samples}));
+  std::unique_ptr<Variable<1, F3>> sample_data3(
+      store.create<1, F3>({num_samples}));
+  std::unique_ptr<Variable<2, Q>> sample_neighbors(
+      store.create<2, Q>({num_samples, max_num_neighbors_per_particle}));
+  std::unique_ptr<Variable<1, U>> sample_num_neighbors(
+      store.create<1, U>({num_samples}));
   {
     std::vector<F3> sample_x_host(num_samples);
     F distance_between_sample_planes = cylinder_length / num_sample_planes;
@@ -159,7 +124,7 @@ int main(void) {
           cylinder_length * -0.5_F + distance_between_sample_planes * plane_id,
           0._F};
     }
-    sample_x.set_bytes(sample_x_host.data());
+    sample_x->set_bytes(sample_x_host.data());
   }
   std::vector<F3> sample_data3_host(num_samples);
   std::vector<F> vx(num_samples_per_plane * sample_ts.size());
@@ -170,7 +135,8 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  solver_df.num_particles = particle_x->read_file(particle_x_filename.c_str());
+  solver.num_particles =
+      solver.particle_x->read_file(particle_x_filename.c_str());
   store.unmap_graphical_pointers();
   bool should_close = false;
   int freeze_beginning = 0;
@@ -184,9 +150,6 @@ int main(void) {
   display->camera_.setClipPlanes(particle_radius * 10._F, R * 20._F);
   display->camera_.update();
   display->update_trackball_camera();
-
-  GLuint colormap_tex =
-      display->create_colormap(kViridisData.data(), kViridisData.size());
 
   GLuint glyph_quad = display->create_dynamic_array_buffer<float4>(6, nullptr);
   constexpr float kScreenQuadXYTex[] = {// positions   // texCoords
@@ -212,38 +175,40 @@ int main(void) {
           if (t >= sample_ts[sampling_cursor]) {
             should_close = true;
           }
-          solver_df.step<1, 0>();
-          t += solver_df.dt;
+          solver.step<1, 0>();
+          t += solver.dt;
         }
-        solver_df.colorize_speed(0, 0.004);
-        pid_length.set_zero();
-        Runner<F>::launch(
-            solver_df.num_particles, 256, [&](U grid_size, U block_size) {
-              update_particle_grid<<<grid_size, block_size>>>(
-                  *particle_x, pid, pid_length, solver_df.num_particles);
-            });
+        solver.colorize_speed(0, 0.004);
+        solver.pid_length->set_zero();
+        Runner<F>::launch(solver.num_particles, 256,
+                          [&](U grid_size, U block_size) {
+                            update_particle_grid<<<grid_size, block_size>>>(
+                                *solver.particle_x, *solver.pid,
+                                *solver.pid_length, solver.num_particles);
+                          });
         Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
           make_neighbor_list<1><<<grid_size, block_size>>>(
-              sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
-              num_samples);
+              *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
+              *sample_num_neighbors, num_samples);
         });
         Runner<F>::launch(
-            solver_df.num_particles, 256, [&](U grid_size, U block_size) {
+            solver.num_particles, 256, [&](U grid_size, U block_size) {
               compute_density<<<grid_size, block_size>>>(
-                  *particle_x, particle_neighbors, particle_num_neighbors,
-                  particle_density, particle_boundary_xj,
-                  particle_boundary_volume, solver_df.num_particles);
+                  *solver.particle_x, *solver.particle_neighbors,
+                  *solver.particle_num_neighbors, *solver.particle_density,
+                  *solver.particle_boundary_xj,
+                  *solver.particle_boundary_volume, solver.num_particles);
             });
         Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
           sample_fluid<<<grid_size, block_size>>>(
-              sample_x, *particle_x, particle_density, particle_v,
-              sample_neighbors, sample_num_neighbors, sample_data3,
-              num_samples);
+              *sample_x, *solver.particle_x, *solver.particle_density,
+              *solver.particle_v, *sample_neighbors, *sample_num_neighbors,
+              *sample_data3, num_samples);
         });
         for (F& value : vx) {
           value = 0._F;
         }
-        sample_data3.get_bytes(sample_data3_host.data());
+        sample_data3->get_bytes(sample_data3_host.data());
         for (I i = 0; i < sample_data3_host.size(); ++i) {
           vx[i % num_samples_per_plane] +=
               sample_data3_host[i].y / num_sample_planes;
@@ -251,99 +216,10 @@ int main(void) {
         store.unmap_graphical_pointers();
       }));
 
-#include "alluvion/glsl/particle.frag"
-#include "alluvion/glsl/particle.vert"
-  display->add_shading_program(new ShadingProgram(
-      kParticleVertexShaderStr.c_str(), kParticleFragmentShaderStr.c_str(),
-      {"particle_radius", "screen_dimension", "M", "V", "P",
-       "camera_worldspace", "material.specular", "material.shininess",
-       "directional_light.direction", "directional_light.ambient",
-       "directional_light.diffuse", "directional_light.specular",
-       "point_lights[0].position", "point_lights[0].constant",
-       "point_lights[0].linear", "point_lights[0].quadratic",
-       "point_lights[0].ambient", "point_lights[0].diffuse",
-       "point_lights[0].specular",
-       //
-       "point_lights[1].position", "point_lights[1].constant",
-       "point_lights[1].linear", "point_lights[1].quadratic",
-       "point_lights[1].ambient", "point_lights[1].diffuse",
-       "point_lights[1].specular"
-
-      },
-      {std::make_tuple(particle_x->vbo_, 3, GL_F, 0),
-       std::make_tuple(particle_normalized_attr->vbo_, 1, GL_F, 0)},
-      [&](ShadingProgram& program, Display& display) {
-        glBindFramebuffer(GL_FRAMEBUFFER,
-                          display.get_framebuffer(screenshot_fbo).fbo_);
-        glEnable(GL_DEPTH_TEST);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniformMatrix4fv(
-            program.get_uniform_location("P"), 1, GL_FALSE,
-            glm::value_ptr(display.camera_.getProjectionMatrix()));
-        glUniformMatrix4fv(program.get_uniform_location("V"), 1, GL_FALSE,
-                           glm::value_ptr(display.camera_.getViewMatrix()));
-        glUniform2f(program.get_uniform_location("screen_dimension"),
-                    static_cast<GLfloat>(display.width_),
-                    static_cast<GLfloat>(display.height_));
-        glUniform1f(program.get_uniform_location("particle_radius"),
-                    particle_radius);
-
-        glm::vec3 const& camera_worldspace = display.camera_.getCenter();
-        glUniform3f(program.get_uniform_location("camera_worldspace"),
-                    camera_worldspace[0], camera_worldspace[1],
-                    camera_worldspace[2]);
-        glUniform3f(program.get_uniform_location("directional_light.direction"),
-                    0.2f, 1.0f, 0.3f);
-        glUniform3f(program.get_uniform_location("directional_light.ambient"),
-                    0.15f, 0.15f, 0.15f);
-        glUniform3f(program.get_uniform_location("directional_light.diffuse"),
-                    0.5f, 0.5f, 0.5f);
-        glUniform3f(program.get_uniform_location("directional_light.specular"),
-                    0.5f, 0.5f, 0.5f);
-
-        glUniform3f(program.get_uniform_location("point_lights[0].position"),
-                    2.0f, 2.0f, 2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[0].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[0].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[0].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[0].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[0].specular"),
-                    1.0f, 1.0f, 1.0f);
-
-        glUniform3f(program.get_uniform_location("point_lights[1].position"),
-                    2.0f, 1.0f, -2.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].constant"),
-                    1.0f);
-        glUniform1f(program.get_uniform_location("point_lights[1].linear"),
-                    0.09f);
-        glUniform1f(program.get_uniform_location("point_lights[1].quadratic"),
-                    0.032f);
-        glUniform3f(program.get_uniform_location("point_lights[1].ambient"),
-                    0.05f, 0.05f, 0.05f);
-        glUniform3f(program.get_uniform_location("point_lights[1].diffuse"),
-                    0.8f, 0.8f, 0.8f);
-        glUniform3f(program.get_uniform_location("point_lights[1].specular"),
-                    1.0f, 1.0f, 1.0f);
-        glUniform3f(program.get_uniform_location("material.specular"), 0.04f,
-                    0.04f, 0.04f);
-        glUniform1f(program.get_uniform_location("material.shininess"), 5.0f);
-
-        glBindTexture(GL_TEXTURE_1D, colormap_tex);
-        for (I i = 0; i <= 0; ++i) {
-          float wrap_length = grid_res.y * kernel_radius;
-          glUniformMatrix4fv(
-              program.get_uniform_location("M"), 1, GL_FALSE,
-              glm::value_ptr(glm::translate(glm::mat4(1),
-                                            glm::vec3{wrap_length * i, 0, 0})));
-          glDrawArrays(GL_POINTS, 0, solver_df.num_particles);
-        }
-      }));
+  GLuint colormap_tex = display_proxy.create_colormap_viridis();
+  display_proxy.add_particle_shading_program(
+      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      solver.particle_radius, solver);
 
 #include "alluvion/glsl/glyph.frag"
 #include "alluvion/glsl/glyph.vert"
