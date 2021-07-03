@@ -64,7 +64,7 @@ int main(void) {
   F restitution = 1._F;
   F friction = 0._F;
   U max_num_contacts = 512;
-  Pile<F3, Q, F> pile(store, max_num_contacts);
+  Pile<F> pile(store, max_num_contacts);
   pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F, 0,
            Mesh(), 0._F, restitution, friction, boundary_viscosity, F3{1, 1, 1},
            F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
@@ -120,13 +120,13 @@ int main(void) {
   Variable<1, U> particle_num_neighbors =
       store.create<1, U>({max_num_particles});
 
-  SolverDf<F3, Q, F> solver_df(
-      runner, pile, *particle_x, *particle_normalized_attr, particle_v,
-      particle_a, particle_density, particle_boundary_xj,
-      particle_boundary_volume, particle_force, particle_torque,
-      particle_cfl_v2, particle_dfsph_factor, particle_kappa, particle_kappa_v,
-      particle_density_adv, pid, pid_length, particle_neighbors,
-      particle_num_neighbors);
+  SolverDf<F> solver_df(runner, pile, *particle_x, *particle_normalized_attr,
+                        particle_v, particle_a, particle_density,
+                        particle_boundary_xj, particle_boundary_volume,
+                        particle_force, particle_torque, particle_cfl_v2,
+                        particle_dfsph_factor, particle_kappa, particle_kappa_v,
+                        particle_density_adv, pid, pid_length,
+                        particle_neighbors, particle_num_neighbors);
   solver_df.dt = dt;
   solver_df.max_dt = 0.001_F;
   solver_df.min_dt = 0.0001_F;

@@ -41,7 +41,7 @@ int main(void) {
   // rigids
   F boundary_viscosity = 6.71368218e-06;
   U max_num_contacts = 512;
-  Pile<F3, Q, F> pile(store, max_num_contacts);
+  Pile<F> pile(store, max_num_contacts);
   Mesh cube_mesh;
   cube_mesh.set_box(float3{0.24, 0.24, 0.24}, 4);
   Mesh sphere_mesh;
@@ -118,13 +118,13 @@ int main(void) {
       store.create<2, Q>({num_particles, max_num_neighbors_per_particle});
   Variable<1, U> particle_num_neighbors = store.create<1, U>({num_particles});
 
-  SolverDf<F3, Q, F> solver_df(
-      runner, pile, *particle_x, *particle_normalized_attr, particle_v,
-      particle_a, particle_density, particle_boundary_xj,
-      particle_boundary_volume, particle_force, particle_torque,
-      particle_cfl_v2, particle_dfsph_factor, particle_kappa, particle_kappa_v,
-      particle_density_adv, pid, pid_length, particle_neighbors,
-      particle_num_neighbors);
+  SolverDf<F> solver_df(runner, pile, *particle_x, *particle_normalized_attr,
+                        particle_v, particle_a, particle_density,
+                        particle_boundary_xj, particle_boundary_volume,
+                        particle_force, particle_torque, particle_cfl_v2,
+                        particle_dfsph_factor, particle_kappa, particle_kappa_v,
+                        particle_density_adv, pid, pid_length,
+                        particle_neighbors, particle_num_neighbors);
   solver_df.num_particles = num_particles;
   solver_df.dt = dt;
   solver_df.max_dt = 0.005;

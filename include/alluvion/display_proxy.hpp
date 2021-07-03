@@ -23,13 +23,14 @@ class DisplayProxy {
   GLuint create_colormap_viridis() {
     return display_->create_colormap(kViridisData.data(), kViridisData.size());
   }
-  void add_solver_df_step(SolverDf<TF3, TQ, TF>& solver, Store& store) {
+  void add_solver_df_step(SolverDf<TF>& solver, Store& store, U num_steps) {
     display_->add_shading_program(new ShadingProgram(
         nullptr, nullptr, {}, {},
-        [&](ShadingProgram& program, Display& display) {
+        [&solver, &store, num_steps](ShadingProgram& program,
+                                     Display& display) {
           store.map_graphical_pointers();
-          // start of simulation loop
-          for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
+          for (U frame_interstep = 0; frame_interstep < num_steps;
+               ++frame_interstep) {
             solver.template step<0, 0>();
           }
           solver.colorize_kappa_v(static_cast<TF>(-0.002),
@@ -166,7 +167,7 @@ class DisplayProxy {
         }));
   }
 
-  void add_pile_shading_program(Pile<TF3, TQ, TF> const& pile) {
+  void add_pile_shading_program(Pile<TF> const& pile) {
     // rigid mesh shader
     // https://github.com/opengl-tutorials/ogl
 #include "alluvion/glsl/mesh_with_normal.frag"

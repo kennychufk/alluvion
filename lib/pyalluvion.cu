@@ -111,9 +111,9 @@ void declare_variable_with_store_creation(py::module& m,
       .def_readonly("vbo", &GraphicalVariableClass::vbo_);
 }
 
-template <typename TF3, typename TQ, typename TF>
+template <typename TF>
 void declare_pile(py::module& m, const char* name) {
-  using TPile = Pile<TF3, TQ, TF>;
+  using TPile = Pile<TF>;
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
       .def(py::init<Store&, U>())
@@ -223,11 +223,13 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("particle_radius", &TSolver::particle_radius);
 }
 
-template <typename TF3, typename TQ, typename TF>
+template <typename TF>
 void declare_solver_df(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TSolver = Solver<TF>;
-  using TSolverDf = SolverDf<TF3, TQ, TF>;
-  using TPile = Pile<TF3, TQ, TF>;
+  using TSolverDf = SolverDf<TF>;
+  using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
@@ -241,11 +243,13 @@ void declare_solver_df(py::module& m, const char* name) {
       .def("step", &TSolverDf::template step<0, 0>);
 }
 
-template <typename TF3, typename TQ, typename TF>
+template <typename TF>
 void declare_solver_ii(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TSolver = Solver<TF>;
-  using TSolverIi = SolverIi<TF3, TQ, TF>;
-  using TPile = Pile<TF3, TQ, TF>;
+  using TSolverIi = SolverIi<TF>;
+  using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
@@ -265,8 +269,8 @@ void declare_display_proxy(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TDisplayProxy = DisplayProxy<TF>;
-  using TSolverIi = SolverIi<TF3, TQ, TF>;
-  using TSolverDf = SolverDf<TF3, TQ, TF>;
+  using TSolverIi = SolverIi<TF>;
+  using TSolverDf = SolverDf<TF>;
   std::string class_name = std::string("DisplayProxy") + name;
   py::class_<TDisplayProxy>(m, class_name.c_str())
       .def("create_colormap_viridis", &TDisplayProxy::create_colormap_viridis)
@@ -349,17 +353,17 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_vector4<float4, float>(m, "float4");
   declare_vector4<double4, double>(m, "double4");
 
-  declare_pile<float3, float4, float>(m, "float");
-  declare_pile<double3, double4, double>(m, "double");
+  declare_pile<float>(m, "float");
+  declare_pile<double>(m, "double");
 
   declare_solver<float>(m, "float");
   declare_solver<double>(m, "double");
 
-  declare_solver_df<float3, float4, float>(m, "float");
-  declare_solver_df<double3, double4, double>(m, "double");
+  declare_solver_df<float>(m, "float");
+  declare_solver_df<double>(m, "double");
 
-  declare_solver_ii<float3, float4, float>(m, "float");
-  declare_solver_ii<double3, double4, double>(m, "double");
+  declare_solver_ii<float>(m, "float");
+  declare_solver_ii<double>(m, "double");
 
   declare_display_proxy<float>(m, "float");
   declare_display_proxy<double>(m, "double");

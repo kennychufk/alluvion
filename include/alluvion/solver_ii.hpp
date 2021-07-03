@@ -6,9 +6,11 @@
 #include "alluvion/solver.hpp"
 #include "alluvion/store.hpp"
 namespace alluvion {
-template <typename TF3, typename TQ, typename TF>
+template <typename TF>
 struct SolverIi : public Solver<TF> {
-  using TPile = Pile<TF3, TQ, TF>;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   using Base = Solver<TF>;
   SolverIi(TRunner& runner_arg, TPile& pile_arg,

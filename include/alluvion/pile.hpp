@@ -12,9 +12,11 @@
 #include "alluvion/store.hpp"
 
 namespace alluvion {
-template <typename TF3, typename TQ, typename TF>
+template <typename TF>
 class Pile {
  private:
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TRunner = Runner<TF>;
   static dg::MeshDistance<TF3, TF>* construct_mesh_distance(
       VertexList const& vertices, FaceList const& faces) {
