@@ -60,7 +60,6 @@ class Pile {
   std::vector<TF> mass_;
   std::vector<TF> restitution_;
   std::vector<TF> friction_;
-  std::vector<TF> boundary_viscosity_;
   std::vector<TF3> inertia_tensor_;
 
   std::vector<TF3> x_mat_;
@@ -94,7 +93,6 @@ class Pile {
   Variable<1, TF3> x_device_;
   Variable<1, TF3> v_device_;
   Variable<1, TF3> omega_device_;
-  Variable<1, TF> boundary_viscosity_device_;
   Variable<1, TContact> contacts_;
   Variable<1, U> num_contacts_;
   PinnedVariable<1, TContact> contacts_pinned_;
@@ -111,7 +109,6 @@ class Pile {
         x_device_(store.create<1, TF3>({0})),
         v_device_(store.create<1, TF3>({0})),
         omega_device_(store.create<1, TF3>({0})),
-        boundary_viscosity_device_(store.create<1, TF>({0})),
         contacts_(store.create<1, TContact>({max_num_contacts})),
         num_contacts_(store.create<1, U>({1})),
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
@@ -122,12 +119,11 @@ class Pile {
   virtual ~Pile() {}
   void add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
            TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
-           TF friction, TF boundary_viscosity, TF3 const& inertia_tensor,
-           TF3 const& x, TQ const& q, Mesh const& display_mesh) {
+           TF friction, TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
+           Mesh const& display_mesh) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
     friction_.push_back(friction);
-    boundary_viscosity_.push_back(boundary_viscosity);
     inertia_tensor_.push_back(inertia_tensor);
 
     x_mat_.push_back(TF3{0, 0, 0});
@@ -173,13 +169,11 @@ class Pile {
   }
   void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
                TF sign, TF thickness, Mesh const& collision_mesh, TF mass,
-               TF restitution, TF friction, TF boundary_viscosity,
-               TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-               Mesh const& display_mesh) {
+               TF restitution, TF friction, TF3 const& inertia_tensor,
+               TF3 const& x, TQ const& q, Mesh const& display_mesh) {
     mass_[i] = mass;
     restitution_[i] = restitution;
     friction_[i] = friction;
-    boundary_viscosity_[i] = boundary_viscosity;
     inertia_tensor_[i] = inertia_tensor;
 
     x_mat_[i] = TF3{0, 0, 0};
@@ -259,13 +253,10 @@ class Pile {
     store_.remove(x_device_);
     store_.remove(v_device_);
     store_.remove(omega_device_);
-    store_.remove(boundary_viscosity_device_);
     x_device_ = store_.create<1, TF3>({get_size()});
     v_device_ = store_.create<1, TF3>({get_size()});
     omega_device_ = store_.create<1, TF3>({get_size()});
-    boundary_viscosity_device_ = store_.create<1, TF>({get_size()});
 
-    boundary_viscosity_device_.set_bytes(boundary_viscosity_.data());
     store_.get_cni().num_boundaries = get_size();
   }
   void reallocate_kinematics_on_pinned() {

@@ -33,6 +33,7 @@ int main(void) {
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().gravity = gravity;
   store.get_cn<F>().viscosity = 0.001;
+  store.get_cn<F>().boundary_viscosity = 0.0;
 
   // rigids
   U max_num_contacts = 512;
@@ -43,10 +44,10 @@ int main(void) {
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
   pile.add(new BoxDistance<F3, F>(F3{4, 3, 1.5}), U3{80, 60, 30}, -1._F, 0,
-           cube_mesh, 0._F, 1, 0, 0.0, F3{1, 1, 1}, F3{0, 1.5, 0},
-           Q{0, 0, 0, 1}, Mesh());
+           cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1},
+           Mesh());
   // pile.add(new SphereDistance<F3, F>(sphere_radius), U3{50, 50, 50}, 1._F, 0,
-  //          sphere_mesh, 3.2_F, 0.4, 0, 0.2, F3{1, 1, 1}, F3{0, 0.4, -0},
+  //          sphere_mesh, 3.2_F, 0.4, 0, F3{1, 1, 1}, F3{0, 0.4, -0},
   //          Q{0, 0, 0, 1}, sphere_mesh);
   pile.build_grids(4 * kernel_radius);
   // pile.build_grids(0.1_F);

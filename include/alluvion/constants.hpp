@@ -50,6 +50,7 @@ struct Const {
   TF particle_mass;
   TF density0;
   TF viscosity;
+  TF boundary_viscosity;
   TF vorticity_coeff;
   TF inertia_inverse;
   TF viscosity_omega;

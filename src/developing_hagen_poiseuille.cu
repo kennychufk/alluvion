@@ -55,6 +55,7 @@ int main(void) {
   F surface_tension_coeff = 0.05_F;
   F surface_tension_boundary_coeff = 0.01_F;
   store.get_cn<F>().viscosity = viscosity;
+  store.get_cn<F>().boundary_viscosity = boundary_viscosity;
 
   I kM = 5;
   F cylinder_length = 2._F * kM * kernel_radius;
@@ -66,8 +67,8 @@ int main(void) {
   U max_num_contacts = 512;
   Pile<F> pile(store, max_num_contacts);
   pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F, 0,
-           Mesh(), 0._F, restitution, friction, boundary_viscosity, F3{1, 1, 1},
-           F3{0, 0, 0}, Q{0, 0, 0, 1}, Mesh());
+           Mesh(), 0._F, restitution, friction, F3{1, 1, 1}, F3{0, 0, 0},
+           Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
   store.get_cn<F>().contact_tolerance = particle_radius;

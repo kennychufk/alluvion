@@ -37,9 +37,9 @@ int main(void) {
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().gravity = gravity;
   store.get_cn<F>().viscosity = 3.54008928e-06;
+  store.get_cn<F>().boundary_viscosity = 6.71368218e-06;
 
   // rigids
-  F boundary_viscosity = 6.71368218e-06;
   U max_num_contacts = 512;
   Pile<F> pile(store, max_num_contacts);
   Mesh cube_mesh;
@@ -48,8 +48,8 @@ int main(void) {
   F sphere_radius = 0.20_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
   pile.add(new BoxDistance<F3, F>(F3{0.24, 0.24, 0.24}), U3{64, 64, 64}, -1._F,
-           0, cube_mesh, 0._F, 1, 0, boundary_viscosity, F3{1, 1, 1},
-           F3{0, 0.12, 0}, Q{0, 0, 0, 1}, cube_mesh);
+           0, cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 0.12, 0}, Q{0, 0, 0, 1},
+           cube_mesh);
   // pile.add(new SphereDistance<F3, F>(sphere_radius), U3{100, 100, 100}, 1._F,
   // 0,
   //          sphere_mesh, 20.0_F, 0.4, 0, 0, F3{1, 1, 1}, F3{0, 0.4, -0},
@@ -65,8 +65,7 @@ int main(void) {
            U3{32, 256, 32}, 1, 0, cylinder_mesh, 1.07e-3_F,  // mass
            0,                                                // restitution
            0,                                                // friction
-           boundary_viscosity,                            // boundary_viscosity
-           F3{7.91134e-8_F, 2.94462e-9_F, 7.91134e-8_F},  // inertia ,
+           F3{7.91134e-8_F, 2.94462e-9_F, 7.91134e-8_F},     // inertia ,
            F3{0, 0.15, 0.06}, Q{0, 0, 0, 1}, cylinder_mesh);
   pile.build_grids(4 * kernel_radius);
   // pile.build_grids(0.1_F);

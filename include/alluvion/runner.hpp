@@ -1342,8 +1342,7 @@ __global__ void compute_viscosity(
     Variable<2, TF3> particle_force, Variable<2, TF3> particle_torque,
     Variable<2, TF3> particle_boundary_xj,
     Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega,
-    Variable<1, TF> boundary_viscosity, U num_particles) {
+    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF d = 10;
     TF3 v_i = particle_v(p_i);
@@ -1369,7 +1368,6 @@ __global__ void compute_viscosity(
       TF3 r_x = rigid_x(boundary_id);
       TF3 r_v = rigid_v(boundary_id);
       TF3 r_omega = rigid_omega(boundary_id);
-      TF b_viscosity = boundary_viscosity(boundary_id);
 
       TF3 normal = bx_j - x_i;
       TF nl = length(normal);
@@ -1404,19 +1402,19 @@ __global__ void compute_viscosity(
         TF3 v4 = cross(r_omega, x4 - r_x) + r_v;
 
         // compute forces for both sample point
-        TF3 a1 = d * b_viscosity * vol * dot(xix1, gradW1) /
+        TF3 a1 = d * cn<TF>().boundary_viscosity * vol * dot(xix1, gradW1) /
                  (length_sqr(xix1) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v1);
-        TF3 a2 = d * b_viscosity * vol * dot(xix2, gradW2) /
+        TF3 a2 = d * cn<TF>().boundary_viscosity * vol * dot(xix2, gradW2) /
                  (length_sqr(xix2) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v2);
-        TF3 a3 = d * b_viscosity * vol * dot(xix3, gradW3) /
+        TF3 a3 = d * cn<TF>().boundary_viscosity * vol * dot(xix3, gradW3) /
                  (length_sqr(xix3) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v3);
-        TF3 a4 = d * b_viscosity * vol * dot(xix4, gradW4) /
+        TF3 a4 = d * cn<TF>().boundary_viscosity * vol * dot(xix4, gradW4) /
                  (length_sqr(xix4) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v4);

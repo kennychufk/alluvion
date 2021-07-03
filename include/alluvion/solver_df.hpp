@@ -226,7 +226,7 @@ struct SolverDf : public Solver<TF> {
               particle_num_neighbors, particle_a, particle_force,
               particle_torque, particle_boundary_xj, particle_boundary_volume,
               pile.x_device_, pile.v_device_, pile.omega_device_,
-              pile.boundary_viscosity_device_, Base::num_particles);
+              Base::num_particles);
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
 
