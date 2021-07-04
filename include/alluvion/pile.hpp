@@ -76,7 +76,7 @@ class Pile {
   PinnedVariable<1, TF3> omega_;
   std::vector<TF3> torque_;
 
-  std::vector<std::unique_ptr<dg::Distance<TF3, TF>>> distance_list_;
+  std::vector<dg::Distance<TF3, TF>*> distance_list_;
   std::vector<U3> resolution_list_;
   std::vector<TF> sign_list_;
   std::vector<TF> thickness_list_;
@@ -137,7 +137,7 @@ class Pile {
     q_.push_back(q);
     torque_.push_back(TF3{0, 0, 0});
 
-    distance_list_.emplace_back(distance);
+    distance_list_.push_back(distance);
 
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
@@ -187,7 +187,7 @@ class Pile {
     q_[i] = q;
     torque_[i] = TF3{0, 0, 0};
 
-    distance_list_[i].reset(distance);
+    distance_list_[i] = distance;
 
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;

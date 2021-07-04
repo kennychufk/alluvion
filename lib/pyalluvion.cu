@@ -246,10 +246,6 @@ void declare_solver_df(py::module& m, const char* name) {
       .def_property_readonly(
           "particle_x",
           [](TSolverDf const& solver) { return solver.particle_x.get(); })
-      .def_property_readonly("particle_normalized_attr",
-                             [](TSolverDf const& solver) {
-                               return solver.particle_normalized_attr.get();
-                             })
       .def_property_readonly(
           "particle_v",
           [](TSolverDf const& solver) { return solver.particle_v.get(); })
@@ -320,10 +316,6 @@ void declare_solver_ii(py::module& m, const char* name) {
       .def_property_readonly(
           "particle_x",
           [](TSolverIi const& solver) { return solver.particle_x.get(); })
-      .def_property_readonly("particle_normalized_attr",
-                             [](TSolverIi const& solver) {
-                               return solver.particle_normalized_attr.get();
-                             })
       .def_property_readonly(
           "particle_v",
           [](TSolverIi const& solver) { return solver.particle_v.get(); })
@@ -395,7 +387,7 @@ void declare_solver_ii(py::module& m, const char* name) {
                              [](TSolverIi const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
-      .def("step", &TSolverIi::template step<0>);
+      .def("step", &TSolverIi::template step<0, 0>);
 }
 
 template <typename TF>
@@ -411,7 +403,16 @@ void declare_display_proxy(py::module& m, const char* name) {
       .def("add_particle_shading_program",
            &TDisplayProxy::add_particle_shading_program)
       .def("add_pile_shading_program", &TDisplayProxy::add_pile_shading_program)
-      .def("add_solver_df_step", &TDisplayProxy::add_solver_df_step)
+      .def("add_map_graphical_pointers",
+           &TDisplayProxy::add_map_graphical_pointers)
+      .def("add_unmap_graphical_pointers",
+           &TDisplayProxy::add_unmap_graphical_pointers)
+      .def("add_normalize",
+           &TDisplayProxy::template add_normalize<Variable<1, TF3>>)
+      .def("add_normalize",
+           &TDisplayProxy::template add_normalize<Variable<1, TF>>)
+      .def("add_step", &TDisplayProxy::template add_step<TSolverDf>)
+      .def("add_step", &TDisplayProxy::template add_step<TSolverIi>)
       .def("run", &TDisplayProxy::run)
       .def("set_camera", &TDisplayProxy::set_camera);
 }

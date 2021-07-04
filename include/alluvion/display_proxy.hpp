@@ -23,20 +23,49 @@ class DisplayProxy {
   GLuint create_colormap_viridis() {
     return display_->create_colormap(kViridisData.data(), kViridisData.size());
   }
-  void add_solver_df_step(SolverDf<TF>& solver, Store& store, U num_steps) {
+  void add_map_graphical_pointers(Store& store) {
+    display_->add_shading_program(
+        new ShadingProgram(nullptr, nullptr, {}, {},
+                           [&store](ShadingProgram& program, Display& display) {
+                             store.map_graphical_pointers();
+                           }));
+  }
+  void add_unmap_graphical_pointers(Store& store) {
+    display_->add_shading_program(
+        new ShadingProgram(nullptr, nullptr, {}, {},
+                           [&store](ShadingProgram& program, Display& display) {
+                             store.unmap_graphical_pointers();
+                           }));
+  }
+  void add_step(SolverDf<TF>& solver, U num_steps) {
     display_->add_shading_program(new ShadingProgram(
         nullptr, nullptr, {}, {},
-        [&solver, &store, num_steps](ShadingProgram& program,
-                                     Display& display) {
-          store.map_graphical_pointers();
-          for (U frame_interstep = 0; frame_interstep < num_steps;
-               ++frame_interstep) {
+        [&solver, num_steps](ShadingProgram& program, Display& display) {
+          for (U i = 0; i < num_steps; ++i) {
             solver.template step<0, 0>();
           }
-          solver.colorize_kappa_v(static_cast<TF>(-0.002),
-                                  static_cast<TF>(0.0));
-          // solver.colorize_speed(0, 2);
-          store.unmap_graphical_pointers();
+        }));
+  }
+  template <typename TSolver>
+  void add_step(TSolver& solver, U num_steps) {
+    display_->add_shading_program(new ShadingProgram(
+        nullptr, nullptr, {}, {},
+        [&solver, num_steps](ShadingProgram& program, Display& display) {
+          for (U i = 0; i < num_steps; ++i) {
+            solver.template step<0, 0>();
+          }
+        }));
+  }
+  template <typename TVariable>
+  void add_normalize(Solver<TF>& solver, TVariable const* v,
+                     Variable<1, TF>* particle_normalized_attr, TF lower_bound,
+                     TF upper_bound) {
+    display_->add_shading_program(new ShadingProgram(
+        nullptr, nullptr, {}, {},
+        [&solver, v, particle_normalized_attr, lower_bound, upper_bound](
+            ShadingProgram& program, Display& display) {
+          solver.normalize(v, particle_normalized_attr, lower_bound,
+                           upper_bound);
         }));
   }
   void add_particle_shading_program(Variable<1, TF3> const& x,

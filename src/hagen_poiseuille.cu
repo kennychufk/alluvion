@@ -69,9 +69,10 @@ int main(void) {
   F friction = 0._F;
   U max_num_contacts = 512;
   Pile<F> pile(store, max_num_contacts);
-  pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F, 0,
-           Mesh(), 0._F, restitution, friction, F3{1, 1, 1}, F3{0, 0, 0},
-           Q{0, 0, 0, 1}, Mesh());
+  InfiniteCylinderDistance<F3, F> cylinder_distance(R);
+  pile.add(&cylinder_distance, U3{64, 1, 64}, -1._F, 0, Mesh(), 0._F,
+           restitution, friction, F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1},
+           Mesh());
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
   store.get_cn<F>().contact_tolerance = particle_radius;
@@ -98,6 +99,8 @@ int main(void) {
   SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
                      true);
+  std::unique_ptr<Variable<1, F>> particle_normalized_attr(
+      store.create_graphical<1, F>({max_num_particles}));
   solver.dt = 1e-3_F;
   solver.max_dt = 1e-3_F;
   solver.min_dt = 0.0_F;
@@ -290,13 +293,14 @@ int main(void) {
             std::cout << std::endl;
           }
         }
-        solver.colorize_speed(0, 2.0);
+        solver.normalize(solver.particle_v.get(),
+                         particle_normalized_attr.get(), 0, 2);
         store.unmap_graphical_pointers();
       }));
 
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
-      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      *solver.particle_x, *particle_normalized_attr, colormap_tex,
       solver.particle_radius, solver);
 
 #include "alluvion/glsl/glyph.frag"

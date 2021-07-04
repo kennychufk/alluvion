@@ -47,25 +47,26 @@ int main(void) {
   Mesh sphere_mesh;
   F sphere_radius = 0.20_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  pile.add(new BoxDistance<F3, F>(F3{0.24, 0.24, 0.24}), U3{64, 64, 64}, -1._F,
-           0, cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 0.12, 0}, Q{0, 0, 0, 1},
-           cube_mesh);
-  // pile.add(new SphereDistance<F3, F>(sphere_radius), U3{100, 100, 100}, 1._F,
-  // 0,
-  //          sphere_mesh, 20.0_F, 0.4, 0, 0, F3{1, 1, 1}, F3{0, 0.4, -0},
-  //          Q{0, 0, 0, 1}, sphere_mesh);
+  BoxDistance<F3, F> box_distance(F3{0.24, 0.24, 0.24});
+  pile.add(&box_distance, U3{64, 64, 64}, -1._F, 0, cube_mesh, 0._F, 1, 0,
+           F3{1, 1, 1}, F3{0, 0.12, 0}, Q{0, 0, 0, 1}, cube_mesh);
+  // SphereDistance<F3, F> sphere_distance(sphere_radius);
+  // pile.add(&sphere_distance, U3{100, 100, 100}, 1._F, 0, sphere_mesh, 20.0_F,
+  //          0.4, 0, 0, F3{1, 1, 1}, F3{0, 0.4, -0}, Q{0, 0, 0, 1},
+  //          sphere_mesh);
   F cylinder_radius = 3.00885e-3_F - particle_radius;
   F cylinder_height = 38.5e-3_F - particle_radius * 2;
   F cylinder_comy = -8.8521e-3_F;
   Mesh cylinder_mesh;
   cylinder_mesh.set_cylinder(cylinder_radius, cylinder_height, 24, 24);
   cylinder_mesh.translate(float3{0, -cylinder_comy, 0});
-  pile.add(new CylinderDistance<F3, F>(cylinder_radius, cylinder_height,
-                                       cylinder_comy),
-           U3{32, 256, 32}, 1, 0, cylinder_mesh, 1.07e-3_F,  // mass
-           0,                                                // restitution
-           0,                                                // friction
-           F3{7.91134e-8_F, 2.94462e-9_F, 7.91134e-8_F},     // inertia ,
+  CylinderDistance<F3, F> cylinder_distance(cylinder_radius, cylinder_height,
+                                            cylinder_comy);
+  pile.add(&cylinder_distance, U3{32, 256, 32}, 1, 0, cylinder_mesh,
+           1.07e-3_F,                                     // mass
+           0,                                             // restitution
+           0,                                             // friction
+           F3{7.91134e-8_F, 2.94462e-9_F, 7.91134e-8_F},  // inertia ,
            F3{0, 0.15, 0.06}, Q{0, 0, 0, 1}, cylinder_mesh);
   pile.build_grids(4 * kernel_radius);
   // pile.build_grids(0.1_F);
@@ -92,6 +93,8 @@ int main(void) {
   SolverDf<F> solver(runner, pile, store, num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
                      true);
+  std::unique_ptr<Variable<1, F>> particle_normalized_attr(
+      store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
   solver.dt = dt;
   solver.max_dt = 0.005;
@@ -127,15 +130,15 @@ int main(void) {
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
           solver.step<0, 0>();
         }
-        solver.colorize_kappa_v(-0.002_F, 0.0_F);
-        // solver.colorize_speed(0, 2);
+        solver.normalize(solver.particle_kappa_v.get(),
+                         particle_normalized_attr.get(), -0.002_F, 0.0_F);
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));
 
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
-      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      *solver.particle_x, *particle_normalized_attr, colormap_tex,
       solver.particle_radius, solver);
 
   display_proxy.add_pile_shading_program(pile);

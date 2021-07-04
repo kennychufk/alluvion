@@ -43,12 +43,13 @@ int main(void) {
   Mesh sphere_mesh;
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  pile.add(new BoxDistance<F3, F>(F3{4, 3, 1.5}), U3{80, 60, 30}, -1._F, 0,
-           cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1},
-           Mesh());
-  // pile.add(new SphereDistance<F3, F>(sphere_radius), U3{50, 50, 50}, 1._F, 0,
-  //          sphere_mesh, 3.2_F, 0.4, 0, F3{1, 1, 1}, F3{0, 0.4, -0},
-  //          Q{0, 0, 0, 1}, sphere_mesh);
+  BoxDistance<F3, F> box_distance(F3{4, 3, 1.5});
+  pile.add(&box_distance, U3{80, 60, 30}, -1._F, 0, cube_mesh, 0._F, 1, 0,
+           F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1}, Mesh());
+  // SphereDistance<F3, F> sphere_distance(sphere_radius);
+  // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
+  // 0.4,
+  //          0, F3{1, 1, 1}, F3{0, 0.4, -0}, Q{0, 0, 0, 1}, sphere_mesh);
   pile.build_grids(4 * kernel_radius);
   // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
@@ -72,6 +73,8 @@ int main(void) {
   SolverIi<F> solver(runner, pile, store, num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
                      true);
+  std::unique_ptr<Variable<1, F>> particle_normalized_attr(
+      store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
   solver.dt = dt;
   solver.max_dt = 0.005;
@@ -102,16 +105,17 @@ int main(void) {
         store.map_graphical_pointers();
         // start of simulation loop
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
-          solver.step<0>();
+          solver.step<0, 0>();
         }
-        solver.colorize_speed(0, 2);
+        solver.normalize(solver.particle_v.get(),
+                         particle_normalized_attr.get(), 0, 2);
         store.unmap_graphical_pointers();
         frame_id += 1;
       }));
 
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
-      *solver.particle_x, *solver.particle_normalized_attr, colormap_tex,
+      *solver.particle_x, *particle_normalized_attr, colormap_tex,
       solver.particle_radius, solver);
 
   display->run();
