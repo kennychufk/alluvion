@@ -19,6 +19,7 @@ struct SolverIi : public Solver<TF> {
   using Base::particle_radius;
   using Base::pile;
   using Base::runner;
+  using Base::t;
   SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store,
            U max_num_particles, U3 grid_res, U max_num_particles_per_cell = 64,
            U max_num_neighbors_per_particle = 64, bool graphical = false)
@@ -251,6 +252,7 @@ struct SolverIi : public Solver<TF> {
     pile.integrate_kinematics(dt);
     pile.find_contacts();
     pile.solve_contacts();
+    t += dt;
   }
 
   std::unique_ptr<Variable<1, TF3>> particle_x;

@@ -238,13 +238,17 @@ CompleteFramebuffer const &Display::get_framebuffer(GLuint fbo) const {
 
 void Display::run() {
   while (!glfwWindowShouldClose(window_)) {
-    trackball_.update();
-    for (std::unique_ptr<ShadingProgram> &program : programs_) {
-      program->update(*this);
-    }
-    glfwSwapBuffers(window_);
-    glfwPollEvents();
+    draw();
   }
+}
+
+void Display::draw() {
+  trackball_.update();
+  for (std::unique_ptr<ShadingProgram> &program : programs_) {
+    program->update(*this);
+  }
+  glfwSwapBuffers(window_);
+  glfwPollEvents();
 }
 
 GLuint Display::create_colormap(std::array<GLfloat, 3> const *colormap_data,

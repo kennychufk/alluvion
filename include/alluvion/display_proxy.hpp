@@ -310,10 +310,15 @@ class DisplayProxy {
         }));
   }
   void run() { return display_->run(); }
+  void draw() { return display_->draw(); }
   void set_camera(float3 camera_pos, float3 center) {
     display_->camera_.setEye(camera_pos.x, camera_pos.y, camera_pos.z);
     display_->camera_.setCenter(center.x, center.y, center.z);
     display_->camera_.update();
+    display_->update_trackball_camera();
+  }
+  void set_clip_planes(float near, float far) {
+    display_->camera_.setClipPlanes(near, far);
     display_->update_trackball_camera();
   }
 

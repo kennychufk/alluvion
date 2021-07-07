@@ -115,12 +115,10 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
-    create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
-        *solver.particle_x, initial_num_particles, R - particle_radius * 2._F,
-        num_particles_per_slice, particle_radius * 2._F,
-        cylinder_length * -0.5_F);
-  });
+  runner.launch_create_fluid_cylinder(
+      256, *solver.particle_x, initial_num_particles,
+      R - particle_radius * 2._F, num_particles_per_slice,
+      particle_radius * 2._F, cylinder_length * -0.5_F);
   store.unmap_graphical_pointers();
   solver.num_particles = initial_num_particles;
 
@@ -159,12 +157,10 @@ int main(void) {
       store.create<2, Q>({num_samples, max_num_neighbors_per_particle}));
   std::unique_ptr<Variable<1, U>> sample_num_neighbors(
       store.create<1, U>({num_samples}));
-  Runner<F>::launch(initial_num_particles, 256, [&](U grid_size, U block_size) {
-    create_fluid_cylinder<F3, F><<<grid_size, block_size>>>(
-        *sample_x, num_samples, R - particle_radius * 2._F,
-        num_samples_per_slice, cylinder_length / num_sample_slices,
-        cylinder_length * -0.5_F);
-  });
+  runner.launch_create_fluid_cylinder(
+      256, *sample_x, num_samples, R - particle_radius * 2._F,
+      num_samples_per_slice, cylinder_length / num_sample_slices,
+      cylinder_length * -0.5_F);
   std::vector<F3> sample_x_host(num_samples);
   sample_x->get_bytes(sample_x_host.data());
   assert(sample_x_host[0].x == sample_x_host[2].z == 0);
@@ -261,31 +257,21 @@ int main(void) {
                                     density0 / expected_total_volume;
           if (step_id % 100 == 0) {
             solver.pid_length->set_zero();
-            Runner<F>::launch(solver.num_particles, 256,
-                              [&](U grid_size, U block_size) {
-                                update_particle_grid<<<grid_size, block_size>>>(
-                                    *solver.particle_x, *solver.pid,
-                                    *solver.pid_length, solver.num_particles);
-                              });
-            Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              make_neighbor_list<1><<<grid_size, block_size>>>(
-                  *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
-                  *sample_num_neighbors, num_samples);
-            });
-            Runner<F>::launch(
-                solver.num_particles, 256, [&](U grid_size, U block_size) {
-                  compute_density<<<grid_size, block_size>>>(
-                      *solver.particle_x, *solver.particle_neighbors,
-                      *solver.particle_num_neighbors, *solver.particle_density,
-                      *solver.particle_boundary_xj,
-                      *solver.particle_boundary_volume, solver.num_particles);
-                });
-            Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
-              sample_fluid<<<grid_size, block_size>>>(
-                  *sample_x, *solver.particle_x, *solver.particle_density,
-                  *solver.particle_density, *sample_neighbors,
-                  *sample_num_neighbors, *sample_data1, num_samples);
-            });
+            runner.launch_update_particle_grid(256, *solver.particle_x,
+                                               *solver.pid, *solver.pid_length,
+                                               solver.num_particles);
+            runner.launch_make_neighbor_list<1>(
+                256, *sample_x, *solver.pid, *solver.pid_length,
+                *sample_neighbors, *sample_num_neighbors, num_samples);
+            runner.launch_compute_density(
+                256, *solver.particle_x, *solver.particle_neighbors,
+                *solver.particle_num_neighbors, *solver.particle_density,
+                *solver.particle_boundary_xj, *solver.particle_boundary_volume,
+                solver.num_particles);
+            runner.launch_sample_fluid(
+                256, *sample_x, *solver.particle_x, *solver.particle_density,
+                *solver.particle_density, *sample_neighbors,
+                *sample_num_neighbors, *sample_data1, num_samples);
             sample_data1->get_bytes(sample_data1_host.data());
             for (U i = 0; i < num_samples; i += 127) {
               std::cout << sample_data1_host[i] << " ";

@@ -2512,6 +2512,7 @@ template <typename TF>
 class Runner {
  public:
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   Runner() : launch_cursor_(0) {
     Allocator::abort_if_error(cudaEventCreate(&abs_start_));
     Allocator::abort_if_error(cudaEventRecord(abs_start_));
@@ -2673,6 +2674,70 @@ class Runner {
               slice_distance, y_min);
         },
         "create_fluid_cylinder");
+  }
+  void launch_update_particle_grid(U block_size, Variable<1, TF3>& particle_x,
+                                   Variable<4, TQ>& pid,
+                                   Variable<3, U>& pid_length,
+                                   U num_particles) {
+    launch(
+        num_particles, block_size,
+        [&](U grid_size, U block_size) {
+          update_particle_grid<<<grid_size, block_size>>>(
+              particle_x, pid, pid_length, num_particles);
+        },
+        "update_particle_grid");
+  }
+  template <U wrap>
+  void launch_make_neighbor_list(U block_size, Variable<1, TF3>& sample_x,
+                                 Variable<4, TQ>& pid,
+                                 Variable<3, U>& pid_length,
+                                 Variable<2, TQ>& sample_neighbors,
+                                 Variable<1, U>& sample_num_neighbors,
+                                 U num_samples) {
+    launch(
+        num_samples, block_size,
+        [&](U grid_size, U block_size) {
+          make_neighbor_list<wrap><<<grid_size, block_size>>>(
+              sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
+              num_samples);
+        },
+        "make_neighbor_list");
+  }
+  void launch_compute_density(U block_size, Variable<1, TF3>& particle_x,
+                              Variable<2, TQ>& particle_neighbors,
+                              Variable<1, U>& particle_num_neighbors,
+                              Variable<1, TF>& particle_density,
+                              Variable<2, TF3>& particle_boundary_xj,
+                              Variable<2, TF>& particle_boundary_volume,
+                              U num_particles) {
+    launch(
+        num_particles, block_size,
+        [&](U grid_size, U block_size) {
+          compute_density<<<grid_size, block_size>>>(
+              particle_x, particle_neighbors, particle_num_neighbors,
+              particle_density, particle_boundary_xj, particle_boundary_volume,
+              num_particles);
+        },
+        "compute_density");
+  }
+  template <typename TQuantity>
+  void launch_sample_fluid(U block_size, Variable<1, TF3>& sample_x,
+                           Variable<1, TF3>& particle_x,
+                           Variable<1, TF>& particle_density,
+                           Variable<1, TQuantity>& particle_quantity,
+                           Variable<2, TQ>& sample_neighbors,
+                           Variable<1, U>& sample_num_neighbors,
+                           Variable<1, TQuantity>& sample_quantity,
+                           U num_samples) {
+    launch(
+        num_samples, block_size,
+        [&](U grid_size, U block_size) {
+          sample_fluid<<<grid_size, block_size>>>(
+              sample_x, particle_x, particle_density, particle_quantity,
+              sample_neighbors, sample_num_neighbors, sample_quantity,
+              num_samples);
+        },
+        "sample_fluid");
   }
 
   using LaunchRecord = std::pair<float, float>;

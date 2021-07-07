@@ -26,11 +26,11 @@ def get_func(self):
         return dst.reshape(*self.get_shape(), -1)
 
 
-def set_func(self, src):
+def set_func(self, src, byte_offset=0):
     dtype = self.type_enum_to_dtype()
     if src.dtype != dtype:
         src = src.astype(dtype)
-    self.set_bytes(src.view(np.ubyte))
+    self.set_bytes(src.view(np.ubyte), byte_offset)
 
 
 _al = importlib.import_module("._alluvion", "alluvion")

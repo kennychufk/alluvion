@@ -11,7 +11,7 @@ struct Solver {
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   Solver(TRunner& runner_arg, TPile& pile_arg)
-      : runner(runner_arg), pile(pile_arg) {}
+      : runner(runner_arg), pile(pile_arg), dt(0), t(0) {}
   void normalize(Variable<1, TF3> const* v,
                  Variable<1, TF>* particle_normalized_attr, TF lower_bound,
                  TF upper_bound) {
@@ -37,6 +37,7 @@ struct Solver {
         "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
   }
   U num_particles;
+  TF t;
   TF dt;
   TF max_dt;
   TF min_dt;

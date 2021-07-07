@@ -49,6 +49,7 @@ class Display {
 
   GLuint create_framebuffer();
   void run();
+  void draw();
   GLuint create_colormap(std::array<GLfloat, 3> const *colormap_data,
                          GLsizei palette_size);
   GLuint create_monochrome_texture(unsigned char const *texture_data,

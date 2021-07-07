@@ -72,9 +72,10 @@ void declare_vector4(py::module& m, const char* name) {
 }
 
 template <unsigned int D, typename M>
-void declare_variable_with_store_creation(py::module& m,
-                                          py::class_<Store>& store_class,
-                                          const char* name) {
+void declare_variable(py::module& m, py::class_<Store>& store_class,
+                      py::class_<Runner<float>>* runner_float_class,
+                      py::class_<Runner<double>>* runner_double_class,
+                      const char* name) {
   using VariableClass = Variable<D, M>;
   using GraphicalVariableClass = GraphicalVariable<D, M>;
   std::string create_func_name = std::string("create") + name;
@@ -86,6 +87,15 @@ void declare_variable_with_store_creation(py::module& m,
                   &Store::create_graphical<D, M>,
                   py::return_value_policy::take_ownership);
 
+  if (runner_float_class != nullptr)
+    runner_float_class->def_static("sum", &Runner<float>::template sum<D, M>,
+                                   py::arg("var"), py::arg("n"),
+                                   py::arg("offset") = 0);
+  if (runner_double_class != nullptr)
+    runner_double_class->def_static("sum", &Runner<double>::template sum<D, M>,
+                                    py::arg("var"), py::arg("n"),
+                                    py::arg("offset") = 0);
+
   std::string variable_name = std::string("Variable") + name;
   py::class_<VariableClass>(m, variable_name.c_str())
       .def(py::init<const VariableClass&>())
@@ -94,15 +104,21 @@ void declare_variable_with_store_creation(py::module& m,
            [](VariableClass& variable, py::array_t<unsigned char> bytes) {
              variable.get_bytes(bytes.mutable_data(), bytes.size());
            })
-      .def("set_bytes",
-           [](VariableClass& variable, py::array_t<unsigned char> bytes) {
-             variable.set_bytes(bytes.data(), bytes.size());
-           })
+      .def(
+          "set_bytes",
+          [](VariableClass& variable, py::array_t<unsigned char> bytes,
+             U byte_offset) {
+            variable.set_bytes(bytes.data(), bytes.size(), byte_offset);
+          },
+          py::arg("bytes"), py::arg("byte_offset") = 0)
+      .def("set_zero", &VariableClass::set_zero)
       .def("get_type", &VariableClass::get_type)
       .def("get_num_primitives_per_unit",
            &VariableClass::get_num_primitives_per_unit)
       .def("get_linear_shape", &VariableClass::get_linear_shape)
       .def("get_num_primitives", &VariableClass::get_num_primitives)
+      .def("read_file", &VariableClass::read_file)
+      .def("write_file", &VariableClass::write_file)
       .def("get_shape", &VariableClass::get_shape);
 
   std::string graphical_variable_name = std::string("GraphicalVariable") + name;
@@ -191,6 +207,15 @@ void declare_cylinder_distance(py::module& m, const char* name) {
       .def(py::init<TF, TF, TF>());
 }
 
+template <typename TF3, typename TF>
+void declare_infinite_cylinder_distance(py::module& m, const char* name) {
+  using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+  std::string class_name = std::string("InfiniteCylinderDistance") + name;
+  py::class_<TInfiniteCylinderDistance, dg::Distance<TF3, TF>>(
+      m, class_name.c_str())
+      .def(py::init<TF>());
+}
+
 template <typename TF>
 void declare_const(py::module& m, const char* name) {
   using TConst = Const<TF>;
@@ -221,15 +246,23 @@ void declare_const(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_solver(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   using TSolver = Solver<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
       .def_readwrite("num_particles", &TSolver::num_particles)
+      .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
       .def_readwrite("max_dt", &TSolver::max_dt)
       .def_readwrite("min_dt", &TSolver::min_dt)
       .def_readwrite("cfl", &TSolver::cfl)
-      .def_readwrite("particle_radius", &TSolver::particle_radius);
+      .def_readwrite("particle_radius", &TSolver::particle_radius)
+      .def("normalize",
+           py::overload_cast<Variable<1, TF3> const*, Variable<1, TF>*, TF, TF>(
+               &TSolver::normalize))
+      .def("normalize",
+           py::overload_cast<Variable<1, TF> const*, Variable<1, TF>*, TF, TF>(
+               &TSolver::normalize));
 }
 
 template <typename TF>
@@ -299,7 +332,9 @@ void declare_solver_df(py::module& m, const char* name) {
                              [](TSolverDf const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
-      .def("step", &TSolverDf::template step<0, 0>);
+      .def("step", &TSolverDf::template step<0, 0>)
+      .def("step_wrap1", &TSolverDf::template step<1, 0>)
+      .def("step_wrap1_gravitation1", &TSolverDf::template step<1, 1>);
 }
 
 template <typename TF>
@@ -387,7 +422,9 @@ void declare_solver_ii(py::module& m, const char* name) {
                              [](TSolverIi const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
-      .def("step", &TSolverIi::template step<0, 0>);
+      .def("step", &TSolverIi::template step<0, 0>)
+      .def("step_wrap1", &TSolverIi::template step<1, 0>)
+      .def("step_wrap1_gravitation1", &TSolverIi::template step<1, 1>);
 }
 
 template <typename TF>
@@ -414,18 +451,33 @@ void declare_display_proxy(py::module& m, const char* name) {
       .def("add_step", &TDisplayProxy::template add_step<TSolverDf>)
       .def("add_step", &TDisplayProxy::template add_step<TSolverIi>)
       .def("run", &TDisplayProxy::run)
-      .def("set_camera", &TDisplayProxy::set_camera);
+      .def("draw", &TDisplayProxy::draw)
+      .def("set_camera", &TDisplayProxy::set_camera)
+      .def("set_clip_planes", &TDisplayProxy::set_clip_planes);
 }
 
 template <typename TF>
-void declare_runner(py::module& m, const char* name) {
+py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   std::string class_name = std::string("Runner") + name;
-  py::class_<TRunner>(m, class_name.c_str())
+  return py::class_<TRunner>(m, class_name.c_str())
       .def(py::init<>())
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block)
       .def("launch_create_fluid_cylinder",
-           &TRunner::launch_create_fluid_cylinder);
+           &TRunner::launch_create_fluid_cylinder)
+      .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
+      .def("launch_make_neighbor_list",
+           &TRunner::template launch_make_neighbor_list<0>)
+      .def("launch_make_neighbor_list_wrap1",
+           &TRunner::template launch_make_neighbor_list<1>)
+      .def("launch_compute_density", &TRunner::launch_compute_density)
+      .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
+      .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def_static("min", &TRunner::template min<1, TF>, py::arg("var"),
+                  py::arg("n"), py::arg("offset") = 0)
+      .def_static("max", &TRunner::template max<1, TF>, py::arg("var"),
+                  py::arg("n"), py::arg("offset") = 0);
 }
 
 PYBIND11_MODULE(_alluvion, m) {
@@ -456,22 +508,38 @@ PYBIND11_MODULE(_alluvion, m) {
           .def("map_graphical_pointers", &Store::map_graphical_pointers)
           .def("unmap_graphical_pointers", &Store::unmap_graphical_pointers);
 
-  declare_variable_with_store_creation<1, float>(m, store_class, "1Dfloat");
-  declare_variable_with_store_creation<1, float3>(m, store_class, "1Dfloat3");
-  declare_variable_with_store_creation<2, float>(m, store_class, "2Dfloat");
-  declare_variable_with_store_creation<2, float3>(m, store_class, "2Dfloat3");
-  declare_variable_with_store_creation<2, float4>(m, store_class, "2Dfloat4");
-  declare_variable_with_store_creation<4, float4>(m, store_class, "4Dfloat4");
+  py::class_<Runner<float>> runner_float = declare_runner<float>(m, "float");
+  py::class_<Runner<double>> runner_double =
+      declare_runner<double>(m, "double");
 
-  declare_variable_with_store_creation<1, double>(m, store_class, "1Ddouble");
-  declare_variable_with_store_creation<2, double>(m, store_class, "2Ddouble");
-  declare_variable_with_store_creation<1, double3>(m, store_class, "1Ddouble3");
-  declare_variable_with_store_creation<2, double3>(m, store_class, "2Ddouble3");
-  declare_variable_with_store_creation<2, double4>(m, store_class, "2Ddouble4");
-  declare_variable_with_store_creation<4, double4>(m, store_class, "4Ddouble4");
+  declare_variable<1, float>(m, store_class, &runner_float, nullptr, "1Dfloat");
+  declare_variable<1, float3>(m, store_class, &runner_float, nullptr,
+                              "1Dfloat3");
+  declare_variable<2, float>(m, store_class, &runner_float, nullptr, "2Dfloat");
+  declare_variable<2, float3>(m, store_class, &runner_float, nullptr,
+                              "2Dfloat3");
+  declare_variable<2, float4>(m, store_class, &runner_float, nullptr,
+                              "2Dfloat4");
+  declare_variable<4, float4>(m, store_class, &runner_float, nullptr,
+                              "4Dfloat4");
 
-  declare_variable_with_store_creation<1, uint>(m, store_class, "1Duint");
-  declare_variable_with_store_creation<3, uint>(m, store_class, "3Duint");
+  declare_variable<1, double>(m, store_class, nullptr, &runner_double,
+                              "1Ddouble");
+  declare_variable<2, double>(m, store_class, nullptr, &runner_double,
+                              "2Ddouble");
+  declare_variable<1, double3>(m, store_class, nullptr, &runner_double,
+                               "1Ddouble3");
+  declare_variable<2, double3>(m, store_class, nullptr, &runner_double,
+                               "2Ddouble3");
+  declare_variable<2, double4>(m, store_class, nullptr, &runner_double,
+                               "2Ddouble4");
+  declare_variable<4, double4>(m, store_class, nullptr, &runner_double,
+                               "4Ddouble4");
+
+  declare_variable<1, uint>(m, store_class, &runner_float, &runner_double,
+                            "1Duint");
+  declare_variable<3, uint>(m, store_class, &runner_float, &runner_double,
+                            "3Duint");
 
   py::enum_<NumericType>(m, "NumericType")
       .value("f32", NumericType::f32)
@@ -516,9 +584,6 @@ PYBIND11_MODULE(_alluvion, m) {
       .def_readwrite("max_num_neighbors_per_particle",
                      &ConstiN::max_num_neighbors_per_particle);
 
-  declare_runner<float>(m, "float");
-  declare_runner<double>(m, "double");
-
   py::class_<Mesh>(m, "Mesh")
       .def(py::init<>())
       .def("set_box", &Mesh::set_box)
@@ -540,4 +605,6 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_box_distance<double3, double>(m_dg, "double");
   declare_cylinder_distance<float3, float>(m_dg, "float");
   declare_cylinder_distance<double3, double>(m_dg, "double");
+  declare_infinite_cylinder_distance<float3, float>(m_dg, "float");
+  declare_infinite_cylinder_distance<double3, double>(m_dg, "double");
 }

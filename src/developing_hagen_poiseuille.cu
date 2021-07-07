@@ -184,31 +184,21 @@ int main(void) {
         solver.normalize(solver.particle_v.get(),
                          particle_normalized_attr.get(), 0, 0.004_F);
         solver.pid_length->set_zero();
-        Runner<F>::launch(solver.num_particles, 256,
-                          [&](U grid_size, U block_size) {
-                            update_particle_grid<<<grid_size, block_size>>>(
-                                *solver.particle_x, *solver.pid,
-                                *solver.pid_length, solver.num_particles);
-                          });
-        Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
-          make_neighbor_list<1><<<grid_size, block_size>>>(
-              *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
-              *sample_num_neighbors, num_samples);
-        });
-        Runner<F>::launch(
-            solver.num_particles, 256, [&](U grid_size, U block_size) {
-              compute_density<<<grid_size, block_size>>>(
-                  *solver.particle_x, *solver.particle_neighbors,
-                  *solver.particle_num_neighbors, *solver.particle_density,
-                  *solver.particle_boundary_xj,
-                  *solver.particle_boundary_volume, solver.num_particles);
-            });
-        Runner<F>::launch(num_samples, 256, [&](U grid_size, U block_size) {
-          sample_fluid<<<grid_size, block_size>>>(
-              *sample_x, *solver.particle_x, *solver.particle_density,
-              *solver.particle_v, *sample_neighbors, *sample_num_neighbors,
-              *sample_data3, num_samples);
-        });
+        runner.launch_update_particle_grid(256, *solver.particle_x, *solver.pid,
+                                           *solver.pid_length,
+                                           solver.num_particles);
+        runner.launch_make_neighbor_list<1>(
+            256, *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
+            *sample_num_neighbors, num_samples);
+        runner.launch_compute_density(
+            256, *solver.particle_x, *solver.particle_neighbors,
+            *solver.particle_num_neighbors, *solver.particle_density,
+            *solver.particle_boundary_xj, *solver.particle_boundary_volume,
+            solver.num_particles);
+        runner.launch_sample_fluid(256, *sample_x, *solver.particle_x,
+                                   *solver.particle_density, *solver.particle_v,
+                                   *sample_neighbors, *sample_num_neighbors,
+                                   *sample_data3, num_samples);
         for (F& value : vx) {
           value = 0._F;
         }
