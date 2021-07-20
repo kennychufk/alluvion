@@ -129,6 +129,18 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
       .def_readonly("vbo", &GraphicalVariableClass::vbo_);
 }
 
+template <unsigned int D, typename M>
+void declare_pinned_variable(py::module& m, const char* name) {
+  using PinnedVariableClass = PinnedVariable<D, M>;
+  std::string class_name = std::string("PinnedVariable") + name;
+  py::class_<PinnedVariableClass>(m, class_name.c_str())
+      .def("__getitem__",
+           [](PinnedVariableClass& variable, U key) { return variable(key); })
+      .def("__setitem__", [](PinnedVariableClass& variable, U key, M const& v) {
+        variable(key) = v;
+      });
+}
+
 template <typename TF>
 void declare_pile(py::module& m, const char* name) {
   using TPile = Pile<TF>;
@@ -136,6 +148,10 @@ void declare_pile(py::module& m, const char* name) {
   py::class_<TPile>(m, class_name.c_str())
       .def(py::init<Store&, U>())
       .def_readwrite("mass", &TPile::mass_)
+      .def_readwrite("x", &TPile::x_)
+      .def_readwrite("v", &TPile::v_)
+      .def_readwrite("q", &TPile::q_)
+      .def_readwrite("omega", &TPile::omega_)
       .def_readwrite("restitution", &TPile::restitution_)
       .def_readwrite("friction", &TPile::friction_)
       .def_readwrite("inertia_tensor", &TPile::inertia_tensor_)
@@ -550,6 +566,9 @@ PYBIND11_MODULE(_alluvion, m) {
                             "1Duint");
   declare_variable<3, uint>(m, store_class, &runner_float, &runner_double,
                             "3Duint");
+
+  declare_pinned_variable<1, float3>(m, "1Dfloat3");
+  declare_pinned_variable<1, double3>(m, "1Ddouble3");
 
   py::enum_<NumericType>(m, "NumericType")
       .value("f32", NumericType::f32)
