@@ -5,6 +5,7 @@
 
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/capsule_distance.hpp"
 #include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
@@ -204,7 +205,8 @@ void declare_cylinder_distance(py::module& m, const char* name) {
   using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
   std::string class_name = std::string("CylinderDistance") + name;
   py::class_<TCylinderDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TF, TF, TF>());
+      .def(py::init<TF, TF, TF>(), py::arg("radius"), py::arg("height"),
+           py::arg("com_y") = 0);
 }
 
 template <typename TF3, typename TF>
@@ -214,6 +216,14 @@ void declare_infinite_cylinder_distance(py::module& m, const char* name) {
   py::class_<TInfiniteCylinderDistance, dg::Distance<TF3, TF>>(
       m, class_name.c_str())
       .def(py::init<TF>());
+}
+
+template <typename TF3, typename TF>
+void declare_capsule_distance(py::module& m, const char* name) {
+  using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+  std::string class_name = std::string("CapsuleDistance") + name;
+  py::class_<TCapsuleDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
+      .def(py::init<TF, TF>());
 }
 
 template <typename TF>
@@ -607,4 +617,6 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_cylinder_distance<double3, double>(m_dg, "double");
   declare_infinite_cylinder_distance<float3, float>(m_dg, "float");
   declare_infinite_cylinder_distance<double3, double>(m_dg, "double");
+  declare_capsule_distance<float3, float>(m_dg, "float");
+  declare_capsule_distance<double3, double>(m_dg, "double");
 }
