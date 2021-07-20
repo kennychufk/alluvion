@@ -281,19 +281,24 @@ class Pile {
   }
   void integrate_kinematics(TF dt) {
     for (U i = 0; i < get_size(); ++i) {
-      if (mass_[i] == 0) continue;
-      v_(i) += 1 / mass_[i] * force_[i] * dt;
-      omega_(i) += calculate_angular_acceleration(inertia_tensor_[i], q_[i],
-                                                  torque_[i]) *
-                   dt;
-      a_[i] = gravity_;
-      q_[i] += dt * calculate_dq(omega_(i), q_[i]);
-      q_[i] = normalize(q_[i]);
-      // x_(i) += (a_[i] * dt + v_(i)) * dt;
-      // v_(i) += a_[i] * dt;
-      TF3 dx = (a_[i] * dt + v_(i)) * dt;
-      x_(i) += dx;
-      v_(i) = 1 / dt * dx;
+      if (mass_[i] == 0) {
+        x_(i) += v_(i) * dt;
+        q_[i] += dt * calculate_dq(omega_(i), q_[i]);
+        q_[i] = normalize(q_[i]);
+      } else {
+        v_(i) += 1 / mass_[i] * force_[i] * dt;
+        omega_(i) += calculate_angular_acceleration(inertia_tensor_[i], q_[i],
+                                                    torque_[i]) *
+                     dt;
+        a_[i] = gravity_;
+        q_[i] += dt * calculate_dq(omega_(i), q_[i]);
+        q_[i] = normalize(q_[i]);
+        // x_(i) += (a_[i] * dt + v_(i)) * dt;
+        // v_(i) += a_[i] * dt;
+        TF3 dx = (a_[i] * dt + v_(i)) * dt;
+        x_(i) += dx;
+        v_(i) = 1 / dt * dx;
+      }
     }
   }
   TF calculate_cfl_v2() const {
