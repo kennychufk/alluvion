@@ -98,7 +98,7 @@ int main(void) {
 
   SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
-                     true);
+                     false, false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({max_num_particles}));
   solver.dt = 1e-3_F;
@@ -115,7 +115,7 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  runner.launch_create_fluid_cylinder(
+  runner.launch_create_fluid_cylinder_sunflower(
       256, *solver.particle_x, initial_num_particles,
       R - particle_radius * 2._F, num_particles_per_slice,
       particle_radius * 2._F, cylinder_length * -0.5_F);
@@ -157,7 +157,7 @@ int main(void) {
       store.create<2, Q>({num_samples, max_num_neighbors_per_particle}));
   std::unique_ptr<Variable<1, U>> sample_num_neighbors(
       store.create<1, U>({num_samples}));
-  runner.launch_create_fluid_cylinder(
+  runner.launch_create_fluid_cylinder_sunflower(
       256, *sample_x, num_samples, R - particle_radius * 2._F,
       num_samples_per_slice, cylinder_length / num_sample_slices,
       cylinder_length * -0.5_F);

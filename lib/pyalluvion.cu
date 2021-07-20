@@ -262,6 +262,12 @@ void declare_const(py::module& m, const char* name) {
       .def_readonly("wrap_max", &TConst::wrap_max)
       .def_readwrite("viscosity", &TConst::viscosity)
       .def_readwrite("boundary_viscosity", &TConst::boundary_viscosity)
+      .def_readwrite("vorticity_coeff", &TConst::vorticity_coeff)
+      .def_readwrite("inertia_inverse", &TConst::inertia_inverse)
+      .def_readwrite("viscosity_omega", &TConst::viscosity_omega)
+      .def_readwrite("surface_tension_coeff", &TConst::surface_tension_coeff)
+      .def_readwrite("surface_tension_boundary_coeff",
+                     &TConst::surface_tension_boundary_coeff)
       .def_readwrite("gravity", &TConst::gravity)
       .def_readwrite("axial_gravity", &TConst::axial_gravity)
       .def_readwrite("radial_gravity", &TConst::radial_gravity)
@@ -283,12 +289,15 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("min_dt", &TSolver::min_dt)
       .def_readwrite("cfl", &TSolver::cfl)
       .def_readwrite("particle_radius", &TSolver::particle_radius)
+      .def_readwrite("enable_surface_tension", &TSolver::enable_surface_tension)
+      .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
       .def("normalize",
            py::overload_cast<Variable<1, TF3> const*, Variable<1, TF>*, TF, TF>(
                &TSolver::normalize))
       .def("normalize",
            py::overload_cast<Variable<1, TF> const*, Variable<1, TF>*, TF, TF>(
-               &TSolver::normalize));
+               &TSolver::normalize))
+      .def("reset_solving_var", &TSolver::reset_solving_var);
 }
 
 template <typename TF>
@@ -301,7 +310,7 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
       .def_property_readonly(
           "particle_x",
           [](TSolverDf const& solver) { return solver.particle_x.get(); })
@@ -373,7 +382,7 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
       .def_property_readonly(
           "particle_x",
           [](TSolverIi const& solver) { return solver.particle_x.get(); })
@@ -489,9 +498,20 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
   std::string class_name = std::string("Runner") + name;
   return py::class_<TRunner>(m, class_name.c_str())
       .def(py::init<>())
-      .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block)
+      .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
+           py::arg("block_size"), py::arg("particle_x"),
+           py::arg("num_particles"), py::arg("offset"), py::arg("mode"),
+           py::arg("box_min"), py::arg("box_max"))
+      .def("launch_create_fluid_cylinder_sunflower",
+           &TRunner::launch_create_fluid_cylinder_sunflower,
+           py::arg("block_size"), py::arg("particle_x"),
+           py::arg("num_particles"), py::arg("radius"),
+           py::arg("num_particles_per_slice"), py::arg("slice_distance"),
+           py::arg("y_min"))
       .def("launch_create_fluid_cylinder",
-           &TRunner::launch_create_fluid_cylinder)
+           &TRunner::launch_create_fluid_cylinder, py::arg("block_size"),
+           py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
+           py::arg("radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
       .def("launch_make_neighbor_list",
            &TRunner::template launch_make_neighbor_list<0>)
@@ -500,6 +520,14 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def_static("get_fluid_block_num_particles",
+                  &TRunner::get_fluid_block_num_particles, py::arg("mode"),
+                  py::arg("box_min"), py::arg("box_max"),
+                  py::arg("particle_radius"))
+      .def_static("get_fluid_cylinder_num_particles",
+                  &TRunner::get_fluid_cylinder_num_particles, py::arg("radius"),
+                  py::arg("y_min"), py::arg("y_max"),
+                  py::arg("particle_radius"))
       .def_static("min", &TRunner::template min<1, TF>, py::arg("var"),
                   py::arg("n"), py::arg("offset") = 0)
       .def_static("max", &TRunner::template max<1, TF>, py::arg("var"),

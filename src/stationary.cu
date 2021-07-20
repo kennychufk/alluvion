@@ -57,7 +57,11 @@ int main(void) {
   store.get_cn<F>().contact_tolerance = particle_radius;
 
   // particles
-  U num_particles = 6859;
+  int block_mode = 0;
+  F3 block_min{-1.95, -0.0, -0.5};
+  F3 block_max{-0.95, 1.0, 0.5};
+  U num_particles = Runner<F>::get_fluid_block_num_particles(
+      block_mode, block_min, block_max, particle_radius);
 
   // grid
   U3 grid_res{128, 128, 128};
@@ -72,7 +76,7 @@ int main(void) {
 
   SolverIi<F> solver(runner, pile, store, num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
-                     true);
+                     false, false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
@@ -84,12 +88,8 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  Runner<F>::launch(num_particles, 256, [&](U grid_size, U block_size) {
-    create_fluid_block<F3, F>
-        <<<grid_size, block_size>>>(*solver.particle_x, num_particles, 0, 0,
-                                    F3{-1.95, -0.0, -0.5}, F3{-0.95, 1.0, 0.5});
-  });
-
+  runner.launch_create_fluid_block(256, *solver.particle_x, num_particles, 0,
+                                   block_mode, block_min, block_max);
   store.unmap_graphical_pointers();
 
   display->camera_.setEye(0.f, 06.00f, 6.0f);
@@ -118,5 +118,6 @@ int main(void) {
       *solver.particle_x, *particle_normalized_attr, colormap_tex,
       solver.particle_radius, solver);
 
+  display_proxy.add_pile_shading_program(pile);
   display->run();
 }

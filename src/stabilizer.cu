@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
 
   SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
                      max_num_particles_per_cell, max_num_neighbors_per_particle,
-                     true);
+                     false, false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({max_num_particles}));
   solver.dt = 1e-3_F;

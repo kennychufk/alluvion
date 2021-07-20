@@ -15,6 +15,8 @@ struct SolverDf : public Solver<TF> {
   using Base = Solver<TF>;
   using Base::cfl;
   using Base::dt;
+  using Base::enable_surface_tension;
+  using Base::enable_vorticity;
   using Base::max_dt;
   using Base::min_dt;
   using Base::num_particles;
@@ -24,7 +26,9 @@ struct SolverDf : public Solver<TF> {
   using Base::t;
   SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store,
            U max_num_particles, U3 grid_res, U max_num_particles_per_cell = 64,
-           U max_num_neighbors_per_particle = 64, bool graphical = false)
+           U max_num_neighbors_per_particle = 64,
+           bool enable_surface_tension_arg = false,
+           bool enable_vorticity_arg = false, bool graphical = false)
       : Base(runner_arg, pile_arg),
         particle_x(graphical
                        ? store.create_graphical<1, TF3>({max_num_particles})
@@ -41,6 +45,9 @@ struct SolverDf : public Solver<TF> {
         particle_torque(
             store.create<2, TF3>({pile.get_size(), max_num_particles})),
         particle_cfl_v2(store.create<1, TF>({max_num_particles})),
+        particle_normal(enable_surface_tension_arg
+                            ? store.create<1, TF3>({max_num_particles})
+                            : new Variable<1, TF3>()),
 
         particle_dfsph_factor(store.create<1, TF>({max_num_particles})),
         particle_kappa(store.create<1, TF>({max_num_particles})),
@@ -52,7 +59,10 @@ struct SolverDf : public Solver<TF> {
         pid_length(store.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
         particle_neighbors(store.create<2, TQ>(
             {max_num_particles, max_num_neighbors_per_particle})),
-        particle_num_neighbors(store.create<1, U>({max_num_particles})) {}
+        particle_num_neighbors(store.create<1, U>({max_num_particles})) {
+    enable_surface_tension = enable_surface_tension_arg;
+    enable_vorticity = enable_vorticity_arg;
+  }
 
   template <U wrap, U gravitation>
   void step() {
@@ -211,9 +221,26 @@ struct SolverDf : public Solver<TF> {
           },
           "apply_axial_gravitation", apply_axial_gravitation<TF3>);
     }
-    // compute_normal
-    // compute_surface_tension_fluid
-    // compute_surface_tension_boundary
+    if (enable_surface_tension) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_normal<<<grid_size, block_size>>>(
+                *particle_x, *particle_density, *particle_normal,
+                *particle_neighbors, *particle_num_neighbors, num_particles);
+          },
+          "compute_normal", compute_normal<TQ, TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_surface_tension<<<grid_size, block_size>>>(
+                *particle_x, *particle_density, *particle_normal, *particle_a,
+                *particle_neighbors, *particle_num_neighbors,
+                *particle_boundary_xj, *particle_boundary_volume,
+                num_particles);
+          },
+          "compute_surface_tension", compute_surface_tension<TQ, TF3, TF>);
+    }
 
     runner.launch(
         num_particles,
@@ -360,6 +387,7 @@ struct SolverDf : public Solver<TF> {
   std::unique_ptr<Variable<2, TF3>> particle_force;
   std::unique_ptr<Variable<2, TF3>> particle_torque;
   std::unique_ptr<Variable<1, TF>> particle_cfl_v2;
+  std::unique_ptr<Variable<1, TF3>> particle_normal;
 
   std::unique_ptr<Variable<1, TF>> particle_dfsph_factor;
   std::unique_ptr<Variable<1, TF>> particle_kappa;

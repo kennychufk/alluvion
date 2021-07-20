@@ -400,10 +400,10 @@ inline __device__ TF3 wrap_y(TF3 v) {
 }
 
 template <typename TF3, typename TF>
-__global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
-                                      U num_particles, TF radius,
-                                      U num_particles_per_slice,
-                                      TF slice_distance, TF y_min) {
+__global__ void create_fluid_cylinder_sunflower(Variable<1, TF3> particle_x,
+                                                U num_particles, TF radius,
+                                                U num_particles_per_slice,
+                                                TF slice_distance, TF y_min) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     U slice_i = p_i / num_particles_per_slice;
     U id_in_rotation_pattern = slice_i / 4;
@@ -419,9 +419,10 @@ __global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
 }
 
 template <typename TF3, typename TF>
-__global__ void emit_cylinder(Variable<1, TF3> particle_x,
-                              Variable<1, TF3> particle_v, U num_emission,
-                              U offset, TF radius, TF3 center, TF3 v) {
+__global__ void emit_cylinder_sunflower(Variable<1, TF3> particle_x,
+                                        Variable<1, TF3> particle_v,
+                                        U num_emission, U offset, TF radius,
+                                        TF3 center, TF3 v) {
   forThreadMappedToElement(num_emission, [&](U i) {
     TF real_in_slice = static_cast<TF>(i) + static_cast<TF>(0.5);
     TF point_r = sqrt(real_in_slice / num_emission) * radius;
@@ -430,6 +431,58 @@ __global__ void emit_cylinder(Variable<1, TF3> particle_x,
     particle_x(p_i) =
         center + TF3{point_r * cos(angle), 0, point_r * sin(angle)};
     particle_v(p_i) = v;
+  });
+}
+
+template <typename TF>
+__device__ __host__ inline void get_fluid_cylinder_attr(
+    TF& radius, TF y_min, TF y_max, TF particle_radius, U& sqrt_n, U& n,
+    U& steps_y, TF& diameter) {
+  diameter = particle_radius * 2;
+  radius -= diameter;
+  // sqrt_n = static_cast<U>(radius /particle_radius* sqrt(2 -
+  // sqrt(static_cast<TF>(2))) ) + 1; sqrt_n -= static_cast<U>(sqrt_n % 2 == 0);
+  sqrt_n = static_cast<U>(radius / particle_radius * kPi<TF> *
+                          static_cast<TF>(0.25)) +
+           1;
+  n = sqrt_n * sqrt_n;
+  steps_y =
+      static_cast<I>((y_max - y_min) / diameter + static_cast<TF>(0.5)) - 1;
+}
+
+// http://l2program.co.uk/900/concentric-disk-sampling
+template <typename TF3, typename TF>
+__global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
+                                      U num_particles, U offset, TF radius,
+                                      TF y_min, TF y_max) {
+  U sqrt_n;
+  U n;
+  U steps_y;
+  TF diameter;
+  get_fluid_cylinder_attr(radius, y_min, y_max, cn<TF>().particle_radius,
+                          sqrt_n, n, steps_y, diameter);
+  forThreadMappedToElement(num_particles, [&](U i) {
+    U p_i = i + offset;
+
+    U j = i % sqrt_n;
+    U k = (i % n) / sqrt_n;
+    U l = i / (n);
+    TF a = static_cast<TF>(j) * 2 / (sqrt_n - 1) - 1;
+    TF b = static_cast<TF>(k) * 2 / (sqrt_n - 1) - 1;
+    TF r = radius;
+    TF theta = 0;
+    if (j == sqrt_n / 2 && j == k && sqrt_n % 2 == 1) {
+      r = 0;
+    } else if (a * a > b * b) {
+      r *= a;
+      theta = kPi<TF> * static_cast<TF>(0.25) * b / a;
+    } else {
+      r *= b;
+      theta = kPi<TF> * static_cast<TF>(0.5) -
+              kPi<TF> * static_cast<TF>(0.25) * a / b;
+    }
+    particle_x(p_i) =
+        TF3{r * cos(theta), y_min + (l + 1) * diameter, r * sin(theta)};
   });
 }
 
@@ -464,35 +517,48 @@ __global__ void emit_if_density_lower_than_last(
 }
 
 template <typename TF3, typename TF>
+__device__ __host__ inline void get_fluid_block_attr(
+    int mode, TF3 const& box_min, TF3 const& box_max, TF particle_radius,
+    I3& steps, TF& diameter, TF3& diff, TF& xshift, TF& yshift) {
+  diameter = particle_radius * 2;
+  TF eps = static_cast<TF>(1e-9);
+  xshift = diameter;
+  yshift = diameter;
+  if (mode == 1) {
+    yshift = sqrt(static_cast<TF>(3)) * particle_radius + eps;
+  } else if (mode == 2) {
+    xshift = sqrt(static_cast<TF>(6)) * diameter / 3 + eps;
+    yshift = sqrt(static_cast<TF>(3)) * particle_radius + eps;
+  }
+  diff = box_max - box_min;
+  if (mode == 1) {
+    diff.x -= diameter;
+    diff.z -= diameter;
+  } else if (mode == 2) {
+    diff.x -= xshift;
+    diff.z -= diameter;
+  }
+  steps.x = static_cast<I>(diff.x / xshift + static_cast<TF>(0.5)) - 1;
+  steps.y = static_cast<I>(diff.y / yshift + static_cast<TF>(0.5)) - 1;
+  steps.z = static_cast<I>(diff.z / diameter + static_cast<TF>(0.5)) - 1;
+}
+
+template <typename TF3, typename TF>
 __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
                                    U offset, int mode, TF3 box_min,
                                    TF3 box_max) {
+  I3 steps;
+  TF diameter;
+  TF3 diff;
+  TF xshift, yshift;
+  get_fluid_block_attr(mode, box_min, box_max, cn<TF>().particle_radius, steps,
+                       diameter, diff, xshift, yshift);
   forThreadMappedToElement(num_particles, [&](U tid) {
     U p_i = tid + offset;
-    TF diameter = cn<TF>().particle_radius * 2;
-    TF eps = static_cast<TF>(1e-9);
-    TF xshift = diameter;
-    TF yshift = diameter;
-    if (mode == 1) {
-      yshift = sqrt(static_cast<TF>(3)) * cn<TF>().particle_radius + eps;
-    } else if (mode == 2) {
-      xshift = sqrt(static_cast<TF>(6)) * diameter / 3 + eps;
-      yshift = sqrt(static_cast<TF>(3)) * cn<TF>().particle_radius + eps;
-    }
-    TF3 diff = box_max - box_min;
-    if (mode == 1) {
-      diff.x -= diameter;
-      diff.z -= diameter;
-    } else if (mode == 2) {
-      diff.x -= xshift;
-      diff.z -= diameter;
-    }
-    I stepsY = static_cast<I>(diff.y / yshift + static_cast<TF>(0.5)) - 1;
-    I stepsZ = static_cast<I>(diff.z / diameter + static_cast<TF>(0.5)) - 1;
     TF3 start = box_min + make_vector<TF3>(cn<TF>().particle_radius * 2);
-    I j = p_i / (stepsY * stepsZ);
-    I k = (p_i % (stepsY * stepsZ)) / stepsZ;
-    I l = p_i % stepsZ;
+    I j = p_i / (steps.y * steps.z);
+    I k = (p_i % (steps.y * steps.z)) / steps.z;
+    I l = p_i % steps.z;
     TF3 currPos = TF3{xshift * j, yshift * k, diameter * l} + start;
     TF3 shift_vec = make_zeros<TF3>();
     if (mode == 1) {
@@ -1551,12 +1617,14 @@ __global__ void compute_normal(Variable<1, TF3> particle_x,
   });
 }
 template <typename TQ, typename TF3, typename TF>
-__global__ void compute_surface_tension_fluid(
+__global__ void compute_surface_tension(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
     Variable<1, TF3> particle_normal, Variable<1, TF3> particle_a,
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    U num_particles) {
+    Variable<2, TF3> particle_boundary_xj,
+    Variable<2, TF> particle_boundary_volume, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
+    TF3 x_i = particle_x(p_i);
     TF3 ni = particle_normal(p_i);
     TF density_i = particle_density(p_i);
 
@@ -1576,22 +1644,6 @@ __global__ void compute_surface_tension_fluid(
       accel -= cn<TF>().surface_tension_coeff * (ni - particle_normal(p_j));
       da += k_ij * accel;
     }
-    particle_a(p_i) += da;
-  });
-}
-
-template <typename TF3, typename TF>
-__global__ void compute_surface_tension_boundary(
-    Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
-    Variable<1, TF3> particle_a, Variable<1, TF3> particle_normal,
-    Variable<2, TF3> particle_boundary_xj,
-    Variable<2, TF> particle_boundary_volume, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x_i = particle_x(p_i);
-    TF3 ni = particle_normal(p_i);
-    TF density_i = particle_density(p_i);
-
-    TF3 da = make_zeros<TF3>();
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TF vj =
           max(static_cast<TF>(0), particle_boundary_volume(boundary_id, p_i));
@@ -1606,6 +1658,7 @@ __global__ void compute_surface_tension_boundary(
     particle_a(p_i) += da;
   });
 }
+
 template <typename TF3, typename TF>
 __global__ void calculate_cfl_v2(Variable<1, TF3> particle_v,
                                  Variable<1, TF3> particle_a,
@@ -2662,16 +2715,49 @@ class Runner {
         },
         "create_fluid_block");
   }
+  static U get_fluid_block_num_particles(int mode, TF3 box_min, TF3 box_max,
+                                         TF particle_radius) {
+    I3 steps;
+    TF diameter;
+    TF3 diff;
+    TF xshift, yshift;
+    get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps,
+                         diameter, diff, xshift, yshift);
+    return steps.x * steps.y * steps.z;
+  }
+  static U get_fluid_cylinder_num_particles(TF radius, TF y_min, TF y_max,
+                                            TF particle_radius) {
+    U sqrt_n;
+    U n;
+    U steps_y;
+    TF diameter;
+    get_fluid_cylinder_attr(radius, y_min, y_max, particle_radius, sqrt_n, n,
+                            steps_y, diameter);
+    return n * steps_y;
+  }
+  void launch_create_fluid_cylinder_sunflower(U block_size,
+                                              Variable<1, TF3>& particle_x,
+                                              U num_particles, TF radius,
+                                              U num_particles_per_slice,
+                                              TF slice_distance, TF y_min) {
+    launch(
+        num_particles, block_size,
+        [&](U grid_size, U block_size) {
+          create_fluid_cylinder_sunflower<TF3, TF><<<grid_size, block_size>>>(
+              particle_x, num_particles, radius, num_particles_per_slice,
+              slice_distance, y_min);
+        },
+        "create_fluid_cylinder_sunflower");
+  }
+
   void launch_create_fluid_cylinder(U block_size, Variable<1, TF3>& particle_x,
-                                    U num_particles, TF radius,
-                                    U num_particles_per_slice,
-                                    TF slice_distance, TF y_min) {
+                                    U num_particles, U offset, TF radius,
+                                    TF y_min, TF y_max) {
     launch(
         num_particles, block_size,
         [&](U grid_size, U block_size) {
           create_fluid_cylinder<TF3, TF><<<grid_size, block_size>>>(
-              particle_x, num_particles, radius, num_particles_per_slice,
-              slice_distance, y_min);
+              particle_x, num_particles, offset, radius, y_min, y_max);
         },
         "create_fluid_cylinder");
   }

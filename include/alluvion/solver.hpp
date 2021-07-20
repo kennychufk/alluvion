@@ -36,6 +36,7 @@ struct Solver {
         },
         "normalize_vector_magnitude", normalize_vector_magnitude<TF3, TF>);
   }
+  virtual void reset_solving_var() {}
   U num_particles;
   TF t;
   TF dt;
@@ -43,6 +44,8 @@ struct Solver {
   TF min_dt;
   TF cfl;
   TF particle_radius;
+  bool enable_surface_tension;
+  bool enable_vorticity;
 
   TRunner& runner;
   TPile& pile;
