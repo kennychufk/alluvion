@@ -541,6 +541,7 @@ PYBIND11_MODULE(_alluvion, m) {
   py::class_<Store> store_class =
       py::class_<Store>(m, "Store")
           .def(py::init<>())
+          .def_static("set_device", &Store::set_device)
           .def("create_display",
                [](Store& store, int width, int height, const char* title,
                   bool offscreen) -> void {

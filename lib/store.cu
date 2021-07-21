@@ -14,6 +14,9 @@ void Store::update_resource_array() {
     resource_array_[i++] = entry.second.res_;
   }
 }
+void Store::set_device(int device) {
+  Allocator::abort_if_error(cudaSetDevice(device));
+}
 Display* Store::create_display(int width, int height, const char* title,
                                bool offscreen) {
   display_.reset(new Display(width, height, title, offscreen));

@@ -35,6 +35,7 @@ class Store {
   Store();
   virtual ~Store();
 
+  static void set_device(int device);
   Display* create_display(int width, int height, const char* title,
                           bool offscreen = false);
   Display const* get_display() const;
