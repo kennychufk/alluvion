@@ -24,42 +24,38 @@ struct SolverDf : public Solver<TF> {
   using Base::pile;
   using Base::runner;
   using Base::t;
+
+  using Base::particle_a;
+  using Base::particle_boundary_volume;
+  using Base::particle_boundary_xj;
+  using Base::particle_cfl_v2;
+  using Base::particle_density;
+  using Base::particle_force;
+  using Base::particle_normal;
+  using Base::particle_torque;
+  using Base::particle_v;
+  using Base::particle_x;
+
+  using Base::particle_neighbors;
+  using Base::particle_num_neighbors;
+  using Base::pid;
+  using Base::pid_length;
+
   SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store,
            U max_num_particles, U3 grid_res, U max_num_particles_per_cell = 64,
            U max_num_neighbors_per_particle = 64,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg),
-        particle_x(graphical
-                       ? store.create_graphical<1, TF3>({max_num_particles})
-                       : store.create<1, TF3>({max_num_particles})),
-        particle_v(store.create<1, TF3>({max_num_particles})),
-        particle_a(store.create<1, TF3>({max_num_particles})),
-        particle_density(store.create<1, TF>({max_num_particles})),
-        particle_boundary_xj(
-            store.create<2, TF3>({pile.get_size(), max_num_particles})),
-        particle_boundary_volume(
-            store.create<2, TF>({pile.get_size(), max_num_particles})),
-        particle_force(
-            store.create<2, TF3>({pile.get_size(), max_num_particles})),
-        particle_torque(
-            store.create<2, TF3>({pile.get_size(), max_num_particles})),
-        particle_cfl_v2(store.create<1, TF>({max_num_particles})),
-        particle_normal(enable_surface_tension_arg
-                            ? store.create<1, TF3>({max_num_particles})
-                            : new Variable<1, TF3>()),
+      : Base(runner_arg, pile_arg, store, max_num_particles, grid_res,
+             max_num_particles_per_cell, max_num_neighbors_per_particle,
+             enable_surface_tension_arg, enable_vorticity_arg, graphical),
 
         particle_dfsph_factor(store.create<1, TF>({max_num_particles})),
         particle_kappa(store.create<1, TF>({max_num_particles})),
         particle_kappa_v(store.create<1, TF>({max_num_particles})),
-        particle_density_adv(store.create<1, TF>({max_num_particles})),
+        particle_density_adv(store.create<1, TF>({max_num_particles}))
 
-        pid(store.create<4, TQ>(
-            {grid_res.x, grid_res.y, grid_res.z, max_num_particles_per_cell})),
-        pid_length(store.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
-        particle_neighbors(store.create<2, TQ>(
-            {max_num_particles, max_num_neighbors_per_particle})),
-        particle_num_neighbors(store.create<1, U>({max_num_particles})) {
+  {
     enable_surface_tension = enable_surface_tension_arg;
     enable_vorticity = enable_vorticity_arg;
   }
@@ -378,26 +374,10 @@ struct SolverDf : public Solver<TF> {
     t += dt;
   }
 
-  std::unique_ptr<Variable<1, TF3>> particle_x;
-  std::unique_ptr<Variable<1, TF3>> particle_v;
-  std::unique_ptr<Variable<1, TF3>> particle_a;
-  std::unique_ptr<Variable<1, TF>> particle_density;
-  std::unique_ptr<Variable<2, TF3>> particle_boundary_xj;
-  std::unique_ptr<Variable<2, TF>> particle_boundary_volume;
-  std::unique_ptr<Variable<2, TF3>> particle_force;
-  std::unique_ptr<Variable<2, TF3>> particle_torque;
-  std::unique_ptr<Variable<1, TF>> particle_cfl_v2;
-  std::unique_ptr<Variable<1, TF3>> particle_normal;
-
   std::unique_ptr<Variable<1, TF>> particle_dfsph_factor;
   std::unique_ptr<Variable<1, TF>> particle_kappa;
   std::unique_ptr<Variable<1, TF>> particle_kappa_v;
   std::unique_ptr<Variable<1, TF>> particle_density_adv;
-
-  std::unique_ptr<Variable<4, TQ>> pid;
-  std::unique_ptr<Variable<3, U>> pid_length;
-  std::unique_ptr<Variable<2, TQ>> particle_neighbors;
-  std::unique_ptr<Variable<1, U>> particle_num_neighbors;
 };
 }  // namespace alluvion
 

@@ -291,6 +291,47 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("particle_radius", &TSolver::particle_radius)
       .def_readwrite("enable_surface_tension", &TSolver::enable_surface_tension)
       .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
+      .def_property_readonly(
+          "particle_x",
+          [](TSolver const& solver) { return solver.particle_x.get(); })
+      .def_property_readonly(
+          "particle_v",
+          [](TSolver const& solver) { return solver.particle_v.get(); })
+      .def_property_readonly(
+          "particle_a",
+          [](TSolver const& solver) { return solver.particle_a.get(); })
+      .def_property_readonly(
+          "particle_density",
+          [](TSolver const& solver) { return solver.particle_density.get(); })
+      .def_property_readonly("particle_boundary_xj",
+                             [](TSolver const& solver) {
+                               return solver.particle_boundary_xj.get();
+                             })
+      .def_property_readonly("particle_boundary_volume",
+                             [](TSolver const& solver) {
+                               return solver.particle_boundary_volume.get();
+                             })
+      .def_property_readonly(
+          "particle_force",
+          [](TSolver const& solver) { return solver.particle_force.get(); })
+      .def_property_readonly(
+          "particle_torque",
+          [](TSolver const& solver) { return solver.particle_torque.get(); })
+      .def_property_readonly(
+          "particle_cfl_v2",
+          [](TSolver const& solver) { return solver.particle_cfl_v2.get(); })
+      .def_property_readonly(
+          "pid", [](TSolver const& solver) { return solver.pid.get(); })
+      .def_property_readonly(
+          "pid_length",
+          [](TSolver const& solver) { return solver.pid_length.get(); })
+      .def_property_readonly(
+          "particle_neighbors",
+          [](TSolver const& solver) { return solver.particle_neighbors.get(); })
+      .def_property_readonly("particle_num_neighbors",
+                             [](TSolver const& solver) {
+                               return solver.particle_num_neighbors.get();
+                             })
       .def("normalize",
            py::overload_cast<Variable<1, TF3> const*, Variable<1, TF>*, TF, TF>(
                &TSolver::normalize))
@@ -311,35 +352,6 @@ void declare_solver_df(py::module& m, const char* name) {
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
       .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
-      .def_property_readonly(
-          "particle_x",
-          [](TSolverDf const& solver) { return solver.particle_x.get(); })
-      .def_property_readonly(
-          "particle_v",
-          [](TSolverDf const& solver) { return solver.particle_v.get(); })
-      .def_property_readonly(
-          "particle_a",
-          [](TSolverDf const& solver) { return solver.particle_a.get(); })
-      .def_property_readonly(
-          "particle_density",
-          [](TSolverDf const& solver) { return solver.particle_density.get(); })
-      .def_property_readonly("particle_boundary_xj",
-                             [](TSolverDf const& solver) {
-                               return solver.particle_boundary_xj.get();
-                             })
-      .def_property_readonly("particle_boundary_volume",
-                             [](TSolverDf const& solver) {
-                               return solver.particle_boundary_volume.get();
-                             })
-      .def_property_readonly(
-          "particle_force",
-          [](TSolverDf const& solver) { return solver.particle_force.get(); })
-      .def_property_readonly(
-          "particle_torque",
-          [](TSolverDf const& solver) { return solver.particle_torque.get(); })
-      .def_property_readonly(
-          "particle_cfl_v2",
-          [](TSolverDf const& solver) { return solver.particle_cfl_v2.get(); })
       .def_property_readonly("particle_dfsph_factor",
                              [](TSolverDf const& solver) {
                                return solver.particle_dfsph_factor.get();
@@ -353,19 +365,6 @@ void declare_solver_df(py::module& m, const char* name) {
       .def_property_readonly("particle_density_adv",
                              [](TSolverDf const& solver) {
                                return solver.particle_density_adv.get();
-                             })
-      .def_property_readonly(
-          "pid", [](TSolverDf const& solver) { return solver.pid.get(); })
-      .def_property_readonly(
-          "pid_length",
-          [](TSolverDf const& solver) { return solver.pid_length.get(); })
-      .def_property_readonly("particle_neighbors",
-                             [](TSolverDf const& solver) {
-                               return solver.particle_neighbors.get();
-                             })
-      .def_property_readonly("particle_num_neighbors",
-                             [](TSolverDf const& solver) {
-                               return solver.particle_num_neighbors.get();
                              })
       .def("step", &TSolverDf::template step<0, 0>)
       .def("step_wrap1", &TSolverDf::template step<1, 0>)
@@ -383,35 +382,6 @@ void declare_solver_ii(py::module& m, const char* name) {
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
       .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
-      .def_property_readonly(
-          "particle_x",
-          [](TSolverIi const& solver) { return solver.particle_x.get(); })
-      .def_property_readonly(
-          "particle_v",
-          [](TSolverIi const& solver) { return solver.particle_v.get(); })
-      .def_property_readonly(
-          "particle_a",
-          [](TSolverIi const& solver) { return solver.particle_a.get(); })
-      .def_property_readonly(
-          "particle_density",
-          [](TSolverIi const& solver) { return solver.particle_density.get(); })
-      .def_property_readonly("particle_boundary_xj",
-                             [](TSolverIi const& solver) {
-                               return solver.particle_boundary_xj.get();
-                             })
-      .def_property_readonly("particle_boundary_volume",
-                             [](TSolverIi const& solver) {
-                               return solver.particle_boundary_volume.get();
-                             })
-      .def_property_readonly(
-          "particle_force",
-          [](TSolverIi const& solver) { return solver.particle_force.get(); })
-      .def_property_readonly(
-          "particle_torque",
-          [](TSolverIi const& solver) { return solver.particle_torque.get(); })
-      .def_property_readonly(
-          "particle_cfl_v2",
-          [](TSolverIi const& solver) { return solver.particle_cfl_v2.get(); })
       .def_property_readonly("particle_pressure",
                              [](TSolverIi const& solver) {
                                return solver.particle_pressure.get();
@@ -443,19 +413,6 @@ void declare_solver_ii(py::module& m, const char* name) {
       .def_property_readonly("particle_density_err",
                              [](TSolverIi const& solver) {
                                return solver.particle_density_err.get();
-                             })
-      .def_property_readonly(
-          "pid", [](TSolverIi const& solver) { return solver.pid.get(); })
-      .def_property_readonly(
-          "pid_length",
-          [](TSolverIi const& solver) { return solver.pid_length.get(); })
-      .def_property_readonly("particle_neighbors",
-                             [](TSolverIi const& solver) {
-                               return solver.particle_neighbors.get();
-                             })
-      .def_property_readonly("particle_num_neighbors",
-                             [](TSolverIi const& solver) {
-                               return solver.particle_num_neighbors.get();
                              })
       .def("step", &TSolverIi::template step<0, 0>)
       .def("step_wrap1", &TSolverIi::template step<1, 0>)
