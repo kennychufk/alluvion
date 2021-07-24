@@ -35,7 +35,7 @@ class Variable {
     if (typeid(M) == typeid(U)) return NumericType::u32;
     return NumericType::undefined;
   }
-  constexpr U get_num_primitives_per_unit() const {
+  constexpr U get_num_primitives_per_element() const {
     if (typeid(M) == typeid(float)) return 1;
     if (typeid(M) == typeid(double)) return 1;
     if (typeid(M) == typeid(I)) return 1;
@@ -55,7 +55,7 @@ class Variable {
     return 0;
   }
   U get_num_primitives() const {
-    return get_linear_shape() * get_num_primitives_per_unit();
+    return get_linear_shape() * get_num_primitives_per_element();
   }
   std::array<U, D> get_shape() const {
     std::array<U, D> shape_std_array;
@@ -69,17 +69,19 @@ class Variable {
                            std::multiplies<U>());
   }
   U get_num_bytes() const { return get_linear_shape() * sizeof(M); }
-  void get_bytes(void* dst, U num_bytes) const {
+  void get_bytes(void* dst, U num_bytes, U offset = 0) const {
     if (num_bytes == 0) return;
-    if (num_bytes > get_num_bytes()) {
+    U byte_offset = offset * sizeof(M);
+    if (num_bytes + byte_offset > get_num_bytes()) {
       std::cerr << "retrieving more than allocated" << std::endl;
       abort();
     }
-    Allocator::copy(dst, ptr_, num_bytes);
+    Allocator::copy(dst, static_cast<char*>(ptr_) + byte_offset, num_bytes);
   }
   void get_bytes(void* dst) const { get_bytes(dst, get_num_bytes()); }
-  void set_bytes(void const* src, U num_bytes, U byte_offset = 0) {
+  void set_bytes(void const* src, U num_bytes, U offset = 0) {
     if (num_bytes == 0) return;
+    U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
       std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
                 << " " << get_num_bytes() << std::endl;
@@ -88,6 +90,10 @@ class Variable {
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
+  void set_from(Variable<D, M> const& src, U num_elements = -1, U offset = 0) {
+    if (num_elements < 0) num_elements = src.get_linear_shape();
+    set_bytes(src.ptr_, num_elements * sizeof(M), offset * sizeof(M));
+  }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
 
   void write_file(const char* filename, U shape_outermost = 0) const {
@@ -105,8 +111,8 @@ class Variable {
     }
     const U kEndOfShape = 0;
     stream.write(reinterpret_cast<const char*>(&kEndOfShape), sizeof(U));
-    U num_primitives_per_unit = get_num_primitives_per_unit();
-    stream.write(reinterpret_cast<const char*>(&num_primitives_per_unit),
+    U num_primitives_per_element = get_num_primitives_per_element();
+    stream.write(reinterpret_cast<const char*>(&num_primitives_per_element),
                  sizeof(U));
     char type_label = numeric_type_to_label(get_type());
     stream.write(reinterpret_cast<const char*>(&type_label), sizeof(char));
@@ -147,12 +153,14 @@ class Variable {
       abort();
     }
     U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
-    U num_primitives_per_unit;
-    stream.read(reinterpret_cast<char*>(&num_primitives_per_unit), sizeof(U));
-    if (num_primitives_per_unit != get_num_primitives_per_unit()) {
+    U num_primitives_per_element;
+    stream.read(reinterpret_cast<char*>(&num_primitives_per_element),
+                sizeof(U));
+    if (num_primitives_per_element != get_num_primitives_per_element()) {
       std::cerr << "Num primitives per unit mismatch when reading " << filename
-                << "(" << num_primitives_per_unit
-                << "!=" << get_num_primitives_per_unit() << ")." << std::endl;
+                << "(" << num_primitives_per_element
+                << "!=" << get_num_primitives_per_element() << ")."
+                << std::endl;
       abort();
     }
     char type_label;
@@ -163,7 +171,7 @@ class Variable {
     if (type_label == numeric_type_to_label(get_type())) {
       stream.read(reinterpret_cast<char*>(host_buffer.data()), num_bytes);
     } else if (type_label == 'f' && numeric_type_to_label(get_type()) == 'd') {
-      U num_primitives = linear_shape * num_primitives_per_unit;
+      U num_primitives = linear_shape * num_primitives_per_element;
       U num_source_bytes = sizeof(float) * num_primitives;
       std::vector<float> source_buffer(num_primitives);
       stream.read(reinterpret_cast<char*>(source_buffer.data()),

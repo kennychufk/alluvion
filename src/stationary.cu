@@ -66,17 +66,13 @@ int main(void) {
   // grid
   U3 grid_res{128, 128, 128};
   I3 grid_offset{-64, -64, -64};
-  U max_num_particles_per_cell = 64;
-  U max_num_neighbors_per_particle = 64;
   store.get_cni().grid_res = grid_res;
   store.get_cni().grid_offset = grid_offset;
-  store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
-  store.get_cni().max_num_neighbors_per_particle =
-      max_num_neighbors_per_particle;
+  store.get_cni().max_num_particles_per_cell = 64;
+  store.get_cni().max_num_neighbors_per_particle = 64;
 
-  SolverIi<F> solver(runner, pile, store, num_particles, grid_res,
-                     max_num_particles_per_cell, max_num_neighbors_per_particle,
-                     false, false, true);
+  SolverIi<F> solver(runner, pile, store, num_particles, grid_res, false, false,
+                     true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;

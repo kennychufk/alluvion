@@ -101,21 +101,26 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
   py::class_<VariableClass>(m, variable_name.c_str())
       .def(py::init<const VariableClass&>())
       .def_readonly("ptr", &VariableClass::ptr_)
-      .def("get_bytes",
-           [](VariableClass& variable, py::array_t<unsigned char> bytes) {
-             variable.get_bytes(bytes.mutable_data(), bytes.size());
-           })
+      .def(
+          "get_bytes",
+          [](VariableClass& variable, py::array_t<unsigned char> bytes,
+             U offset) {
+            variable.get_bytes(bytes.mutable_data(), bytes.size(), offset);
+          },
+          py::arg("bytes"), py::arg("offset") = 0)
       .def(
           "set_bytes",
           [](VariableClass& variable, py::array_t<unsigned char> bytes,
-             U byte_offset) {
-            variable.set_bytes(bytes.data(), bytes.size(), byte_offset);
+             U offset) {
+            variable.set_bytes(bytes.data(), bytes.size(), offset);
           },
-          py::arg("bytes"), py::arg("byte_offset") = 0)
+          py::arg("bytes"), py::arg("offset") = 0)
+      .def("set_from", &VariableClass::set_from, py::arg("src"),
+           py::arg("num_elements") = -1, py::arg("offset") = 0)
       .def("set_zero", &VariableClass::set_zero)
       .def("get_type", &VariableClass::get_type)
-      .def("get_num_primitives_per_unit",
-           &VariableClass::get_num_primitives_per_unit)
+      .def("get_num_primitives_per_element",
+           &VariableClass::get_num_primitives_per_element)
       .def("get_linear_shape", &VariableClass::get_linear_shape)
       .def("get_num_primitives", &VariableClass::get_num_primitives)
       .def("read_file", &VariableClass::read_file)
@@ -280,8 +285,16 @@ template <typename TF>
 void declare_solver(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   using TSolver = Solver<TF>;
+  using TPile = Pile<TF>;
+  using TRunner = Runner<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+           py::arg("runner"), py::arg("pile"), py::arg("store"),
+           py::arg("max_num_particles"), py::arg("grid_res"),
+           py::arg("enable_surface_tension") = false,
+           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+      .def_readonly("max_num_particles", &TSolver::max_num_particles)
       .def_readwrite("num_particles", &TSolver::num_particles)
       .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
@@ -291,6 +304,7 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("particle_radius", &TSolver::particle_radius)
       .def_readwrite("enable_surface_tension", &TSolver::enable_surface_tension)
       .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
+      .def_readwrite("next_emission_t", &TSolver::next_emission_t)
       .def_property_readonly(
           "particle_x",
           [](TSolver const& solver) { return solver.particle_x.get(); })
@@ -338,7 +352,18 @@ void declare_solver(py::module& m, const char* name) {
       .def("normalize",
            py::overload_cast<Variable<1, TF> const*, Variable<1, TF>*, TF, TF>(
                &TSolver::normalize))
-      .def("reset_solving_var", &TSolver::reset_solving_var);
+      .def("reset_solving_var", &TSolver::reset_solving_var)
+      .def("emit_single", &TSolver::emit_single, py::arg("x"), py::arg("v"))
+      .def("emit_circle", &TSolver::emit_circle, py::arg("center"),
+           py::arg("v"), py::arg("radius"), py::arg("num_emission"))
+      .def("move_particles_naive", &TSolver::move_particles_naive,
+           py::arg("exclusion_min") = TF3{1, 1, 1},
+           py::arg("exclusion_max") = TF3{-1, -1, -1})
+      .def("dictate_ethier_steinman", &TSolver::dictate_ethier_steinman,
+           py::arg("a") = kPi<TF> / 4, py::arg("d") = kPi<TF> / 2,
+           py::arg("kinematic_viscosity") = 0,
+           py::arg("exclusion_min") = TF3{1, 1, 1},
+           py::arg("exclusion_max") = TF3{-1, -1, -1});
 }
 
 template <typename TF>
@@ -351,7 +376,11 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+           py::arg("runner"), py::arg("pile"), py::arg("store"),
+           py::arg("max_num_particles"), py::arg("grid_res"),
+           py::arg("enable_surface_tension") = false,
+           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_property_readonly("particle_dfsph_factor",
                              [](TSolverDf const& solver) {
                                return solver.particle_dfsph_factor.get();
@@ -381,7 +410,11 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, U, bool, bool, bool>())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+           py::arg("runner"), py::arg("pile"), py::arg("store"),
+           py::arg("max_num_particles"), py::arg("grid_res"),
+           py::arg("enable_surface_tension") = false,
+           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_property_readonly("particle_pressure",
                              [](TSolverIi const& solver) {
                                return solver.particle_pressure.get();
@@ -477,6 +510,10 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def("launch_copy_kinematics_if_within",
+           &TRunner::launch_copy_kinematics_if_within)
+      .def("launch_copy_kinematics_if_between",
+           &TRunner::launch_copy_kinematics_if_between)
       .def_static("get_fluid_block_num_particles",
                   &TRunner::get_fluid_block_num_particles, py::arg("mode"),
                   py::arg("box_min"), py::arg("box_max"),

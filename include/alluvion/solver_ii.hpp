@@ -39,24 +39,20 @@ struct SolverIi : public Solver<TF> {
   using Base::pid;
   using Base::pid_length;
   SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store,
-           U max_num_particles, U3 grid_res, U max_num_particles_per_cell = 64,
-           U max_num_neighbors_per_particle = 64,
+           U max_num_particles_arg, U3 grid_res,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store, max_num_particles, grid_res,
-             max_num_particles_per_cell, max_num_neighbors_per_particle,
+      : Base(runner_arg, pile_arg, store, max_num_particles_arg, grid_res,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
-        particle_pressure(store.create<1, TF>({max_num_particles})),
-        particle_last_pressure(store.create<1, TF>({max_num_particles})),
-        particle_aii(store.create<1, TF>({max_num_particles})),
-        particle_dii(store.create<1, TF3>({max_num_particles})),
-        particle_dij_pj(store.create<1, TF3>({max_num_particles})),
-        particle_sum_tmp(store.create<1, TF>({max_num_particles})),
-        particle_adv_density(store.create<1, TF>({max_num_particles})),
-        particle_pressure_accel(store.create<1, TF3>({max_num_particles})),
-        particle_density_err(store.create<1, TF>({max_num_particles}))
-
-  {
+        particle_pressure(store.create<1, TF>({max_num_particles_arg})),
+        particle_last_pressure(store.create<1, TF>({max_num_particles_arg})),
+        particle_aii(store.create<1, TF>({max_num_particles_arg})),
+        particle_dii(store.create<1, TF3>({max_num_particles_arg})),
+        particle_dij_pj(store.create<1, TF3>({max_num_particles_arg})),
+        particle_sum_tmp(store.create<1, TF>({max_num_particles_arg})),
+        particle_adv_density(store.create<1, TF>({max_num_particles_arg})),
+        particle_pressure_accel(store.create<1, TF3>({max_num_particles_arg})),
+        particle_density_err(store.create<1, TF>({max_num_particles_arg})) {
     enable_surface_tension = enable_surface_tension_arg;
     enable_vorticity = enable_vorticity_arg;
   }

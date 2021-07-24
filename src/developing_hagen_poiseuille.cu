@@ -84,18 +84,14 @@ int main(void) {
   U3 grid_res{static_cast<U>(kQ * 2), static_cast<U>(kM * 2),
               static_cast<U>(kQ * 2)};
   I3 grid_offset{-kQ, -kM, -kQ};
-  U max_num_particles_per_cell = 64;
-  U max_num_neighbors_per_particle = 64;
   store.get_cni().grid_res = grid_res;
   store.get_cni().grid_offset = grid_offset;
-  store.get_cni().max_num_particles_per_cell = max_num_particles_per_cell;
-  store.get_cni().max_num_neighbors_per_particle =
-      max_num_neighbors_per_particle;
+  store.get_cni().max_num_particles_per_cell = 64;
+  store.get_cni().max_num_neighbors_per_particle = 64;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res,
-                     max_num_particles_per_cell, max_num_neighbors_per_particle,
-                     false, false, true);
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res, false,
+                     false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({max_num_particles}));
   solver.dt = dt;
@@ -111,8 +107,8 @@ int main(void) {
   std::unique_ptr<Variable<1, F3>> sample_x(store.create<1, F3>({num_samples}));
   std::unique_ptr<Variable<1, F3>> sample_data3(
       store.create<1, F3>({num_samples}));
-  std::unique_ptr<Variable<2, Q>> sample_neighbors(
-      store.create<2, Q>({num_samples, max_num_neighbors_per_particle}));
+  std::unique_ptr<Variable<2, Q>> sample_neighbors(store.create<2, Q>(
+      {num_samples, store.get_cni().max_num_neighbors_per_particle}));
   std::unique_ptr<Variable<1, U>> sample_num_neighbors(
       store.create<1, U>({num_samples}));
   {

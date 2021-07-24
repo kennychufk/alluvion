@@ -16,21 +16,26 @@ def type_enum_to_dtype_func(self):
     return numeric_type
 
 
-def get_func(self):
+def get_func(self, shape=None):
     dtype = self.type_enum_to_dtype()
-    dst = np.empty(self.get_num_primitives(), dtype)
+    if shape is None:
+        shape = self.get_shape()
+    if type(shape) is not list:
+        shape = [shape]
+    dst = np.empty(
+        np.prod(shape) * self.get_num_primitives_per_element(), dtype)
     self.get_bytes(dst.view(np.ubyte))
-    if self.get_num_primitives_per_unit() == 1:
-        return dst.reshape(*self.get_shape())
+    if self.get_num_primitives_per_element() == 1:
+        return dst.reshape(shape)
     else:
-        return dst.reshape(*self.get_shape(), -1)
+        return dst.reshape(*shape, -1)
 
 
-def set_func(self, src, byte_offset=0):
+def set_func(self, src, offset=0):
     dtype = self.type_enum_to_dtype()
     if src.dtype != dtype:
         src = src.astype(dtype)
-    self.set_bytes(src.view(np.ubyte), byte_offset)
+    self.set_bytes(src.view(np.ubyte), offset)
 
 
 _al = importlib.import_module("._alluvion", "alluvion")

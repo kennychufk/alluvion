@@ -10,7 +10,7 @@ class Depot(Store):
         self.default_dtype = default_dtype
         numeric_type_str = self.dtype_to_string(self.default_dtype)
         float_typed_classnames = [
-            'Runner', 'Pile', 'SolverDf', 'SolverIi', 'DisplayProxy'
+            'Runner', 'Pile', 'SolverDf', 'SolverIi', 'Solver', 'DisplayProxy'
         ]
         _al = importlib.import_module("._alluvion", "alluvion")
         for classname in float_typed_classnames:
@@ -42,7 +42,7 @@ class Depot(Store):
                 is_graphical,
                 shape: Union[int, Iterable[int]],
                 n: int,
-                dtype=np.float32):
+                dtype=None):
         if isinstance(shape, int):
             shape = [shape]
         dim = len(shape)

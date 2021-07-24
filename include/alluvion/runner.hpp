@@ -276,6 +276,13 @@ constexpr __device__ __host__ void calculate_congruent_k(TF3 r, TF mass,
   }
 }
 
+template <typename TF3>
+constexpr __device__ __host__ bool within_box(TF3 const& v, TF3 const& box_min,
+                                              TF3 const& box_max) {
+  return box_min.x < v.x && v.x < box_max.x && box_min.y < v.y &&
+         v.y < box_max.y && box_min.z < v.z && v.z < box_max.z;
+}
+
 template <typename TQ, typename TF3>
 constexpr __device__ void extract_pid(TQ const& pid_entry, TF3& x_j, U& p_j) {
   x_j = reinterpret_cast<TF3 const&>(pid_entry);
@@ -1907,6 +1914,20 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
     particle_v(p_i) = v;
   });
 }
+template <typename TF3, typename TF>
+__global__ void move_particles(Variable<1, TF3> particle_x,
+                               Variable<1, TF3> particle_v, TF dt,
+                               TF3 exclusion_min, TF3 exclusion_max,
+                               U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    if (x_i.x < exclusion_min.x || x_i.x > exclusion_max.x ||
+        x_i.y < exclusion_min.y || x_i.y > exclusion_max.y ||
+        x_i.z < exclusion_min.z || x_i.z > exclusion_max.z) {
+      particle_x(p_i) = x_i + dt * particle_v(p_i);
+    }
+  });
+}
 
 // DFSPH
 template <typename TQ, typename TF3, typename TF>
@@ -2345,6 +2366,66 @@ __global__ void integrate_velocity(Variable<1, TF3> particle_x,
       particle_x(p_i) += dt * particle_v(p_i);
     else
       particle_x(p_i) = wrap_y(particle_x(p_i) + particle_v(p_i) * dt);
+  });
+}
+
+template <typename TF3, typename TF>
+__global__ void set_ethier_steinman(Variable<1, TF3> particle_x,
+                                    Variable<1, TF3> particle_v, TF a, TF d,
+                                    TF kinematic_viscosity, TF t,
+                                    TF3 exclusion_min, TF3 exclusion_max,
+                                    U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    if (x_i.x < exclusion_min.x || x_i.x > exclusion_max.x ||
+        x_i.y < exclusion_min.y || x_i.y > exclusion_max.y ||
+        x_i.z < exclusion_min.z || x_i.z > exclusion_max.z) {
+      TF exp_ax = exp(a * x_i.x);
+      TF exp_ay = exp(a * x_i.y);
+      TF exp_az = exp(a * x_i.z);
+      TF exp_temporal = -a * exp(-d * d * kinematic_viscosity * t);
+      TF ay_dz = a * x_i.y + d * x_i.z;
+      TF ax_dy = a * x_i.x + d * x_i.y;
+      TF az_dx = a * x_i.z + d * x_i.x;
+      particle_v(p_i) =
+          exp_temporal * TF3{exp_ax * sin(ay_dz) + exp_az * cos(ax_dy),
+                             exp_ay * sin(az_dx) + exp_ax * cos(ay_dz),
+                             exp_az * sin(ax_dy) + exp_ay * cos(az_dx)};
+    }
+  });
+}
+
+template <typename TF3>
+__global__ void copy_kinematics_if_between(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, TF3> dest_x, Variable<1, TF3> dest_v, TF3 outer_box_min,
+    TF3 outer_box_max, TF3 inner_box_min, TF3 inner_box_max, U num_particles,
+    Variable<1, U> num_copied) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    if (within_box(x_i, outer_box_min, outer_box_max) &&
+        !within_box(x_i, inner_box_min, inner_box_max)) {
+      U dest_id = atomicAdd(&num_copied(0), 1);
+      dest_x(dest_id) = x_i;
+      dest_v(dest_id) = particle_v(p_i);
+    }
+  });
+}
+
+template <typename TF3>
+__global__ void copy_kinematics_if_within(Variable<1, TF3> particle_x,
+                                          Variable<1, TF3> particle_v,
+                                          Variable<1, TF3> dest_x,
+                                          Variable<1, TF3> dest_v, TF3 box_min,
+                                          TF3 box_max, U num_particles,
+                                          Variable<1, U> num_copied) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    if (within_box(x_i, box_min, box_max)) {
+      U dest_id = atomicAdd(&num_copied(0), 1);
+      dest_x(dest_id) = x_i;
+      dest_v(dest_id) = particle_v(p_i);
+    }
   });
 }
 
@@ -2824,6 +2905,35 @@ class Runner {
               num_samples);
         },
         "sample_fluid");
+  }
+  void launch_copy_kinematics_if_within(
+      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
+      Variable<1, TF3>& dest_x, Variable<1, TF3>& dest_v, TF3 const& box_min,
+      TF3 const& box_max, U num_particles, Variable<1, U>& num_copied) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          copy_kinematics_if_within<<<grid_size, block_size>>>(
+              particle_x, particle_v, dest_x, dest_v, box_min, box_max,
+              num_particles, num_copied);
+        },
+        "copy_kinematics_if_within", copy_kinematics_if_within<TF3>);
+  }
+  void launch_copy_kinematics_if_between(
+      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
+      Variable<1, TF3>& dest_x, Variable<1, TF3>& dest_v,
+      TF3 const& outer_box_min, TF3 const& outer_box_max,
+      TF3 const& inner_box_min, TF3 const& inner_box_max, U num_particles,
+      Variable<1, U>& num_copied) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          copy_kinematics_if_between<<<grid_size, block_size>>>(
+              particle_x, particle_v, dest_x, dest_v, outer_box_min,
+              outer_box_max, inner_box_min, inner_box_max, num_particles,
+              num_copied);
+        },
+        "copy_kinematics_if_between", copy_kinematics_if_between<TF3>);
   }
 
   using LaunchRecord = std::pair<float, float>;

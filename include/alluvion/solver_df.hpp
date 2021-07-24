@@ -42,20 +42,15 @@ struct SolverDf : public Solver<TF> {
   using Base::pid_length;
 
   SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store,
-           U max_num_particles, U3 grid_res, U max_num_particles_per_cell = 64,
-           U max_num_neighbors_per_particle = 64,
+           U max_num_particles_arg, U3 grid_res,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store, max_num_particles, grid_res,
-             max_num_particles_per_cell, max_num_neighbors_per_particle,
+      : Base(runner_arg, pile_arg, store, max_num_particles_arg, grid_res,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
-
-        particle_dfsph_factor(store.create<1, TF>({max_num_particles})),
-        particle_kappa(store.create<1, TF>({max_num_particles})),
-        particle_kappa_v(store.create<1, TF>({max_num_particles})),
-        particle_density_adv(store.create<1, TF>({max_num_particles}))
-
-  {
+        particle_dfsph_factor(store.create<1, TF>({max_num_particles_arg})),
+        particle_kappa(store.create<1, TF>({max_num_particles_arg})),
+        particle_kappa_v(store.create<1, TF>({max_num_particles_arg})),
+        particle_density_adv(store.create<1, TF>({max_num_particles_arg})) {
     enable_surface_tension = enable_surface_tension_arg;
     enable_vorticity = enable_vorticity_arg;
   }
