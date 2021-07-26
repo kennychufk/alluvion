@@ -39,15 +39,21 @@ struct Solver {
         particle_normal(enable_surface_tension_arg
                             ? store.create<1, TF3>({max_num_particles_arg})
                             : new Variable<1, TF3>()),
+        particle_omega(enable_vorticity_arg
+                           ? store.create<1, TF3>({max_num_particles_arg})
+                           : new Variable<1, TF3>()),
+        particle_angular_acceleration(
+            enable_vorticity_arg ? store.create<1, TF3>({max_num_particles_arg})
+                                 : new Variable<1, TF3>()),
         pid(store.create<4, TQ>({grid_res.x, grid_res.y, grid_res.z,
                                  store.get_cni().max_num_particles_per_cell})),
         pid_length(store.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
         particle_neighbors(store.create<2, TQ>(
             {max_num_particles_arg,
              store.get_cni().max_num_neighbors_per_particle})),
-        particle_num_neighbors(store.create<1, U>({max_num_particles_arg}))
-
-  {}
+        particle_num_neighbors(store.create<1, U>({max_num_particles_arg})),
+        enable_surface_tension(enable_surface_tension_arg),
+        enable_vorticity(enable_vorticity_arg) {}
   void normalize(Variable<1, TF3> const* v,
                  Variable<1, TF>* particle_normalized_attr, TF lower_bound,
                  TF upper_bound) {
@@ -117,6 +123,15 @@ struct Solver {
         },
         "set_ethier_steinman", set_ethier_steinman<TF3, TF>);
   }
+  void set_mask(Variable<1, U>& mask, TF3 const& box_min, TF3 const& box_max) {
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          set_box_mask<<<grid_size, block_size>>>(*particle_x, mask, box_min,
+                                                  box_max, num_particles);
+        },
+        "set_box_mask", set_box_mask<TF3>);
+  }
   U max_num_particles;
   U num_particles;
   TF t;
@@ -142,6 +157,8 @@ struct Solver {
   std::unique_ptr<Variable<2, TF3>> particle_torque;
   std::unique_ptr<Variable<1, TF>> particle_cfl_v2;
   std::unique_ptr<Variable<1, TF3>> particle_normal;
+  std::unique_ptr<Variable<1, TF3>> particle_omega;
+  std::unique_ptr<Variable<1, TF3>> particle_angular_acceleration;
 
   std::unique_ptr<Variable<4, TQ>> pid;
   std::unique_ptr<Variable<3, U>> pid_length;

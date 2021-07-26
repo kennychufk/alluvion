@@ -1511,27 +1511,23 @@ __global__ void compute_viscosity(
   });
 }
 
-template <typename TF3, typename TF>
-__global__ void reset_angular_acceleration(
-    Variable<1, TF3> particle_angular_acceleration, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    particle_angular_acceleration(p_i) = make_zeros<TF3>();
-  });
-}
-
 // Micropolar Model
 template <typename TQ, typename TF3, typename TF>
-__global__ void compute_vorticity_fluid(
+__global__ void compute_vorticity(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
     Variable<1, TF> particle_density, Variable<1, TF3> particle_omega,
     Variable<1, TF3> particle_a, Variable<1, TF3> particle_angular_acceleration,
-    Variable<2, TQ> particle_neighbors, TF dt,
-    Variable<1, U> particle_num_neighbors, U num_particles) {
+    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
+    Variable<2, TF3> particle_force, Variable<2, TF3> particle_torque,
+    Variable<2, TF3> particle_boundary_xj,
+    Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
+    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, TF dt,
+    U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v_i = particle_v(p_i);
     TF3 omegai = particle_omega(p_i);
-    TF3 density_i = particle_density(p_i);
+    TF density_i = particle_density(p_i);
 
     TF3 da = make_zeros<TF3>();
     TF3 dangular_acc =
@@ -1554,27 +1550,6 @@ __global__ void compute_vorticity_fluid(
           cn<TF>().vorticity_coeff / density_i * cn<TF>().inertia_inverse *
           cross(cn<TF>().particle_mass * (v_i - particle_v(p_j)), grad_w);
     }
-
-    particle_a(p_i) += da;
-    particle_angular_acceleration(p_i) += dangular_acc;
-  });
-}
-template <typename TF3, typename TF>
-__global__ void compute_vorticity_boundary(
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF> particle_density, Variable<1, TF3> particle_omega,
-    Variable<1, TF3> particle_a, Variable<1, TF3> particle_angular_acceleration,
-    Variable<2, TF3> particle_boundary_xj,
-    Variable<2, TF> particle_boundary_volume, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x_i = particle_x(p_i);
-    TF3 v_i = particle_v(p_i);
-    TF3 omegai = particle_omega(p_i);
-    TF density_i = particle_density(p_i);
-
-    TF3 da = make_zeros<TF3>();
-    TF3 dangular_acc = make_zeros<TF3>();
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TF vj =
           max(static_cast<TF>(0), particle_boundary_volume(boundary_id, p_i));
@@ -1584,21 +1559,26 @@ __global__ void compute_vorticity_boundary(
       TF3 omegaij = omegai;  // omegaj not implemented in SPlisHSPlasH
       TF3 xixj = x_i - bx_j;
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
-      da += cn<TF>().vorticity_coeff / density_i * cn<TF>().density0 * vj *
-            cross(omegaij, grad_w);
+      TF3 a = cn<TF>().vorticity_coeff / density_i * cn<TF>().density0 * vj *
+              cross(omegaij, grad_w);
+      da += a;
       dangular_acc += cn<TF>().vorticity_coeff / density_i *
                       cn<TF>().inertia_inverse *
                       cross(cn<TF>().density0 * vj * (v_i - velj), grad_w);
+      TF3 force = -cn<TF>().particle_mass * a;
+      particle_force(boundary_id, p_i) += force;
+      particle_torque(boundary_id, p_i) +=
+          cross(bx_j - rigid_x(boundary_id), force);
     }
+
     particle_a(p_i) += da;
-    particle_angular_acceleration(p_i) += dangular_acc;
+    particle_angular_acceleration(p_i) = dangular_acc;
   });
 }
 template <typename TF3, typename TF>
 __global__ void integrate_angular_acceleration(
     Variable<1, TF3> particle_omega,
-    Variable<1, TF3> particle_angular_acceleration, TF dt, U num_neighbors,
-    U num_particles) {
+    Variable<1, TF3> particle_angular_acceleration, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_omega(p_i) += dt * particle_angular_acceleration(p_i);
   });
@@ -2377,9 +2357,7 @@ __global__ void set_ethier_steinman(Variable<1, TF3> particle_x,
                                     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     const TF3 x_i = particle_x(p_i);
-    if (x_i.x < exclusion_min.x || x_i.x > exclusion_max.x ||
-        x_i.y < exclusion_min.y || x_i.y > exclusion_max.y ||
-        x_i.z < exclusion_min.z || x_i.z > exclusion_max.z) {
+    if (!within_box(x_i, exclusion_min, exclusion_max)) {
       TF exp_ax = exp(a * x_i.x);
       TF exp_ay = exp(a * x_i.y);
       TF exp_az = exp(a * x_i.z);
@@ -2392,6 +2370,14 @@ __global__ void set_ethier_steinman(Variable<1, TF3> particle_x,
                              exp_ay * sin(az_dx) + exp_ax * cos(ay_dz),
                              exp_az * sin(ax_dy) + exp_ay * cos(az_dx)};
     }
+  });
+}
+
+template <typename TF3>
+__global__ void set_box_mask(Variable<1, TF3> particle_x, Variable<1, U> mask,
+                             TF3 box_min, TF3 box_max, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    mask(p_i) = within_box(particle_x(p_i), box_min, box_max) ? 0 : 1;
   });
 }
 
@@ -2422,6 +2408,22 @@ __global__ void copy_kinematics_if_within(Variable<1, TF3> particle_x,
   forThreadMappedToElement(num_particles, [&](U p_i) {
     const TF3 x_i = particle_x(p_i);
     if (within_box(x_i, box_min, box_max)) {
+      U dest_id = atomicAdd(&num_copied(0), 1);
+      dest_x(dest_id) = x_i;
+      dest_v(dest_id) = particle_v(p_i);
+    }
+  });
+}
+template <typename TF3>
+__global__ void copy_kinematics_if_within_masked(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, U> mask, U mask_keep_value, Variable<1, TF3> dest_x,
+    Variable<1, TF3> dest_v, TF3 box_min, TF3 box_max, U num_particles,
+    Variable<1, U> num_copied) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    const U mask_i = mask(p_i);
+    if (within_box(x_i, box_min, box_max) && mask_i == mask_keep_value) {
       U dest_id = atomicAdd(&num_copied(0), 1);
       dest_x(dest_id) = x_i;
       dest_v(dest_id) = particle_v(p_i);
@@ -2918,6 +2920,21 @@ class Runner {
               num_particles, num_copied);
         },
         "copy_kinematics_if_within", copy_kinematics_if_within<TF3>);
+  }
+  void launch_copy_kinematics_if_within_masked(
+      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
+      Variable<1, U>& mask, U mask_keep_value, Variable<1, TF3>& dest_x,
+      Variable<1, TF3>& dest_v, TF3 const& box_min, TF3 const& box_max,
+      U num_particles, Variable<1, U>& num_copied) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          copy_kinematics_if_within_masked<<<grid_size, block_size>>>(
+              particle_x, particle_v, mask, mask_keep_value, dest_x, dest_v,
+              box_min, box_max, num_particles, num_copied);
+        },
+        "copy_kinematics_if_within_masked",
+        copy_kinematics_if_within_masked<TF3>);
   }
   void launch_copy_kinematics_if_between(
       Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,

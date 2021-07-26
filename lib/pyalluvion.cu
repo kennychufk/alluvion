@@ -3,11 +3,14 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <string>
+
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/box_distance.hpp"
 #include "alluvion/dg/capsule_distance.hpp"
 #include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
+#include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/display.hpp"
 #include "alluvion/display_proxy.hpp"
@@ -118,6 +121,8 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
       .def("set_from", &VariableClass::set_from, py::arg("src"),
            py::arg("num_elements") = -1, py::arg("offset") = 0)
       .def("set_zero", &VariableClass::set_zero)
+      .def("set_same", &VariableClass::set_same, py::arg("value"),
+           py::arg("num_elements") = -1, py::arg("offset") = 0)
       .def("get_type", &VariableClass::get_type)
       .def("get_num_primitives_per_element",
            &VariableClass::get_num_primitives_per_element)
@@ -247,6 +252,26 @@ void declare_capsule_distance(py::module& m, const char* name) {
       .def(py::init<TF, TF>());
 }
 
+template <typename TF3, typename TF>
+void declare_mesh_distance(py::module& m, const char* name) {
+  using TMeshDistance = dg::MeshDistance<TF3, TF>;
+  std::string class_name = std::string("MeshDistance") + name;
+  py::class_<TMeshDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
+      .def(py::init<TriangleMesh<TF> const&, bool>(), py::arg("mesh"),
+           py::arg("precompute_normals") = true);
+}
+
+template <typename TF>
+void declare_triangle_mesh(py::module& m, const char* name) {
+  using TTriangleMesh = dg::TriangleMesh<TF>;
+  std::string class_name = std::string("TriangleMesh") + name;
+  py::class_<TTriangleMesh>(m, class_name.c_str())
+      .def(py::init<std::vector<dg::Vector3r<TF>> const&,
+                    std::vector<std::array<unsigned int, 3>> const&>(),
+           py::arg("vertices"), py::arg("faces"))
+      .def(py::init<std::string const&>(), py::arg("path"));
+}
+
 template <typename TF>
 void declare_const(py::module& m, const char* name) {
   using TConst = Const<TF>;
@@ -363,7 +388,9 @@ void declare_solver(py::module& m, const char* name) {
            py::arg("a") = kPi<TF> / 4, py::arg("d") = kPi<TF> / 2,
            py::arg("kinematic_viscosity") = 0,
            py::arg("exclusion_min") = TF3{1, 1, 1},
-           py::arg("exclusion_max") = TF3{-1, -1, -1});
+           py::arg("exclusion_max") = TF3{-1, -1, -1})
+      .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
+           py::arg("box_max"));
 }
 
 template <typename TF>
@@ -512,6 +539,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
       .def("launch_copy_kinematics_if_within",
            &TRunner::launch_copy_kinematics_if_within)
+      .def("launch_copy_kinematics_if_within_masked",
+           &TRunner::launch_copy_kinematics_if_within_masked)
       .def("launch_copy_kinematics_if_between",
            &TRunner::launch_copy_kinematics_if_between)
       .def_static("get_fluid_block_num_particles",
@@ -637,6 +666,10 @@ PYBIND11_MODULE(_alluvion, m) {
                      &ConstiN::max_num_neighbors_per_particle);
 
   py::class_<Mesh>(m, "Mesh")
+      .def_readonly("vertices", &Mesh::vertices)
+      .def_readonly("normals", &Mesh::normals)
+      .def_readonly("texcoords", &Mesh::texcoords)
+      .def_readonly("faces", &Mesh::faces)
       .def(py::init<>())
       .def("set_box", &Mesh::set_box)
       .def("set_uv_sphere", &Mesh::set_uv_sphere)
@@ -661,4 +694,8 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_infinite_cylinder_distance<double3, double>(m_dg, "double");
   declare_capsule_distance<float3, float>(m_dg, "float");
   declare_capsule_distance<double3, double>(m_dg, "double");
+  declare_mesh_distance<float3, float>(m_dg, "float");
+  declare_mesh_distance<double3, double>(m_dg, "double");
+  declare_triangle_mesh<float>(m_dg, "float");
+  declare_triangle_mesh<double>(m_dg, "double");
 }

@@ -26,12 +26,14 @@ struct SolverDf : public Solver<TF> {
   using Base::t;
 
   using Base::particle_a;
+  using Base::particle_angular_acceleration;
   using Base::particle_boundary_volume;
   using Base::particle_boundary_xj;
   using Base::particle_cfl_v2;
   using Base::particle_density;
   using Base::particle_force;
   using Base::particle_normal;
+  using Base::particle_omega;
   using Base::particle_torque;
   using Base::particle_v;
   using Base::particle_x;
@@ -50,10 +52,7 @@ struct SolverDf : public Solver<TF> {
         particle_dfsph_factor(store.create<1, TF>({max_num_particles_arg})),
         particle_kappa(store.create<1, TF>({max_num_particles_arg})),
         particle_kappa_v(store.create<1, TF>({max_num_particles_arg})),
-        particle_density_adv(store.create<1, TF>({max_num_particles_arg})) {
-    enable_surface_tension = enable_surface_tension_arg;
-    enable_vorticity = enable_vorticity_arg;
-  }
+        particle_density_adv(store.create<1, TF>({max_num_particles_arg})) {}
 
   template <U wrap, U gravitation>
   void step() {
@@ -245,10 +244,29 @@ struct SolverDf : public Solver<TF> {
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
 
-    // reset_angular_acceleration
-    // compute_vorticity_fluid
-    // compute_vorticity_boundary
-    // integrate_angular_acceleration
+    if (enable_vorticity) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_vorticity<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_density, *particle_omega,
+                *particle_a, *particle_angular_acceleration,
+                *particle_neighbors, *particle_num_neighbors, *particle_force,
+                *particle_torque, *particle_boundary_xj,
+                *particle_boundary_volume, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
+          },
+          "compute_vorticity", compute_vorticity<TQ, TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            integrate_angular_acceleration<<<grid_size, block_size>>>(
+                *particle_omega, *particle_angular_acceleration, dt,
+                num_particles);
+          },
+          "integrate_angular_acceleration",
+          integrate_angular_acceleration<TF3, TF>);
+    }
     runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {

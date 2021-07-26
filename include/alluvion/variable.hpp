@@ -95,6 +95,18 @@ class Variable {
     set_bytes(src.ptr_, num_elements * sizeof(M), offset * sizeof(M));
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
+  void set_same(int value, U num_elements = -1, U offset = 0) {
+    if (num_elements < 0) num_elements = get_linear_shape();
+    U num_bytes = num_elements * sizeof(M);
+    if (num_bytes == 0) return;
+    U byte_offset = offset * sizeof(M);
+    if (num_bytes + byte_offset > get_num_bytes()) {
+      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
+                << " " << get_num_bytes() << std::endl;
+      abort();
+    }
+    Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes, value);
+  }
 
   void write_file(const char* filename, U shape_outermost = 0) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
