@@ -68,6 +68,13 @@ class DisplayProxy {
                            upper_bound);
         }));
   }
+  void add_clear() {
+    display_->add_shading_program(
+        new ShadingProgram(nullptr, nullptr, {}, {},
+                           [](ShadingProgram& program, Display& display) {
+                             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                           }));
+  }
   void add_particle_shading_program(Variable<1, TF3> const& x,
                                     Variable<1, TF> const& attr,
                                     GLuint colormap_tex, float particle_radius,

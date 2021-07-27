@@ -1,6 +1,7 @@
 #ifndef ALLUVION_PILE_HPP
 #define ALLUVION_PILE_HPP
 
+#include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <memory>
 #include <vector>
@@ -72,7 +73,7 @@ class Pile {
   std::vector<TF3> a_;
   std::vector<TF3> force_;
 
-  std::vector<TQ> q_;
+  PinnedVariable<1, TQ> q_;
   PinnedVariable<1, TF3> omega_;
   std::vector<TF3> torque_;
 
@@ -104,6 +105,7 @@ class Pile {
   Pile(Store& store, U max_num_contacts)
       : store_(store),
         x_(store.create_pinned<1, TF3>({0})),
+        q_(store.create_pinned<1, TQ>({0})),
         v_(store.create_pinned<1, TF3>({0})),
         omega_(store.create_pinned<1, TF3>({0})),
         x_device_(store.create<1, TF3>({0})),
@@ -117,10 +119,10 @@ class Pile {
   }
 
   virtual ~Pile() {}
-  void add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
-           TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
-           TF friction, TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-           Mesh const& display_mesh) {
+  U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
+        TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
+        TF friction, TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
+        Mesh const& display_mesh) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
     friction_.push_back(friction);
@@ -134,7 +136,6 @@ class Pile {
     a_.push_back(TF3{0, 0, 0});
     force_.push_back(TF3{0, 0, 0});
 
-    q_.push_back(q);
     torque_.push_back(TF3{0, 0, 0});
 
     distance_list_.push_back(distance);
@@ -165,7 +166,9 @@ class Pile {
     reallocate_kinematics_on_pinned();
     v_(get_size() - 1) = TF3{0, 0, 0};
     x_(get_size() - 1) = x;
+    q_(get_size() - 1) = q;
     omega_(get_size() - 1) = TF3{0, 0, 0};
+    return get_size() - 1;
   }
   void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
                TF sign, TF thickness, Mesh const& collision_mesh, TF mass,
@@ -183,8 +186,6 @@ class Pile {
     oldx_[i] = x;
     a_[i] = TF3{0, 0, 0};
     force_[i] = TF3{0, 0, 0};
-
-    q_[i] = q;
     torque_[i] = TF3{0, 0, 0};
 
     distance_list_[i] = distance;
@@ -218,6 +219,7 @@ class Pile {
 
     v_(get_size() - 1) = TF3{0, 0, 0};
     x_(get_size() - 1) = x;
+    q_(get_size() - 1) = q;
     omega_(get_size() - 1) = TF3{0, 0, 0};
   }
   void build_grids(TF margin) {
@@ -240,12 +242,15 @@ class Pile {
 
       distance_grid->set_bytes(nodes_host.data());
       volume_grid->set_zero();
-      TRunner::launch(num_nodes, 256, [&](U grid_size, U block_size) {
-        update_volume_field<<<grid_size, block_size>>>(
-            *volume_grid, *distance_grid, domain_min, domain_max,
-            resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
-            thickness_list_[i]);
-      });
+      TRunner::launch_occupancy(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance_grid, domain_min, domain_max,
+                resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
+                thickness_list_[i]);
+          },
+          update_volume_field<TF3, TF>);
     }
   }
   void set_gravity(TF3 gravity) { gravity_ = gravity; }
@@ -261,16 +266,20 @@ class Pile {
   }
   void reallocate_kinematics_on_pinned() {
     PinnedVariable<1, TF3> x_new = store_.create_pinned<1, TF3>({get_size()});
+    PinnedVariable<1, TQ> q_new = store_.create_pinned<1, TQ>({get_size()});
     PinnedVariable<1, TF3> v_new = store_.create_pinned<1, TF3>({get_size()});
     PinnedVariable<1, TF3> omega_new =
         store_.create_pinned<1, TF3>({get_size()});
     x_new.set_bytes(x_.ptr_, x_.get_num_bytes());
+    q_new.set_bytes(q_.ptr_, q_.get_num_bytes());
     v_new.set_bytes(v_.ptr_, v_.get_num_bytes());
     omega_new.set_bytes(omega_.ptr_, omega_.get_num_bytes());
     store_.remove(x_);
+    store_.remove(q_);
     store_.remove(v_);
     store_.remove(omega_);
     x_ = x_new;
+    q_ = q_new;
     v_ = v_new;
     omega_ = omega_new;
   }
@@ -279,20 +288,45 @@ class Pile {
     v_device_->set_bytes(v_.ptr_);
     omega_device_->set_bytes(omega_.ptr_);
   }
+  void write_file(const char* filename) const {
+    std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
+    for (U i = 0; i < get_size(); ++i) {
+      stream.write(reinterpret_cast<const char*>(&x_(i)), sizeof(TF3));
+      stream.write(reinterpret_cast<const char*>(&v_(i)), sizeof(TF3));
+      stream.write(reinterpret_cast<const char*>(&q_(i)), sizeof(TQ));
+      stream.write(reinterpret_cast<const char*>(&omega_(i)), sizeof(TF3));
+    }
+  }
+  void read_file(const char* filename, int num_rigids = -1, U offset = 0) {
+    std::ifstream stream(filename, std::ios::binary);
+    U num_rigids_to_read = get_size();
+    if (num_rigids >= 0) {
+      num_rigids_to_read = static_cast<U>(num_rigids);
+    }
+    num_rigids_to_read = min(get_size(), num_rigids_to_read);
+    for (U i = 0; i < num_rigids_to_read; ++i) {
+      U offset_id = offset + i;
+      stream.read(reinterpret_cast<char*>(&x_(offset_id)), sizeof(TF3));
+      stream.read(reinterpret_cast<char*>(&v_(offset_id)), sizeof(TF3));
+      stream.read(reinterpret_cast<char*>(&q_(offset_id)), sizeof(TQ));
+      stream.read(reinterpret_cast<char*>(&omega_(offset_id)), sizeof(TF3));
+      if (stream.peek() == std::ifstream::traits_type::eof()) break;
+    }
+  }
   void integrate_kinematics(TF dt) {
     for (U i = 0; i < get_size(); ++i) {
       if (mass_[i] == 0) {
         x_(i) += v_(i) * dt;
-        q_[i] += dt * calculate_dq(omega_(i), q_[i]);
-        q_[i] = normalize(q_[i]);
+        q_(i) += dt * calculate_dq(omega_(i), q_(i));
+        q_(i) = normalize(q_(i));
       } else {
         v_(i) += 1 / mass_[i] * force_[i] * dt;
-        omega_(i) += calculate_angular_acceleration(inertia_tensor_[i], q_[i],
+        omega_(i) += calculate_angular_acceleration(inertia_tensor_[i], q_(i),
                                                     torque_[i]) *
                      dt;
         a_[i] = gravity_;
-        q_[i] += dt * calculate_dq(omega_(i), q_[i]);
-        q_[i] = normalize(q_[i]);
+        q_(i) += dt * calculate_dq(omega_(i), q_(i));
+        q_(i) = normalize(q_(i));
         // x_(i) += (a_[i] * dt + v_(i)) * dt;
         // v_(i) += a_[i] * dt;
         TF3 dx = (a_[i] * dt + v_(i)) * dt;
@@ -311,6 +345,24 @@ class Pile {
     }
     return max_v2;
   }
+  void find_contacts(U i, U j) {
+    num_contacts_->set_zero();
+    Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
+    U num_vertices_i = vertices_i.get_linear_shape();
+    TRunner::launch_occupancy(
+        num_vertices_i,
+        [&](U grid_size, U block_size) {
+          collision_test<<<grid_size, block_size>>>(
+              i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
+              inertia_tensor_[i], x_(i), v_(i), q_(i), omega_(i), mass_[j],
+              inertia_tensor_[j], x_(j), v_(j), q_(j), omega_(j), q_initial_[j],
+              q_mat_[j], x_mat_[j], restitution_[i] * restitution_[j],
+              friction_[i] + friction_[j], *distance_grids_[j],
+              domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
+              cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
+        },
+        collision_test<TQ, TF3, TF>);
+  }
   void find_contacts() {
     num_contacts_->set_zero();
     for (U i = 0; i < get_size(); ++i) {
@@ -318,16 +370,20 @@ class Pile {
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
         if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
-        TRunner::launch(num_vertices_i, 256, [&](U grid_size, U block_size) {
-          collision_test<<<grid_size, block_size>>>(
-              i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
-              inertia_tensor_[i], x_(i), v_(i), q_[i], omega_(i), mass_[j],
-              inertia_tensor_[j], x_(j), v_(j), q_[j], omega_(j), q_initial_[j],
-              q_mat_[j], x_mat_[j], restitution_[i] * restitution_[j],
-              friction_[i] + friction_[j], *distance_grids_[j],
-              domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
-              cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
-        });
+        TRunner::launch_occupancy(
+            num_vertices_i,
+            [&](U grid_size, U block_size) {
+              collision_test<<<grid_size, block_size>>>(
+                  i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
+                  inertia_tensor_[i], x_(i), v_(i), q_(i), omega_(i), mass_[j],
+                  inertia_tensor_[j], x_(j), v_(j), q_(j), omega_(j),
+                  q_initial_[j], q_mat_[j], x_mat_[j],
+                  restitution_[i] * restitution_[j],
+                  friction_[i] + friction_[j], *distance_grids_[j],
+                  domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
+                  cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
+            },
+            collision_test<TQ, TF3, TF>);
       }
     }
   }
@@ -417,7 +473,7 @@ class Pile {
     return grid_copy;
   }
   glm::mat4 get_matrix(U i) const {
-    TQ const& q = q_[i];
+    TQ const& q = q_(i);
     TF3 const& translation = x_(i);
     float column_major_transformation[16] = {
         static_cast<float>(1 - 2 * (q.y * q.y + q.z * q.z)),
@@ -442,7 +498,7 @@ class Pile {
   template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {
-      f(i, *distance_grids_[i], *volume_grids_[i], x_(i), q_[i],
+      f(i, *distance_grids_[i], *volume_grids_[i], x_(i), q_(i),
         domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
         cell_size_list_[i], grid_size_list_[i], sign_list_[i],
         thickness_list_[i]);

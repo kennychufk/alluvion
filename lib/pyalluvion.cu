@@ -167,6 +167,9 @@ void declare_pile(py::module& m, const char* name) {
       .def_readwrite("inertia_tensor", &TPile::inertia_tensor_)
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
+      .def_property_readonly(
+          "num_contacts",
+          [](TPile const& pile) { return pile.num_contacts_.get(); })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
            py::arg("sign"), py::arg("thickness"), py::arg("collision_mesh"),
            py::arg("mass"), py::arg("restitution"), py::arg("friction"),
@@ -183,10 +186,14 @@ void declare_pile(py::module& m, const char* name) {
            &TPile::reallocate_kinematics_on_device)
       .def("reallocate_kinematics_on_pinned",
            &TPile::reallocate_kinematics_on_pinned)
+      .def("write_file", &TPile::write_file)
+      .def("read_file", &TPile::read_file, py::arg("filename"),
+           py::arg("num_rigids") = -1, py::arg("offset") = 0)
       .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
       .def("integrate_kinematics", &TPile::integrate_kinematics)
       .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
-      .def("find_contacts", &TPile::find_contacts)
+      .def("find_contacts", py::overload_cast<U, U>(&TPile::find_contacts))
+      .def("find_contacts", py::overload_cast<>(&TPile::find_contacts))
       .def("solve_contacts", &TPile::solve_contacts)
       .def("get_size", &TPile::get_size)
       .def("get_matrix", &TPile::get_matrix);
@@ -502,6 +509,7 @@ void declare_display_proxy(py::module& m, const char* name) {
            &TDisplayProxy::template add_normalize<Variable<1, TF>>)
       .def("add_step", &TDisplayProxy::template add_step<TSolverDf>)
       .def("add_step", &TDisplayProxy::template add_step<TSolverIi>)
+      .def("add_clear", &TDisplayProxy::add_clear)
       .def("run", &TDisplayProxy::run)
       .def("draw", &TDisplayProxy::draw)
       .def("set_camera", &TDisplayProxy::set_camera)
@@ -621,6 +629,8 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_pinned_variable<1, float3>(m, "1Dfloat3");
   declare_pinned_variable<1, double3>(m, "1Ddouble3");
+  declare_pinned_variable<1, float4>(m, "1Dfloat4");
+  declare_pinned_variable<1, double4>(m, "1Ddouble4");
 
   py::enum_<NumericType>(m, "NumericType")
       .value("f32", NumericType::f32)

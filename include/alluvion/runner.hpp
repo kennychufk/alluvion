@@ -2694,6 +2694,15 @@ class Runner {
     Allocator::abort_if_error(cudaGetLastError());
   }
 
+  template <class Lambda, typename Func>
+  static void launch_occupancy(U n, Lambda f, Func func) {
+    if (n == 0) return;
+    int min_grid_size, block_size;
+    Allocator::abort_if_error(
+        cudaOccupancyMaxPotentialBlockSize(&min_grid_size, &block_size, func));
+    launch(n, block_size, f);
+  }
+
   template <class Lambda>
   void launch(U n, U desired_block_size, Lambda f, std::string name) {
     if (n == 0) return;
@@ -2721,7 +2730,7 @@ class Runner {
   }
 
   template <class Lambda, typename Func>
-  void launch(U n, Lambda f, std::string name, Func func) {
+  void launch_sampling(U n, Lambda f, std::string name, Func func) {
     if (n == 0) return;
     cudaFuncAttributes attr;
     Allocator::abort_if_error(cudaFuncGetAttributes(&attr, func));
@@ -2729,6 +2738,15 @@ class Runner {
            std::min((launch_cursor_ + 1) * kWarpSize,
                     static_cast<U>(attr.maxThreadsPerBlock)),
            f, name);
+  }
+
+  template <class Lambda, typename Func>
+  void launch(U n, Lambda f, std::string name, Func func) {
+    if (n == 0) return;
+    int min_grid_size, block_size;
+    Allocator::abort_if_error(
+        cudaOccupancyMaxPotentialBlockSize(&min_grid_size, &block_size, func));
+    launch(n, block_size, f, name);
   }
 
   bool summarize() {
