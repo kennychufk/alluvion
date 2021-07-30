@@ -378,6 +378,18 @@ void Mesh::set_obj(const char* filename) {
     calculate_normals();
   }
 }
+void Mesh::export_obj(const char* filename) {
+  std::ofstream stream(filename, std::ios::trunc);
+  stream.precision(std::numeric_limits<float>::max_digits10);
+  for (float3 const& vertex : vertices) {
+    stream << "v " << vertex.x << " " << vertex.y << " " << vertex.z
+           << std::endl;
+  }
+  for (U3 const& face : faces) {
+    stream << "f " << (face.x + 1) << " " << (face.y + 1) << " " << (face.z + 1)
+           << std::endl;
+  }
+}
 void Mesh::calculate_normals() {
   normals.resize(vertices.size());
   memset(normals.data(), 0, normals.size() * sizeof(float3));
