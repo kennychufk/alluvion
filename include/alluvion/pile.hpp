@@ -297,6 +297,7 @@ class Pile {
       stream.write(reinterpret_cast<const char*>(&omega_(i)), sizeof(TF3));
     }
   }
+  // TODO: rename to load
   void read_file(const char* filename, int num_rigids = -1, U offset = 0) {
     std::ifstream stream(filename, std::ios::binary);
     U num_rigids_to_read = get_size();
@@ -310,6 +311,17 @@ class Pile {
       stream.read(reinterpret_cast<char*>(&v_(offset_id)), sizeof(TF3));
       stream.read(reinterpret_cast<char*>(&q_(offset_id)), sizeof(TQ));
       stream.read(reinterpret_cast<char*>(&omega_(offset_id)), sizeof(TF3));
+      if (stream.peek() == std::ifstream::traits_type::eof()) break;
+    }
+  }
+  static void read(const char* filename, U num_rigids, TF3* x_dst, TF3* v_dst,
+                   TQ* q_dst, TF3* omega_dst) {
+    std::ifstream stream(filename, std::ios::binary);
+    for (U i = 0; i < num_rigids; ++i) {
+      stream.read(reinterpret_cast<char*>(x_dst + i), sizeof(TF3));
+      stream.read(reinterpret_cast<char*>(v_dst + i), sizeof(TF3));
+      stream.read(reinterpret_cast<char*>(q_dst + i), sizeof(TQ));
+      stream.read(reinterpret_cast<char*>(omega_dst + i), sizeof(TF3));
       if (stream.peek() == std::ifstream::traits_type::eof()) break;
     }
   }

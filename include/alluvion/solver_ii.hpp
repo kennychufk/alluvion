@@ -21,7 +21,9 @@ struct SolverIi : public Solver<TF> {
   using Base::particle_radius;
   using Base::pile;
   using Base::runner;
+  using Base::sample_usher;
   using Base::t;
+  using Base::usher;
 
   using Base::particle_a;
   using Base::particle_angular_acceleration;
@@ -41,11 +43,12 @@ struct SolverIi : public Solver<TF> {
   using Base::pid;
   using Base::pid_length;
   SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store,
-           U max_num_particles_arg, U3 grid_res,
+           U max_num_particles_arg, U3 grid_res, U num_ushers,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
       : Base(runner_arg, pile_arg, store, max_num_particles_arg, grid_res,
-             enable_surface_tension_arg, enable_vorticity_arg, graphical),
+             num_ushers, enable_surface_tension_arg, enable_vorticity_arg,
+             graphical),
         particle_pressure(store.create<1, TF>({max_num_particles_arg})),
         particle_last_pressure(store.create<1, TF>({max_num_particles_arg})),
         particle_aii(store.create<1, TF>({max_num_particles_arg})),
@@ -122,6 +125,9 @@ struct SolverIi : public Solver<TF> {
               *particle_boundary_volume, num_particles);
         },
         "compute_density", compute_density<TQ, TF3, TF>);
+    if (usher->num_ushers > 0) {
+      sample_usher();
+    }
     if (enable_surface_tension) {
       runner.launch(
           num_particles,
@@ -175,6 +181,17 @@ struct SolverIi : public Solver<TF> {
           },
           "integrate_angular_acceleration",
           integrate_angular_acceleration<TF3, TF>);
+    }
+    if (usher->num_ushers > 0) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            drive_linear<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_a, *(usher->drive_x),
+                *(usher->drive_v), *(usher->drive_kernel_radius),
+                *(usher->drive_strength), usher->num_ushers, num_particles);
+          },
+          "drive_linear", drive_linear<TF3, TF>);
     }
     runner.launch(
         num_particles,

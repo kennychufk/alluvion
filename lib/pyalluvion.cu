@@ -153,6 +153,8 @@ void declare_pinned_variable(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_pile(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
@@ -170,6 +172,17 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly(
           "num_contacts",
           [](TPile const& pile) { return pile.num_contacts_.get(); })
+      .def_static(
+          "read",
+          [](const char* filename, U num_rigids, py::array_t<unsigned char> x,
+             py::array_t<unsigned char> v, py::array_t<unsigned char> q,
+             py::array_t<unsigned char> omega) {
+            TPile::read(filename, num_rigids,
+                        reinterpret_cast<TF3*>(x.mutable_data()),
+                        reinterpret_cast<TF3*>(v.mutable_data()),
+                        reinterpret_cast<TQ*>(q.mutable_data()),
+                        reinterpret_cast<TF3*>(omega.mutable_data()));
+          })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
            py::arg("sign"), py::arg("thickness"), py::arg("collision_mesh"),
            py::arg("mass"), py::arg("restitution"), py::arg("friction"),
@@ -321,10 +334,10 @@ void declare_solver(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("enable_surface_tension") = false,
+           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("max_num_particles", &TSolver::max_num_particles)
       .def_readwrite("num_particles", &TSolver::num_particles)
@@ -337,6 +350,8 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("enable_surface_tension", &TSolver::enable_surface_tension)
       .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
       .def_readwrite("next_emission_t", &TSolver::next_emission_t)
+      .def_property_readonly(
+          "usher", [](TSolver const& solver) { return solver.usher.get(); })
       .def_property_readonly(
           "particle_x",
           [](TSolver const& solver) { return solver.particle_x.get(); })
@@ -397,7 +412,9 @@ void declare_solver(py::module& m, const char* name) {
            py::arg("exclusion_min") = TF3{1, 1, 1},
            py::arg("exclusion_max") = TF3{-1, -1, -1})
       .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
-           py::arg("box_max"));
+           py::arg("box_max"))
+      .def("update_particle_neighbors", &TSolver::update_particle_neighbors)
+      .def("sample_usher", &TSolver::sample_usher);
 }
 
 template <typename TF>
@@ -410,10 +427,10 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("enable_surface_tension") = false,
+           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_property_readonly("particle_dfsph_factor",
                              [](TSolverDf const& solver) {
@@ -444,10 +461,10 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("enable_surface_tension") = false,
+           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_property_readonly("particle_pressure",
                              [](TSolverIi const& solver) {
@@ -484,6 +501,44 @@ void declare_solver_ii(py::module& m, const char* name) {
       .def("step", &TSolverIi::template step<0, 0>)
       .def("step_wrap1", &TSolverIi::template step<1, 0>)
       .def("step_wrap1_gravitation1", &TSolverIi::template step<1, 1>);
+}
+
+template <typename TF>
+void declare_usher(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  using TUsher = Usher<TF>;
+  std::string class_name = std::string("Usher") + name;
+  py::class_<TUsher>(m, class_name.c_str())
+      .def(py::init<Store&, U>(), py::arg("store"), py::arg("num_ushers"))
+      .def_readonly("num_ushers", &TUsher::num_ushers)
+      .def_property_readonly(
+          "drive_x", [](TUsher const& usher) { return usher.drive_x.get(); })
+      .def_property_readonly(
+          "drive_v", [](TUsher const& usher) { return usher.drive_v.get(); })
+      .def_property_readonly(
+          "drive_kernel_radius",
+          [](TUsher const& usher) { return usher.drive_kernel_radius.get(); })
+      .def_property_readonly(
+          "drive_strength",
+          [](TUsher const& usher) { return usher.drive_strength.get(); })
+      .def_property_readonly(
+          "sample_x", [](TUsher const& usher) { return usher.sample_x.get(); })
+      .def_property_readonly(
+          "sample_v", [](TUsher const& usher) { return usher.sample_v.get(); })
+      .def_property_readonly(
+          "sample_density",
+          [](TUsher const& usher) { return usher.sample_density.get(); })
+      .def("set",
+           [](TUsher& usher, const py::array_t<TF>& x, const py::array_t<TF>& v,
+              const py::array_t<TF>& drive_kernel_radius,
+              const py::array_t<TF>& drive_strength) {
+             usher.set(reinterpret_cast<const TF3*>(x.data()),
+                       reinterpret_cast<const TF3*>(v.data()),
+                       drive_kernel_radius.data(), drive_strength.data());
+           })
+      .def("set_sample_x", [](TUsher& usher, const py::array_t<TF>& x) {
+        usher.set_sample_x(reinterpret_cast<const TF3*>(x.data()));
+      });
 }
 
 template <typename TF>
@@ -658,6 +713,9 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_solver_ii<float>(m, "float");
   declare_solver_ii<double>(m, "double");
+
+  declare_usher<float>(m, "float");
+  declare_usher<double>(m, "double");
 
   declare_display_proxy<float>(m, "float");
   declare_display_proxy<double>(m, "double");

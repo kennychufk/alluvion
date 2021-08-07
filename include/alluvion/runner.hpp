@@ -323,6 +323,24 @@ constexpr __device__
   return distance_cubic_kernel(length_sqr(d));
 }
 
+template <typename TF>
+constexpr __device__ TF distance_cubic_kernel(TF r2, TF h) {
+  TF q2 = r2 / (h * h);
+  TF q = sqrt(r2) / h;
+  TF conj = 1 - q;
+  TF result = 0;
+  if (q <= static_cast<TF>(0.5))
+    result = (6 * q - 6) * q2 + 1;
+  else if (q <= 1)
+    result = 2 * conj * conj * conj;
+  return result * 8 / (kPi<TF> * h * h * h);
+}
+
+template <typename TF3, typename TF>
+constexpr __device__ TF displacement_cubic_kernel(TF3 d, TF h) {
+  return distance_cubic_kernel(length_sqr(d), h);
+}
+
 template <typename TF3>
 inline __device__ TF3 displacement_cubic_kernel_grad(TF3 d) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
@@ -2531,6 +2549,31 @@ __global__ void collision_test(
   });
 }
 
+// fluid control
+template <typename TF3, typename TF>
+__global__ void drive_linear(Variable<1, TF3> particle_x,
+                             Variable<1, TF3> particle_v,
+                             Variable<1, TF3> particle_a,
+                             Variable<1, TF3> usher_x, Variable<1, TF3> usher_v,
+                             Variable<1, TF> drive_kernel_radius,
+                             Variable<1, TF> drive_strength, U num_ushers,
+                             U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    const TF3 v_i = particle_v(p_i);
+    TF3 force{0};
+    for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
+      TF3 c_x = usher_x(usher_id);
+      TF3 c_v = usher_v(usher_id);
+      TF c_kernel = drive_kernel_radius(usher_id);
+      TF c_strength = drive_strength(usher_id);
+      force += c_strength * displacement_cubic_kernel(x_i - c_x, c_kernel) *
+               (c_v - v_i);
+    }
+    particle_a(p_i) += force;
+  });
+}
+
 // statistics
 template <typename TF>
 __global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
@@ -2862,35 +2905,35 @@ class Runner {
         },
         "create_fluid_cylinder");
   }
-  void launch_update_particle_grid(U block_size, Variable<1, TF3>& particle_x,
+  void launch_update_particle_grid(Variable<1, TF3>& particle_x,
                                    Variable<4, TQ>& pid,
                                    Variable<3, U>& pid_length,
                                    U num_particles) {
     launch(
-        num_particles, block_size,
+        num_particles,
         [&](U grid_size, U block_size) {
           update_particle_grid<<<grid_size, block_size>>>(
               particle_x, pid, pid_length, num_particles);
         },
-        "update_particle_grid");
+        "update_particle_grid", update_particle_grid<TQ, TF3>);
   }
   template <U wrap>
-  void launch_make_neighbor_list(U block_size, Variable<1, TF3>& sample_x,
+  void launch_make_neighbor_list(Variable<1, TF3>& sample_x,
                                  Variable<4, TQ>& pid,
                                  Variable<3, U>& pid_length,
                                  Variable<2, TQ>& sample_neighbors,
                                  Variable<1, U>& sample_num_neighbors,
                                  U num_samples) {
     launch(
-        num_samples, block_size,
+        num_samples,
         [&](U grid_size, U block_size) {
           make_neighbor_list<wrap><<<grid_size, block_size>>>(
               sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
               num_samples);
         },
-        "make_neighbor_list");
+        "make_neighbor_list", make_neighbor_list<wrap, TQ, TF3>);
   }
-  void launch_compute_density(U block_size, Variable<1, TF3>& particle_x,
+  void launch_compute_density(Variable<1, TF3>& particle_x,
                               Variable<2, TQ>& particle_neighbors,
                               Variable<1, U>& particle_num_neighbors,
                               Variable<1, TF>& particle_density,
@@ -2898,17 +2941,17 @@ class Runner {
                               Variable<2, TF>& particle_boundary_volume,
                               U num_particles) {
     launch(
-        num_particles, block_size,
+        num_particles,
         [&](U grid_size, U block_size) {
           compute_density<<<grid_size, block_size>>>(
               particle_x, particle_neighbors, particle_num_neighbors,
               particle_density, particle_boundary_xj, particle_boundary_volume,
               num_particles);
         },
-        "compute_density");
+        "compute_density", compute_density<TQ, TF3, TF>);
   }
   template <typename TQuantity>
-  void launch_sample_fluid(U block_size, Variable<1, TF3>& sample_x,
+  void launch_sample_fluid(Variable<1, TF3>& sample_x,
                            Variable<1, TF3>& particle_x,
                            Variable<1, TF>& particle_density,
                            Variable<1, TQuantity>& particle_quantity,
@@ -2917,14 +2960,14 @@ class Runner {
                            Variable<1, TQuantity>& sample_quantity,
                            U num_samples) {
     launch(
-        num_samples, block_size,
+        num_samples,
         [&](U grid_size, U block_size) {
           sample_fluid<<<grid_size, block_size>>>(
               sample_x, particle_x, particle_density, particle_quantity,
               sample_neighbors, sample_num_neighbors, sample_quantity,
               num_samples);
         },
-        "sample_fluid");
+        "sample_fluid", sample_fluid<TQ, TF3, TF, TQuantity>);
   }
   void launch_copy_kinematics_if_within(
       Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,

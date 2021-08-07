@@ -90,7 +90,7 @@ int main(void) {
   store.get_cni().max_num_neighbors_per_particle = 64;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res, false,
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res, 0, false,
                      false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({max_num_particles}));
@@ -180,18 +180,18 @@ int main(void) {
         solver.normalize(solver.particle_v.get(),
                          particle_normalized_attr.get(), 0, 0.004_F);
         solver.pid_length->set_zero();
-        runner.launch_update_particle_grid(256, *solver.particle_x, *solver.pid,
+        runner.launch_update_particle_grid(*solver.particle_x, *solver.pid,
                                            *solver.pid_length,
                                            solver.num_particles);
         runner.launch_make_neighbor_list<1>(
-            256, *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
+            *sample_x, *solver.pid, *solver.pid_length, *sample_neighbors,
             *sample_num_neighbors, num_samples);
         runner.launch_compute_density(
-            256, *solver.particle_x, *solver.particle_neighbors,
+            *solver.particle_x, *solver.particle_neighbors,
             *solver.particle_num_neighbors, *solver.particle_density,
             *solver.particle_boundary_xj, *solver.particle_boundary_volume,
             solver.num_particles);
-        runner.launch_sample_fluid(256, *sample_x, *solver.particle_x,
+        runner.launch_sample_fluid(*sample_x, *solver.particle_x,
                                    *solver.particle_density, *solver.particle_v,
                                    *sample_neighbors, *sample_num_neighbors,
                                    *sample_data3, num_samples);

@@ -3,6 +3,7 @@
 
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
+#include "alluvion/usher.hpp"
 namespace alluvion {
 template <typename TF>
 struct Solver {
@@ -11,12 +12,13 @@ struct Solver {
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   Solver(TRunner& runner_arg, TPile& pile_arg, Store& store,
-         U max_num_particles_arg, U3 grid_res,
+         U max_num_particles_arg, U3 grid_res, U num_ushers = 0,
          bool enable_surface_tension_arg = false,
          bool enable_vorticity_arg = false, bool graphical = false)
       : max_num_particles(max_num_particles_arg),
         runner(runner_arg),
         pile(pile_arg),
+        usher(new Usher<TF>(store, num_ushers)),
         dt(0),
         t(0),
         particle_radius(store.get_cn<TF>().particle_radius),
@@ -132,6 +134,33 @@ struct Solver {
         },
         "set_box_mask", set_box_mask<TF3>);
   }
+  void update_particle_neighbors() {
+    pid_length->set_zero();
+    runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                       num_particles);
+
+    runner.template launch_make_neighbor_list<0>(
+        *particle_x, *pid, *pid_length, *particle_neighbors,
+        *particle_num_neighbors, num_particles);
+
+    runner.launch_compute_density(*particle_x, *particle_neighbors,
+                                  *particle_num_neighbors, *particle_density,
+                                  *particle_boundary_xj,
+                                  *particle_boundary_volume, num_particles);
+  }
+  void sample_usher() {
+    runner.template launch_make_neighbor_list<0>(
+        *usher->sample_x, *pid, *pid_length, *usher->neighbors,
+        *usher->num_neighbors, usher->num_ushers);
+    runner.launch_sample_fluid(*usher->sample_x, *particle_x, *particle_density,
+                               *particle_density, *usher->neighbors,
+                               *usher->num_neighbors, *usher->sample_density,
+                               usher->num_ushers);
+    runner.launch_sample_fluid(*usher->sample_x, *particle_x, *particle_density,
+                               *particle_v, *usher->neighbors,
+                               *usher->num_neighbors, *usher->sample_v,
+                               usher->num_ushers);
+  }
   U max_num_particles;
   U num_particles;
   TF t;
@@ -146,6 +175,7 @@ struct Solver {
 
   TRunner& runner;
   TPile& pile;
+  std::unique_ptr<Usher<TF>> usher;
 
   std::unique_ptr<Variable<1, TF3>> particle_x;
   std::unique_ptr<Variable<1, TF3>> particle_v;

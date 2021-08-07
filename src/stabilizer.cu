@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
   store.get_cni().max_num_neighbors_per_particle = 64;
   store.get_cn<F>().set_wrap_length(grid_res.y * kernel_radius);
 
-  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res, false,
+  SolverDf<F> solver(runner, pile, store, max_num_particles, grid_res, 0, false,
                      false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({max_num_particles}));
