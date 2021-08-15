@@ -80,7 +80,11 @@ struct Solver {
         },
         "scale", scale<TF>);
   }
-  virtual void reset_solving_var() {}
+  virtual void reset_solving_var() {
+    if (enable_vorticity) {
+      particle_omega->set_zero();
+    }
+  }
   void emit_single(TF3 const& x, TF3 const& v) {
     if (t < next_emission_t || num_particles == max_num_particles) return;
     particle_x->set_bytes(&x, sizeof(TF3), sizeof(TF3) * num_particles);

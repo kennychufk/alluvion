@@ -404,6 +404,12 @@ struct SolverDf : public Solver<TF> {
     t += dt;
   }
 
+  virtual void reset_solving_var() override {
+    Base::reset_solving_var();
+    particle_kappa->set_zero();
+    particle_kappa_v->set_zero();
+  }
+
   std::unique_ptr<Variable<1, TF>> particle_dfsph_factor;
   std::unique_ptr<Variable<1, TF>> particle_kappa;
   std::unique_ptr<Variable<1, TF>> particle_kappa_v;

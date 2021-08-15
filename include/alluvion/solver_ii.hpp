@@ -304,7 +304,10 @@ struct SolverIi : public Solver<TF> {
     t += dt;
   }
 
-  virtual void reset_solving_var() override { particle_pressure->set_zero(); }
+  virtual void reset_solving_var() override {
+    Base::reset_solving_var();
+    particle_pressure->set_zero();
+  }
 
   std::unique_ptr<Variable<1, TF>> particle_pressure;
   std::unique_ptr<Variable<1, TF>> particle_last_pressure;

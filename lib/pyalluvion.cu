@@ -382,6 +382,17 @@ void declare_solver(py::module& m, const char* name) {
           "particle_cfl_v2",
           [](TSolver const& solver) { return solver.particle_cfl_v2.get(); })
       .def_property_readonly(
+          "particle_normal",
+          [](TSolver const& solver) { return solver.particle_normal.get(); })
+      .def_property_readonly(
+          "particle_omega",
+          [](TSolver const& solver) { return solver.particle_omega.get(); })
+      .def_property_readonly(
+          "particle_angular_acceleration",
+          [](TSolver const& solver) {
+            return solver.particle_angular_acceleration.get();
+          })
+      .def_property_readonly(
           "pid", [](TSolver const& solver) { return solver.pid.get(); })
       .def_property_readonly(
           "pid_length",
