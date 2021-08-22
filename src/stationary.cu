@@ -37,15 +37,15 @@ int main(void) {
 
   // rigids
   U max_num_contacts = 512;
-  Pile<F> pile(store, max_num_contacts);
+  Pile<F> pile(store, runner, max_num_contacts);
   Mesh cube_mesh;
   cube_mesh.set_box(float3{4, 3, 1.5}, 4);
   Mesh sphere_mesh;
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  BoxDistance<F3, F> box_distance(F3{4, 3, 1.5});
-  pile.add(&box_distance, U3{80, 60, 30}, -1._F, 0, cube_mesh, 0._F, 1, 0,
-           F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1}, Mesh());
+  pile.add(new BoxDistance<F3, F>(F3{4, 3, 1.5}), U3{80, 60, 30}, -1._F, 0,
+           cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1},
+           Mesh());
   // SphereDistance<F3, F> sphere_distance(sphere_radius);
   // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
   // 0.4,

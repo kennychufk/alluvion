@@ -3,6 +3,8 @@
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -2692,11 +2694,29 @@ class Runner {
  public:
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
-  Runner() : launch_cursor_(0) {
+  Runner() : default_block_size_(256) {
     Allocator::abort_if_error(cudaEventCreate(&abs_start_));
     Allocator::abort_if_error(cudaEventRecord(abs_start_));
+    if (const char* default_block_size_str =
+            std::getenv("AL_DEFAULT_BLOCK_SIZE")) {
+      default_block_size_ = std::stoul(default_block_size_str);
+    }
+    load_optimal_block_size();
   }
-  virtual ~Runner() { cudaEventDestroy(abs_start_); }
+  virtual ~Runner() {
+    summarize();
+    std::filesystem::create_directory(".alcache");
+    std::stringstream filename_stream;
+    filename_stream << ".alcache/";
+    if (optimal_block_size_dict_.empty()) {
+      filename_stream << default_block_size_;
+    } else {
+      filename_stream << "optimized";
+    }
+    filename_stream << ".yaml";
+    save_stat(filename_stream.str().c_str());
+    cudaEventDestroy(abs_start_);
+  }
   template <typename T, typename BinaryFunction>
   static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
                   U offset = 0) {
@@ -2773,45 +2793,48 @@ class Runner {
   }
 
   template <class Lambda, typename Func>
-  void launch_sampling(U n, Lambda f, std::string name, Func func) {
+  void launch(U n, Lambda f, std::string name, Func func) {
     if (n == 0) return;
     cudaFuncAttributes attr;
     Allocator::abort_if_error(cudaFuncGetAttributes(&attr, func));
-    launch(n,
-           std::min((launch_cursor_ + 1) * kWarpSize,
-                    static_cast<U>(attr.maxThreadsPerBlock)),
-           f, name);
-  }
-
-  template <class Lambda, typename Func>
-  void launch(U n, Lambda f, std::string name, Func func) {
-    if (n == 0) return;
-    int min_grid_size, block_size;
-    Allocator::abort_if_error(
-        cudaOccupancyMaxPotentialBlockSize(&min_grid_size, &block_size, func));
+    int block_size = default_block_size_;
+    if (!optimal_block_size_dict_.empty()) {
+      if (optimal_block_size_dict_.find(name) ==
+          optimal_block_size_dict_.end()) {
+        std::cerr << "Optimal block size for " << name << " not found"
+                  << std::endl;
+        abort();
+      }
+      block_size = optimal_block_size_dict_[name];
+    }
+    if (block_size >
+        attr.maxThreadsPerBlock) {  // max. block size can be smaller than 1024
+                                    // depending on the kernel
+      block_size = attr.maxThreadsPerBlock;
+    }
     launch(n, block_size, f, name);
   }
 
-  bool summarize() {
+  void summarize() {
     for (std::pair<std::string, std::array<std::vector<LaunchRecord>,
                                            kNumBlockSizeCandidates>> const&
              item : launch_dict_) {
-      std::vector<LaunchRecord> const& launch_records =
-          item.second[launch_cursor_];
-      launch_stat_dict_[item.first][launch_cursor_] =
-          launch_records.empty()
-              ? kFMax<float>
-              : std::accumulate(launch_records.begin(), launch_records.end(),
-                                0.f,
-                                [](float acc, LaunchRecord const& record) {
-                                  return acc + record.second;
-                                }) /
-                    launch_records.size();
+      for (U i = 0; i < kNumBlockSizeCandidates; ++i) {
+        std::vector<LaunchRecord> const& launch_records = item.second[i];
+        launch_stat_dict_[item.first][i] =
+            launch_records.empty()
+                ? -1
+                : std::accumulate(launch_records.begin(), launch_records.end(),
+                                  0.f,
+                                  [](float acc, LaunchRecord const& record) {
+                                    return acc + record.second;
+                                  }) /
+                      launch_records.size();
+      }
     }
-    return ++launch_cursor_ == kNumBlockSizeCandidates;
   }
-  void export_stat() const {
-    std::ofstream stream("kernel-stat.yaml", std::ios::trunc);
+  void save_stat(const char* filename) const {
+    std::ofstream stream(filename, std::ios::trunc);
     for (auto const& item : launch_stat_dict_) {
       stream << item.first << ": ";
       stream << "[";
@@ -2822,8 +2845,9 @@ class Runner {
       stream << "]" << std::endl;
     }
   };
-  void load_stat() {
-    std::ifstream stream("kernel-stat.yaml");
+  void load_optimal_block_size() {
+    std::ifstream stream(".alcache/optimal.yaml");
+    if (!stream.is_open()) return;
     std::string line;
     std::stringstream line_stream;
     std::string function_name;
@@ -2833,19 +2857,8 @@ class Runner {
       line_stream.clear();
       line_stream.str(line);
       std::getline(line_stream, function_name, ':');
-      std::getline(line_stream, elapsed_str, '[');
-      U optimal_index;
-      float min_elapsed = kFMax<float>;
-      for (U i = 0; i < kNumBlockSizeCandidates &&
-                    std::getline(line_stream, elapsed_str, ',');
-           ++i) {
-        float elapsed = from_string<float>(elapsed_str);
-        if (elapsed < min_elapsed) {
-          min_elapsed = elapsed;
-          optimal_index = i;
-        }
-      }
-      optimal_block_size_dict_[function_name] = (optimal_index + 1) * kWarpSize;
+      std::getline(line_stream, elapsed_str);
+      optimal_block_size_dict_[function_name] = std::stoul(elapsed_str.c_str());
     }
   };
   void launch_create_fluid_block(U block_size, Variable<1, TF3>& particle_x,
@@ -2904,6 +2917,27 @@ class Runner {
               particle_x, num_particles, offset, radius, y_min, y_max);
         },
         "create_fluid_cylinder");
+  }
+  template <U wrap>
+  void launch_compute_particle_boundary(
+      Variable<1, TF>& volume_nodes, Variable<1, TF>& distance_nodes,
+      TF3 const& rigid_x, TQ const& rigid_q, U boundary_id,
+      TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+      TF3 const& cell_size, U num_nodes, U node_offset, TF sign, TF thickness,
+      TF dt, Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
+      Variable<2, TF3>& particle_boundary_xj,
+      Variable<2, TF>& particle_boundary_volume, U num_particles) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          compute_particle_boundary<wrap><<<grid_size, block_size>>>(
+              volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
+              domain_min, domain_max, resolution, cell_size, num_nodes, 0, sign,
+              thickness, dt, particle_x, particle_v, particle_boundary_xj,
+              particle_boundary_volume, num_particles);
+        },
+        "compute_particle_boundary",
+        compute_particle_boundary<wrap, TQ, TF3, TF>);
   }
   void launch_update_particle_grid(Variable<1, TF3>& particle_x,
                                    Variable<4, TQ>& pid,
@@ -3018,13 +3052,13 @@ class Runner {
   constexpr static U kWarpSize = 32;
   constexpr static U kMaxBlockSize = 1024;  // compute capability >= 2
   constexpr static U kNumBlockSizeCandidates = kMaxBlockSize / kWarpSize;
+  U default_block_size_;
   std::unordered_map<std::string, std::array<std::vector<LaunchRecord>,
                                              kNumBlockSizeCandidates>>
       launch_dict_;
   std::unordered_map<std::string, std::array<float, kNumBlockSizeCandidates>>
       launch_stat_dict_;
   std::unordered_map<std::string, U> optimal_block_size_dict_;
-  U launch_cursor_;
   cudaEvent_t abs_start_;
 };
 

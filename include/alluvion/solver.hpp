@@ -138,12 +138,13 @@ struct Solver {
         },
         "set_box_mask", set_box_mask<TF3>);
   }
+  template <U wrap>
   void update_particle_neighbors() {
     pid_length->set_zero();
     runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
                                        num_particles);
 
-    runner.template launch_make_neighbor_list<0>(
+    runner.template launch_make_neighbor_list<wrap>(
         *particle_x, *pid, *pid_length, *particle_neighbors,
         *particle_num_neighbors, num_particles);
 

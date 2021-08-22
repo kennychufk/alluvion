@@ -156,9 +156,10 @@ void declare_pile(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
+  using TRunner = Runner<TF>;
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
-      .def(py::init<Store&, U>())
+      .def(py::init<Store&, TRunner&, U>())
       .def_readwrite("mass", &TPile::mass_)
       .def_readwrite("x", &TPile::x_)
       .def_readwrite("v", &TPile::v_)
@@ -167,6 +168,13 @@ void declare_pile(py::module& m, const char* name) {
       .def_readwrite("restitution", &TPile::restitution_)
       .def_readwrite("friction", &TPile::friction_)
       .def_readwrite("inertia_tensor", &TPile::inertia_tensor_)
+      .def_readonly("domain_min_list", &TPile::domain_min_list_)
+      .def_readonly("domain_max_list", &TPile::domain_max_list_)
+      .def_readonly("resolution_list", &TPile::resolution_list_)
+      .def_readonly("cell_size_list", &TPile::cell_size_list_)
+      .def_readonly("sign_list", &TPile::sign_list_)
+      .def_readonly("grid_size_list", &TPile::grid_size_list_)
+      .def_readonly("thickness_list", &TPile::thickness_list_)
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
@@ -235,7 +243,10 @@ void declare_sphere_distance(py::module& m, const char* name) {
   using TSphereDistance = dg::SphereDistance<TF3, TF>;
   std::string class_name = std::string("SphereDistance") + name;
   py::class_<TSphereDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TF>());
+      .def(py::init<TF>())
+      .def_static(
+          "create", [](TF radius) { return new TSphereDistance(radius); },
+          py::return_value_policy::reference);
 }
 
 template <typename TF3, typename TF>
@@ -243,7 +254,10 @@ void declare_box_distance(py::module& m, const char* name) {
   using TBoxDistance = dg::BoxDistance<TF3, TF>;
   std::string class_name = std::string("BoxDistance") + name;
   py::class_<TBoxDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TF3>());
+      .def(py::init<TF3>())
+      .def_static(
+          "create", [](TF3 widths) { return new TBoxDistance(widths); },
+          py::return_value_policy::reference);
 }
 
 template <typename TF3, typename TF>
@@ -252,7 +266,14 @@ void declare_cylinder_distance(py::module& m, const char* name) {
   std::string class_name = std::string("CylinderDistance") + name;
   py::class_<TCylinderDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
       .def(py::init<TF, TF, TF>(), py::arg("radius"), py::arg("height"),
-           py::arg("com_y") = 0);
+           py::arg("com_y") = 0)
+      .def_static(
+          "create",
+          [](TF radius, TF height, TF com_y) {
+            return new TCylinderDistance(radius, height, com_y);
+          },
+          py::return_value_policy::reference, py::arg("radius"),
+          py::arg("height"), py::arg("com_y") = 0);
 }
 
 template <typename TF3, typename TF>
@@ -261,7 +282,11 @@ void declare_infinite_cylinder_distance(py::module& m, const char* name) {
   std::string class_name = std::string("InfiniteCylinderDistance") + name;
   py::class_<TInfiniteCylinderDistance, dg::Distance<TF3, TF>>(
       m, class_name.c_str())
-      .def(py::init<TF>());
+      .def(py::init<TF>())
+      .def_static(
+          "create",
+          [](TF radius) { return new TInfiniteCylinderDistance(radius); },
+          py::return_value_policy::reference);
 }
 
 template <typename TF3, typename TF>
@@ -269,7 +294,13 @@ void declare_capsule_distance(py::module& m, const char* name) {
   using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
   std::string class_name = std::string("CapsuleDistance") + name;
   py::class_<TCapsuleDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TF, TF>());
+      .def(py::init<TF, TF>())
+      .def_static(
+          "create",
+          [](TF radius, TF height) {
+            return new TCapsuleDistance(radius, height);
+          },
+          py::return_value_policy::reference);
 }
 
 template <typename TF3, typename TF>
@@ -278,7 +309,14 @@ void declare_mesh_distance(py::module& m, const char* name) {
   std::string class_name = std::string("MeshDistance") + name;
   py::class_<TMeshDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
       .def(py::init<TriangleMesh<TF> const&, bool>(), py::arg("mesh"),
-           py::arg("precompute_normals") = true);
+           py::arg("precompute_normals") = true)
+      .def_static(
+          "create",
+          [](TriangleMesh<TF> const& mesh, bool precompute_normals) {
+            return new TMeshDistance(mesh, precompute_normals);
+          },
+          py::return_value_policy::reference, py::arg("mesh"),
+          py::arg("precompute_normals") = true);
 }
 
 template <typename TF>
@@ -424,7 +462,10 @@ void declare_solver(py::module& m, const char* name) {
            py::arg("exclusion_max") = TF3{-1, -1, -1})
       .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
            py::arg("box_max"))
-      .def("update_particle_neighbors", &TSolver::update_particle_neighbors)
+      .def("update_particle_neighbors",
+           &TSolver::template update_particle_neighbors<0>)
+      .def("update_particle_neighbors_wrap1",
+           &TSolver::template update_particle_neighbors<1>)
       .def("sample_usher", &TSolver::sample_usher);
 }
 
@@ -586,9 +627,13 @@ template <typename TF>
 py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   std::string class_name = std::string("Runner") + name;
   return py::class_<TRunner>(m, class_name.c_str())
       .def(py::init<>())
+      .def_readonly("launch_dict", &TRunner::launch_dict_)
+      .def_readonly("launch_stat_dict", &TRunner::launch_stat_dict_)
+      .def("summarize", &TRunner::summarize)
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
            py::arg("block_size"), py::arg("particle_x"),
            py::arg("num_particles"), py::arg("offset"), py::arg("mode"),
@@ -603,6 +648,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            &TRunner::launch_create_fluid_cylinder, py::arg("block_size"),
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("radius"), py::arg("y_min"), py::arg("y_max"))
+      .def("launch_compute_particle_boundary",
+           &TRunner::template launch_compute_particle_boundary<0>)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
       .def("launch_make_neighbor_list",
            &TRunner::template launch_make_neighbor_list<0>)

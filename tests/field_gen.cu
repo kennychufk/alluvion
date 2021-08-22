@@ -60,6 +60,7 @@ SCENARIO("testing volume field generation") {
         },
         false);
     WHEN("a device implementation is constructed") {
+      Runner<F> runner;
       CubicLagrangeDiscreteGrid<F> distance_grid_prerequisite(domain,
                                                               resolution_array);
       distance_grid_prerequisite.addFunction([](Vector3r<F> const &xi) {
@@ -93,11 +94,14 @@ SCENARIO("testing volume field generation") {
       store.get_cn<F>().set_cubic_discretization_constants();
       store.copy_cn<F>();
 
-      Runner<F>::launch(num_nodes, 256, [&](U grid_size, U block_size) {
-        update_volume_field<<<grid_size, block_size>>>(
-            *volume_nodes, *distance_nodes, domain_min, domain_max, resolution,
-            cell_size, num_nodes, 0, sign, map_thickness);
-      });
+      runner.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_nodes, *distance_nodes, domain_min, domain_max,
+                resolution, cell_size, num_nodes, 0, sign, map_thickness);
+          },
+          "update_volume_field", update_volume_field<F3, F>);
 
       std::vector<F> device_volume_nodes_copied(num_nodes);
       volume_nodes->get_bytes(device_volume_nodes_copied.data(),

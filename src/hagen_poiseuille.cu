@@ -68,11 +68,10 @@ int main(void) {
   F restitution = 1._F;
   F friction = 0._F;
   U max_num_contacts = 512;
-  Pile<F> pile(store, max_num_contacts);
-  InfiniteCylinderDistance<F3, F> cylinder_distance(R);
-  pile.add(&cylinder_distance, U3{64, 1, 64}, -1._F, 0, Mesh(), 0._F,
-           restitution, friction, F3{1, 1, 1}, F3{0, 0, 0}, Q{0, 0, 0, 1},
-           Mesh());
+  Pile<F> pile(store, runner, max_num_contacts);
+  pile.add(new InfiniteCylinderDistance<F3, F>(R), U3{64, 1, 64}, -1._F, 0,
+           Mesh(), 0._F, restitution, friction, F3{1, 1, 1}, F3{0, 0, 0},
+           Q{0, 0, 0, 1}, Mesh());
   pile.build_grids(4 * kernel_radius);
   pile.reallocate_kinematics_on_device();
   store.get_cn<F>().contact_tolerance = particle_radius;

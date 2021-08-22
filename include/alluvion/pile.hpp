@@ -77,7 +77,7 @@ class Pile {
   PinnedVariable<1, TF3> omega_;
   std::vector<TF3> torque_;
 
-  std::vector<dg::Distance<TF3, TF>*> distance_list_;
+  std::vector<std::unique_ptr<dg::Distance<TF3, TF>>> distance_list_;
   std::vector<U3> resolution_list_;
   std::vector<TF> sign_list_;
   std::vector<TF> thickness_list_;
@@ -101,9 +101,11 @@ class Pile {
   TF3 gravity_;
 
   Store& store_;
+  TRunner& runner_;
 
-  Pile(Store& store, U max_num_contacts)
+  Pile(Store& store, TRunner& runner, U max_num_contacts)
       : store_(store),
+        runner_(runner),
         x_(store.create_pinned<1, TF3>({0})),
         q_(store.create_pinned<1, TQ>({0})),
         v_(store.create_pinned<1, TF3>({0})),
@@ -138,7 +140,7 @@ class Pile {
 
     torque_.push_back(TF3{0, 0, 0});
 
-    distance_list_.push_back(distance);
+    distance_list_.emplace_back(distance);
 
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
@@ -188,7 +190,7 @@ class Pile {
     force_[i] = TF3{0, 0, 0};
     torque_[i] = TF3{0, 0, 0};
 
-    distance_list_[i] = distance;
+    distance_list_[i].reset(distance);
 
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;
@@ -242,7 +244,7 @@ class Pile {
 
       distance_grid->set_bytes(nodes_host.data());
       volume_grid->set_zero();
-      TRunner::launch_occupancy(
+      runner_.launch(
           num_nodes,
           [&](U grid_size, U block_size) {
             update_volume_field<<<grid_size, block_size>>>(
@@ -250,7 +252,7 @@ class Pile {
                 resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
                 thickness_list_[i]);
           },
-          update_volume_field<TF3, TF>);
+          "update_volume_field", update_volume_field<TF3, TF>);
     }
   }
   void set_gravity(TF3 gravity) { gravity_ = gravity; }
@@ -361,7 +363,7 @@ class Pile {
     num_contacts_->set_zero();
     Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
     U num_vertices_i = vertices_i.get_linear_shape();
-    TRunner::launch_occupancy(
+    runner_.launch(
         num_vertices_i,
         [&](U grid_size, U block_size) {
           collision_test<<<grid_size, block_size>>>(
@@ -373,7 +375,7 @@ class Pile {
               domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
               cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
         },
-        collision_test<TQ, TF3, TF>);
+        "collision_test", collision_test<TQ, TF3, TF>);
   }
   void find_contacts() {
     num_contacts_->set_zero();
@@ -382,7 +384,7 @@ class Pile {
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
         if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
-        TRunner::launch_occupancy(
+        runner_.launch(
             num_vertices_i,
             [&](U grid_size, U block_size) {
               collision_test<<<grid_size, block_size>>>(
@@ -395,7 +397,7 @@ class Pile {
                   domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
                   cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
             },
-            collision_test<TQ, TF3, TF>);
+            "collision_test", collision_test<TQ, TF3, TF>);
       }
     }
   }
