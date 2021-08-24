@@ -4,7 +4,7 @@
 
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
-#include "alluvion/dg/gauss_quadrature.hpp"
+#include "alluvion/dg/peirce_quadrature.hpp"
 #include "alluvion/dg/sph_kernels.hpp"
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/runner.hpp"
@@ -20,7 +20,6 @@ SCENARIO("testing volume field generation") {
     F particle_radius = 0.25;
     F sign = 1.0;
     F r = 1.25;
-    F factor = 1.0;
     F margin = 4 * r + map_thickness;
     Vector3r<F> domain_min(-30 - margin, -20 - margin, -40 - margin);
     Vector3r<F> domain_max(30 + margin, 20 + margin, 40 + margin);
@@ -31,32 +30,20 @@ SCENARIO("testing volume field generation") {
           F signed_distance_from_ellipsoid = xi(0) * xi(0) / (25 * 25) +
                                              xi(1) * xi(1) / (15 * 15) +
                                              xi(2) * xi(2) / (35 * 35) - 1.0;
-          return sign * (signed_distance_from_ellipsoid - map_thickness -
-                         particle_radius * 0.5);
+          return sign * signed_distance_from_ellipsoid;
         });
     CubicKernel<F> cubic_kernel;
     cubic_kernel.setRadius(r);
-    auto int_domain =
-        AlignedBox3r<F>(Vector3r<F>::Constant(-r), Vector3r<F>::Constant(r));
     grid.addFunction(
         [&](Vector3r<F> const &x) {
           auto dist = grid.interpolate(0u, x);
-          if (dist > (1.0 + 1.0 /*/ factor*/) * r) {
-            return 0.0;
-          }
-
-          auto integrand = [&grid, &x, &r, &factor,
+          auto integrand = [&grid, &x, &r,
                             &cubic_kernel](Vector3r<F> const &xi) -> F {
-            if (xi.squaredNorm() > r * r) return 0.0;
-
             auto dist = grid.interpolate(0u, x + xi);
-
-            if (dist <= 0.0) return 1.0 - 0.1 * dist / r;
-            if (dist < 1.0 / factor * r)
-              return cubic_kernel.W(factor * dist) / cubic_kernel.W_zero();
-            return 0.0;
+            if (dist <= 0.0) return static_cast<F>(1.0);
+            return cubic_kernel.W(dist) / cubic_kernel.W_zero();
           };
-          return 0.8 * GaussQuadrature<F>::integrate(integrand, int_domain, 30);
+          return PeirceQuadrature<F, kPeirceM>::integrate(integrand, r);
         },
         false);
     WHEN("a device implementation is constructed") {
@@ -107,10 +94,10 @@ SCENARIO("testing volume field generation") {
       volume_nodes->get_bytes(device_volume_nodes_copied.data(),
                               device_volume_nodes_copied.size() * sizeof(F));
       for (U l = 0; l < num_nodes; ++l) {
-        if (device_volume_nodes_copied[l] > 1e-5) {
-          std::cout << l << " " << device_volume_nodes_copied[l] << " "
-                    << grid.node_data()[1][l] << std::endl;
-        }
+        // if (device_volume_nodes_copied[l] > 1e-5) {
+        //   std::cout << l << " " << device_volume_nodes_copied[l] << " "
+        //             << grid.node_data()[1][l] << std::endl;
+        // }
         CHECK(device_volume_nodes_copied[l] ==
               doctest::Approx(grid.node_data()[1][l]));
       }

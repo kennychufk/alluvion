@@ -25,7 +25,7 @@ int main(void) {
   DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
 
-  F particle_radius = 0.0025_F;
+  F particle_radius = 0.00125_F;
   F kernel_radius = particle_radius * 4.0_F;
   F density0 = 1000.0_F;
   F cubical_particle_volume =
@@ -49,9 +49,9 @@ int main(void) {
   store.get_cn<F>().viscosity = viscosity;
   store.get_cn<F>().boundary_viscosity = viscosity * 1.5_F;
 
-  I kM = 5;
+  I kM = 4;
   F cylinder_length = 2._F * kM * kernel_radius;
-  I kQ = 5;
+  I kQ = 10;
   F R = kernel_radius * kQ;
 
   const char* font_filename = "/usr/share/fonts/truetype/freefont/FreeMono.ttf";
@@ -137,7 +137,7 @@ int main(void) {
   std::mt19937 gen{rd()};
   std::normal_distribution<F> d{0, 0.05};
 
-  U2 target_num_particles_range = U2{0, 7213};
+  U2 target_num_particles_range = U2{23888, 25000};
   U last_saved_num_particles = 0;
 
   // density sample points
@@ -204,7 +204,7 @@ int main(void) {
             speed_ready_before_emission = false;
             if (max_particle_speed < 2e-3 && (t - last_stationary_t > 4)) {
               std::stringstream filename_stream;
-              filename_stream << "x" << kQ << "-" << kM << "-"
+              filename_stream << "x10-4-1.25mm/x" << kQ << "-" << kM << "-"
                               << solver.num_particles << ".alu";
               std::string filename = filename_stream.str();
               solver.particle_x->write_file(filename.c_str(),
@@ -261,8 +261,7 @@ int main(void) {
             runner.launch_compute_density(
                 *solver.particle_x, *solver.particle_neighbors,
                 *solver.particle_num_neighbors, *solver.particle_density,
-                *solver.particle_boundary_xj, *solver.particle_boundary_volume,
-                solver.num_particles);
+                *solver.particle_boundary_kernel, solver.num_particles);
             runner.launch_sample_fluid(
                 *sample_x, *solver.particle_x, *solver.particle_density,
                 *solver.particle_density, *sample_neighbors,

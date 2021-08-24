@@ -90,9 +90,10 @@ class Variable {
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
-  void set_from(Variable<D, M> const& src, U num_elements = -1, U offset = 0) {
-    if (num_elements < 0) num_elements = src.get_linear_shape();
-    set_bytes(src.ptr_, num_elements * sizeof(M), offset * sizeof(M));
+  void set_from(Variable<D, M> const& src, I num_elements = -1, U offset = 0) {
+    if (num_elements < 0) num_elements = static_cast<I>(src.get_linear_shape());
+    set_bytes(src.ptr_, static_cast<U>(num_elements) * sizeof(M),
+              offset * sizeof(M));
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
   void set_same(int value, U num_elements = -1, U offset = 0) {

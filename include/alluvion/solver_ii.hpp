@@ -27,8 +27,8 @@ struct SolverIi : public Solver<TF> {
 
   using Base::particle_a;
   using Base::particle_angular_acceleration;
-  using Base::particle_boundary_volume;
-  using Base::particle_boundary_xj;
+  using Base::particle_boundary;
+  using Base::particle_boundary_kernel;
   using Base::particle_cfl_v2;
   using Base::particle_density;
   using Base::particle_force;
@@ -81,25 +81,19 @@ struct SolverIi : public Solver<TF> {
           },
           "apply_axial_gravitation", apply_axial_gravitation<TF3>);
     }
-    pile.for_each_rigid([&](U boundary_id, Variable<1, TF> const& distance_grid,
-                            Variable<1, TF> const& volume_grid,
-                            TF3 const& rigid_x, TQ const& rigid_q,
-                            TF3 const& domain_min, TF3 const& domain_max,
-                            U3 const& resolution, TF3 const& cell_size,
-                            U num_nodes, TF sign, TF thickness) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            compute_particle_boundary<wrap><<<grid_size, block_size>>>(
-                volume_grid, distance_grid, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, 0,
-                sign, thickness, dt, *particle_x, *particle_v,
-                *particle_boundary_xj, *particle_boundary_volume,
-                num_particles);
-          },
-          "compute_particle_boundary",
-          compute_particle_boundary<wrap, TQ, TF3, TF>);
-    });
+    pile.for_each_rigid(
+        [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+            Variable<1, TF> const& distance_grid,
+            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign,
+            TF thickness) {
+          runner.launch_compute_particle_boundary(
+              distance, volume_grid, distance_grid, rigid_x, rigid_q,
+              boundary_id, domain_min, domain_max, resolution, cell_size,
+              num_nodes, 0, sign, thickness, dt, *particle_x,
+              *particle_boundary, *particle_boundary_kernel, num_particles);
+        });
     pid_length->set_zero();
     runner.launch(
         num_particles,
@@ -121,8 +115,7 @@ struct SolverIi : public Solver<TF> {
         [&](U grid_size, U block_size) {
           compute_density<<<grid_size, block_size>>>(
               *particle_x, *particle_neighbors, *particle_num_neighbors,
-              *particle_density, *particle_boundary_xj,
-              *particle_boundary_volume, num_particles);
+              *particle_density, *particle_boundary_kernel, num_particles);
         },
         "compute_density", compute_density<TQ, TF3, TF>);
     if (usher->num_ushers > 0) {
@@ -143,8 +136,7 @@ struct SolverIi : public Solver<TF> {
             compute_surface_tension<<<grid_size, block_size>>>(
                 *particle_x, *particle_density, *particle_normal, *particle_a,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary_xj, *particle_boundary_volume,
-                num_particles);
+                *particle_boundary, num_particles);
           },
           "compute_surface_tension", compute_surface_tension<TQ, TF3, TF>);
     }
@@ -154,9 +146,8 @@ struct SolverIi : public Solver<TF> {
           compute_viscosity<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_density, *particle_neighbors,
               *particle_num_neighbors, *particle_a, *particle_force,
-              *particle_torque, *particle_boundary_xj,
-              *particle_boundary_volume, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, num_particles);
+              *particle_torque, *particle_boundary, *pile.x_device_,
+              *pile.v_device_, *pile.omega_device_, num_particles);
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
     if (enable_vorticity) {
@@ -167,9 +158,9 @@ struct SolverIi : public Solver<TF> {
                 *particle_x, *particle_v, *particle_density, *particle_omega,
                 *particle_a, *particle_angular_acceleration,
                 *particle_neighbors, *particle_num_neighbors, *particle_force,
-                *particle_torque, *particle_boundary_xj,
-                *particle_boundary_volume, *pile.x_device_, *pile.v_device_,
-                *pile.omega_device_, dt, num_particles);
+                *particle_torque, *particle_boundary, *particle_boundary_kernel,
+                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                num_particles);
           },
           "compute_vorticity", compute_vorticity<TQ, TF3, TF>);
       runner.launch(
@@ -215,8 +206,7 @@ struct SolverIi : public Solver<TF> {
               *particle_x, *particle_v, *particle_a, *particle_density,
               *particle_dii, *particle_pressure, *particle_last_pressure,
               *particle_neighbors, *particle_num_neighbors,
-              *particle_boundary_xj, *particle_boundary_volume, dt,
-              num_particles);
+              *particle_boundary_kernel, dt, num_particles);
         },
         "predict_advection0", predict_advection0<TQ, TF3, TF>);
     runner.launch(
@@ -225,9 +215,8 @@ struct SolverIi : public Solver<TF> {
           predict_advection1<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_dii, *particle_adv_density,
               *particle_aii, *particle_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary_xj,
-              *particle_boundary_volume, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
+              *particle_num_neighbors, *particle_boundary, *pile.x_device_,
+              *pile.v_device_, *pile.omega_device_, dt, num_particles);
         },
         "predict_advection1", predict_advection1<TQ, TF3, TF>);
     TF avg_density_err = std::numeric_limits<TF>::max();
@@ -250,8 +239,7 @@ struct SolverIi : public Solver<TF> {
                 *particle_x, *particle_density, *particle_last_pressure,
                 *particle_dii, *particle_dij_pj, *particle_sum_tmp,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary_xj, *particle_boundary_volume,
-                num_particles);
+                *particle_boundary_kernel, num_particles);
           },
           "pressure_solve_iteration1", pressure_solve_iteration1<TQ, TF3, TF>);
       runner.launch(
@@ -275,7 +263,7 @@ struct SolverIi : public Solver<TF> {
               *particle_x, *particle_density, *particle_pressure,
               *particle_pressure_accel, *particle_neighbors,
               *particle_num_neighbors, *particle_force, *particle_torque,
-              *particle_boundary_xj, *particle_boundary_volume, *pile.x_device_,
+              *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
               num_particles);
         },
         "compute_pressure_accels", compute_pressure_accels<TQ, TF3, TF>);

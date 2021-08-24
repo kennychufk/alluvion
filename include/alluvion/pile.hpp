@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 
+#include "alluvion/dg/box_distance.hpp"
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
 #include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/mesh.hpp"
@@ -244,15 +245,42 @@ class Pile {
 
       distance_grid->set_bytes(nodes_host.data());
       volume_grid->set_zero();
-      runner_.launch(
-          num_nodes,
-          [&](U grid_size, U block_size) {
-            update_volume_field<<<grid_size, block_size>>>(
-                *volume_grid, *distance_grid, domain_min, domain_max,
-                resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
-                thickness_list_[i]);
-          },
-          "update_volume_field", update_volume_field<TF3, TF>);
+      using TBoxDistance = dg::BoxDistance<TF3, TF>;
+      using TSphereDistance = dg::SphereDistance<TF3, TF>;
+      if (TBoxDistance const* distance =
+              dynamic_cast<TBoxDistance const*>(distance_list_[i].get())) {
+        runner_.launch(
+            num_nodes,
+            [&](U grid_size, U block_size) {
+              update_volume_field<<<grid_size, block_size>>>(
+                  *volume_grid, *distance, domain_min, resolution_list_[i],
+                  cell_size, num_nodes, 0, sign_list_[i]);
+            },
+            "update_volume_field(BoxDistance)",
+            update_volume_field<TF3, TF, TBoxDistance>);
+      } else if (TSphereDistance const* distance =
+                     dynamic_cast<TSphereDistance const*>(
+                         distance_list_[i].get())) {
+        runner_.launch(
+            num_nodes,
+            [&](U grid_size, U block_size) {
+              update_volume_field<<<grid_size, block_size>>>(
+                  *volume_grid, *distance, domain_min, resolution_list_[i],
+                  cell_size, num_nodes, 0, sign_list_[i]);
+            },
+            "update_volume_field(SphereDistance)",
+            update_volume_field<TF3, TF, TSphereDistance>);
+      } else {
+        runner_.launch(
+            num_nodes,
+            [&](U grid_size, U block_size) {
+              update_volume_field<<<grid_size, block_size>>>(
+                  *volume_grid, *distance_grid, domain_min, domain_max,
+                  resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
+                  thickness_list_[i]);
+            },
+            "update_volume_field", update_volume_field<TF3, TF>);
+      }
     }
   }
   void set_gravity(TF3 gravity) { gravity_ = gravity; }
@@ -512,8 +540,8 @@ class Pile {
   template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {
-      f(i, *distance_grids_[i], *volume_grids_[i], x_(i), q_(i),
-        domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
+      f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i], x_(i),
+        q_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
         cell_size_list_[i], grid_size_list_[i], sign_list_[i],
         thickness_list_[i]);
     }

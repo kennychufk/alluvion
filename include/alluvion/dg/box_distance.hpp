@@ -18,6 +18,22 @@ class BoxDistance : public Distance<TF3, TF> {
         TF3{max(diff.x, TF{0}), max(diff.y, TF{0}), max(diff.z, TF{0})};
     return length(clipped_diff) + min(max(diff.x, max(diff.y, diff.z)), TF{0});
   }
+  __device__ TF signed_distance(TF3 const& x) const {
+    TF3 diff = fabs(x) - half_widths;
+    TF3 clipped_diff = fmax(diff, TF3{0});
+    return length(clipped_diff) + min(max(diff.x, max(diff.y, diff.z)), TF{0});
+  }
+  // TODO: make analytical
+  __device__ TF3 gradient(TF3 const& x, TF scale) const {
+    constexpr TF kEps = 0.00390625;
+    TF step = scale * kEps;
+    return TF3{signed_distance(x + TF3{step, 0, 0}) -
+                   signed_distance(x - TF3{step, 0, 0}),
+               signed_distance(x + TF3{0, step, 0}) -
+                   signed_distance(x - TF3{0, step, 0}),
+               signed_distance(x + TF3{0, 0, step}) -
+                   signed_distance(x - TF3{0, 0, step})};
+  }
   TF3 half_widths;
 };
 }  // namespace dg

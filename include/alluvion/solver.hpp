@@ -29,10 +29,10 @@ struct Solver {
         particle_v(store.create<1, TF3>({max_num_particles_arg})),
         particle_a(store.create<1, TF3>({max_num_particles_arg})),
         particle_density(store.create<1, TF>({max_num_particles_arg})),
-        particle_boundary_xj(
-            store.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
-        particle_boundary_volume(
-            store.create<2, TF>({pile.get_size(), max_num_particles_arg})),
+        particle_boundary(
+            store.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+        particle_boundary_kernel(
+            store.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
         particle_force(
             store.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
         particle_torque(
@@ -150,8 +150,7 @@ struct Solver {
 
     runner.launch_compute_density(*particle_x, *particle_neighbors,
                                   *particle_num_neighbors, *particle_density,
-                                  *particle_boundary_xj,
-                                  *particle_boundary_volume, num_particles);
+                                  *particle_boundary_kernel, num_particles);
   }
   void sample_usher() {
     runner.template launch_make_neighbor_list<0>(
@@ -186,8 +185,8 @@ struct Solver {
   std::unique_ptr<Variable<1, TF3>> particle_v;
   std::unique_ptr<Variable<1, TF3>> particle_a;
   std::unique_ptr<Variable<1, TF>> particle_density;
-  std::unique_ptr<Variable<2, TF3>> particle_boundary_xj;
-  std::unique_ptr<Variable<2, TF>> particle_boundary_volume;
+  std::unique_ptr<Variable<2, TQ>> particle_boundary;
+  std::unique_ptr<Variable<2, TQ>> particle_boundary_kernel;
   std::unique_ptr<Variable<2, TF3>> particle_force;
   std::unique_ptr<Variable<2, TF3>> particle_torque;
   std::unique_ptr<Variable<1, TF>> particle_cfl_v2;

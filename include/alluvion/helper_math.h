@@ -41,8 +41,6 @@ typedef unsigned short ushort;
 
 inline float fminf(float a, float b) { return a < b ? a : b; }
 
-inline float fmaxf(float a, float b) { return a > b ? a : b; }
-
 inline int max(int a, int b) { return a > b ? a : b; }
 
 inline int min(int a, int b) { return a < b ? a : b; }
@@ -241,31 +239,31 @@ inline __host__ __device__ uint4 make_uint4(int4 a) {
 // negate
 ////////////////////////////////////////////////////////////////////////////////
 
-inline __host__ __device__ float2 operator-(float2 &a) {
+inline __host__ __device__ float2 operator-(float2 const &a) {
   return make_float2(-a.x, -a.y);
 }
-inline __host__ __device__ double2 operator-(double2 &a) {
+inline __host__ __device__ double2 operator-(double2 const &a) {
   return make_double2(-a.x, -a.y);
 }
-inline __host__ __device__ int2 operator-(int2 &a) {
+inline __host__ __device__ int2 operator-(int2 const &a) {
   return make_int2(-a.x, -a.y);
 }
-inline __host__ __device__ float3 operator-(float3 &a) {
+inline __host__ __device__ float3 operator-(float3 const &a) {
   return make_float3(-a.x, -a.y, -a.z);
 }
-inline __host__ __device__ double3 operator-(double3 &a) {
+inline __host__ __device__ double3 operator-(double3 const &a) {
   return make_double3(-a.x, -a.y, -a.z);
 }
-inline __host__ __device__ int3 operator-(int3 &a) {
+inline __host__ __device__ int3 operator-(int3 const &a) {
   return make_int3(-a.x, -a.y, -a.z);
 }
-inline __host__ __device__ float4 operator-(float4 &a) {
+inline __host__ __device__ float4 operator-(float4 const &a) {
   return make_float4(-a.x, -a.y, -a.z, -a.w);
 }
-inline __host__ __device__ double4 operator-(double4 &a) {
+inline __host__ __device__ double4 operator-(double4 const &a) {
   return make_double4(-a.x, -a.y, -a.z, -a.w);
 }
-inline __host__ __device__ int4 operator-(int4 &a) {
+inline __host__ __device__ int4 operator-(int4 const &a) {
   return make_int4(-a.x, -a.y, -a.z, -a.w);
 }
 
@@ -1177,15 +1175,15 @@ inline __host__ __device__ uint4 min(uint4 a, uint4 b) {
 // max
 ////////////////////////////////////////////////////////////////////////////////
 
-inline __host__ __device__ float2 fmaxf(float2 a, float2 b) {
-  return make_float2(fmaxf(a.x, b.x), fmaxf(a.y, b.y));
+inline __host__ __device__ float2 fmax(float2 a, float2 b) {
+  return make_float2(fmax(a.x, b.x), fmax(a.y, b.y));
 }
-inline __host__ __device__ float3 fmaxf(float3 a, float3 b) {
-  return make_float3(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z));
+inline __host__ __device__ float3 fmax(float3 a, float3 b) {
+  return make_float3(fmax(a.x, b.x), fmax(a.y, b.y), fmax(a.z, b.z));
 }
-inline __host__ __device__ float4 fmaxf(float4 a, float4 b) {
-  return make_float4(fmaxf(a.x, b.x), fmaxf(a.y, b.y), fmaxf(a.z, b.z),
-                     fmaxf(a.w, b.w));
+inline __host__ __device__ float4 fmax(float4 a, float4 b) {
+  return make_float4(fmax(a.x, b.x), fmax(a.y, b.y), fmax(a.z, b.z),
+                     fmax(a.w, b.w));
 }
 
 inline __host__ __device__ double2 fmax(double2 a, double2 b) {
@@ -1256,7 +1254,7 @@ inline __device__ __host__ double4 lerp(double4 a, double4 b, double t) {
 ////////////////////////////////////////////////////////////////////////////////
 
 inline __device__ __host__ float clamp(float f, float a, float b) {
-  return fmaxf(a, fminf(f, b));
+  return fmax(a, fminf(f, b));
 }
 inline __device__ __host__ double clamp(double f, double a, double b) {
   return fmax(a, fmin(f, b));

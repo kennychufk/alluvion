@@ -73,15 +73,6 @@ class MeshDistance : public Distance<TF3, TF> {
     auto max_threads = omp_get_max_threads();
     m_queues.resize(max_threads);
     m_nearest_face.resize(max_threads);
-    m_cache.resize(max_threads, FunctionValueCache(
-                                    [&](Vector3r<TF> const& xi) {
-                                      return signedDistance(xi);
-                                    },
-                                    10000u));
-    m_ucache.resize(
-        max_threads,
-        FunctionValueCache([&](Vector3r<TF> const& xi) { return distance(xi); },
-                           10000u));
 
     m_bsh.construct();
 
@@ -226,14 +217,8 @@ class MeshDistance : public Distance<TF3, TF> {
 
     return dist;
   }
-  TF signedDistanceCached(dg::Vector3r<TF> const& x) const {
-    return m_cache[omp_get_thread_num()](x);
-  }
 
   TF unsignedDistance(dg::Vector3r<TF> const& x) const { return distance(x); }
-  TF unsignedDistanceCached(dg::Vector3r<TF> const& x) const {
-    return m_ucache[omp_get_thread_num()](x);
-  }
 
  private:
   dg::Vector3r<TF> vertex_normal(unsigned int v) const {
@@ -338,8 +323,6 @@ class MeshDistance : public Distance<TF3, TF> {
   using FunctionValueCache = LRUCache<dg::Vector3r<TF>, TF>;
   mutable std::vector<typename TriangleMeshBSH<TF>::TraversalQueue> m_queues;
   mutable std::vector<unsigned int> m_nearest_face;
-  mutable std::vector<FunctionValueCache> m_cache;
-  mutable std::vector<FunctionValueCache> m_ucache;
 
   std::vector<dg::Vector3r<TF>> m_face_normals;
   std::vector<dg::Vector3r<TF>> m_vertex_normals;

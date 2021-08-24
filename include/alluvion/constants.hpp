@@ -7,7 +7,7 @@
 
 #include "alluvion/allocator.hpp"
 #include "alluvion/data_type.hpp"
-#include "alluvion/dg/gauss_quadrature.hpp"
+#include "alluvion/dg/peirce_quadrature.hpp"
 
 namespace alluvion {
 template <class T>
@@ -16,8 +16,11 @@ constexpr T kPi = T(
 template <class T>
 constexpr T kFMax = std::numeric_limits<T>::max();
 
-constexpr U kGridN = 16;
-constexpr U kGridP = 30;
+constexpr U kPeirceM = 7;
+constexpr U kNumPhi = 2 * kPeirceM + 2;
+constexpr U kNumTheta = 4 * kPeirceM + 4;
+constexpr U kNumR = kPeirceM + 1;
+
 constexpr U kMaxNumCellsToSearch = 128;
 
 template <U MaxNumCellsToSearch>
@@ -34,8 +37,11 @@ struct Consti {
 template <typename TF>
 struct Const {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
-  TF kGridAbscissae[kGridN];
-  TF kGridWeights[kGridN];
+  TF kCosPhi[kNumPhi];
+  TF kSinPhi[kNumPhi];
+  TF kB[kNumPhi];
+  TF kR[kNumR];
+  TF kC[kNumR];
   TF kernel_radius;
   TF kernel_radius_sqr;
   TF cubic_kernel_k;
@@ -61,6 +67,7 @@ struct Const {
   TF axial_gravity;
   TF radial_gravity;
 
+  TF boundary_vol_factor;
   TF boundary_epsilon;
   TF dfsph_factor_epsilon;
 
@@ -71,17 +78,19 @@ struct Const {
   TF wrap_max;
 
   void set_cubic_discretization_constants() {
-    constexpr auto kGaussConst = dg::GaussConst<TF>();
-    std::memcpy(kGridAbscissae, &kGaussConst.abscissae[kGridP][0],
-                sizeof(TF) * kGridN);
-    std::memcpy(kGridWeights, &kGaussConst.weights[kGridP][0],
-                sizeof(TF) * kGridN);
+    constexpr auto kPeirceConst = dg::PeirceConst<TF, kPeirceM>();
+    std::memcpy(kCosPhi, &kPeirceConst.cosphi, sizeof(TF) * kNumPhi);
+    std::memcpy(kSinPhi, &kPeirceConst.sinphi, sizeof(TF) * kNumPhi);
+    std::memcpy(kB, &kPeirceConst.b, sizeof(TF) * kNumPhi);
+    std::memcpy(kR, &kPeirceConst.r, sizeof(TF) * kNumR);
+    std::memcpy(kC, &kPeirceConst.c, sizeof(TF) * kNumR);
   }
   void set_kernel_radius(TF h) {
     TF h2 = h * h;
     TF h3 = h2 * h;
-    TF tmp_cubic_k = static_cast<TF>(8.0) / (kPi<TF> * h3);
-    TF tmp_cubic_l = static_cast<TF>(48.0) / (kPi<TF> * h3);
+    TF h4 = h2 * h2;
+    TF tmp_cubic_k = static_cast<TF>(8.0) / h3 / kPi<TF>;
+    TF tmp_cubic_l = static_cast<TF>(48.0) / h4 / kPi<TF>;
     TF tmp_cubic_zero = tmp_cubic_k;
     TF tmp_adhesion_kernel_k =
         static_cast<TF>(0.007) / pow(h, static_cast<TF>(3.25));

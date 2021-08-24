@@ -188,8 +188,7 @@ int main(void) {
         runner.launch_compute_density(
             *solver.particle_x, *solver.particle_neighbors,
             *solver.particle_num_neighbors, *solver.particle_density,
-            *solver.particle_boundary_xj, *solver.particle_boundary_volume,
-            solver.num_particles);
+            *solver.particle_boundary_kernel, solver.num_particles);
         runner.launch_sample_fluid(*sample_x, *solver.particle_x,
                                    *solver.particle_density, *solver.particle_v,
                                    *sample_neighbors, *sample_num_neighbors,

@@ -359,6 +359,7 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("gravity", &TConst::gravity)
       .def_readwrite("axial_gravity", &TConst::axial_gravity)
       .def_readwrite("radial_gravity", &TConst::radial_gravity)
+      .def_readwrite("boundary_vol_factor", &TConst::boundary_vol_factor)
       .def_readwrite("boundary_epsilon", &TConst::boundary_epsilon)
       .def_readwrite("dfsph_factor_epsilon", &TConst::dfsph_factor_epsilon)
       .def_readwrite("contact_tolerance", &TConst::contact_tolerance);
@@ -402,13 +403,12 @@ void declare_solver(py::module& m, const char* name) {
       .def_property_readonly(
           "particle_density",
           [](TSolver const& solver) { return solver.particle_density.get(); })
-      .def_property_readonly("particle_boundary_xj",
+      .def_property_readonly(
+          "particle_boundary",
+          [](TSolver const& solver) { return solver.particle_boundary.get(); })
+      .def_property_readonly("particle_boundary_kernel",
                              [](TSolver const& solver) {
-                               return solver.particle_boundary_xj.get();
-                             })
-      .def_property_readonly("particle_boundary_volume",
-                             [](TSolver const& solver) {
-                               return solver.particle_boundary_volume.get();
+                               return solver.particle_boundary_kernel.get();
                              })
       .def_property_readonly(
           "particle_force",
@@ -649,7 +649,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
-           &TRunner::template launch_compute_particle_boundary<0>)
+           &TRunner::launch_compute_particle_boundary)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
       .def("launch_make_neighbor_list",
            &TRunner::template launch_make_neighbor_list<0>)
