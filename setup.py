@@ -90,6 +90,7 @@ setup(
     description='CUDA backend for SPH fluid simulation',
     long_description=readme,
     ext_modules=[CMakeExtension('alluvion._alluvion')],
+    scripts=['bin/block_scan'],
     cmdclass=dict(build_ext=CMakeBuild),
     zip_safe=False,
     packages=find_packages(),
