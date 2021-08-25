@@ -1,0 +1,7 @@
+**/.git
+.gitignore
+/build
+/dist
+/alluvion.egg-info
+/.alcache
+Dockerfile
