@@ -195,6 +195,17 @@ class Variable {
         host_buffer_primitive_pointer[i] =
             static_cast<double>(source_buffer[i]);
       }
+    } else if (type_label == 'd' && numeric_type_to_label(get_type()) == 'f') {
+      U num_primitives = linear_shape * num_primitives_per_element;
+      U num_source_bytes = sizeof(double) * num_primitives;
+      std::vector<double> source_buffer(num_primitives);
+      stream.read(reinterpret_cast<char*>(source_buffer.data()),
+                  num_source_bytes);
+      float* host_buffer_primitive_pointer =
+          reinterpret_cast<float*>(host_buffer.data());
+      for (U i = 0; i < source_buffer.size(); ++i) {
+        host_buffer_primitive_pointer[i] = static_cast<float>(source_buffer[i]);
+      }
     } else {
       std::cerr << "Data type mismatch when reading " << filename << std::endl;
       abort();
