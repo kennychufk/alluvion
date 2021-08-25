@@ -18,6 +18,7 @@
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 #include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/infinite_cylinder_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/helper_math.h"
 #include "alluvion/variable.hpp"
@@ -1210,7 +1211,7 @@ __device__ TF compute_volume_and_boundary_x(
   return boundary_volume;
 }
 
-template <typename TQ, typename TF3, typename TF, typename TDistance>
+template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
     TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, U node_offset,
@@ -1219,6 +1220,9 @@ __device__ TF compute_volume_and_boundary_x_analytic(
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
+  if constexpr (wrap == 1) {
+    local_xi.y = 0;
+  }
   TF3 normal;
   TF nl2;
   // for grid enquiry
@@ -1405,7 +1409,7 @@ __global__ void apply_axial_gravitation(Variable<1, TF3> particle_a,
   });
 }
 
-template <typename TQ, typename TF3, typename TF, typename TDistance>
+template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void compute_particle_boundary_analytic(
     Variable<1, TF> volume_nodes, const TDistance distance, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
@@ -1415,7 +1419,7 @@ __global__ void compute_particle_boundary_analytic(
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
-    TF boundary_volume = compute_volume_and_boundary_x_analytic(
+    TF boundary_volume = compute_volume_and_boundary_x_analytic<wrap>(
         &volume_nodes, distance, domain_min, domain_max, resolution, cell_size,
         num_nodes, node_offset, sign, thickness, particle_x(p_i), rigid_x,
         rigid_q, dt, &boundary_xj, &xi_bxj, &d);
@@ -2923,32 +2927,48 @@ class Runner {
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
     if (TBoxDistance const* distance =
             dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
       launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_particle_boundary_analytic<<<grid_size, block_size>>>(
+            compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, 0,
                 sign, thickness, dt, particle_x, particle_boundary,
                 particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(BoxDistance)",
-          compute_particle_boundary_analytic<TQ, TF3, TF, TBoxDistance>);
+          compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_particle_boundary_analytic<<<grid_size, block_size>>>(
+            compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, 0,
                 sign, thickness, dt, particle_x, particle_boundary,
                 particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(SphereDistance)",
-          compute_particle_boundary_analytic<TQ, TF3, TF, TSphereDistance>);
+          compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_particle_boundary_analytic<1><<<grid_size, block_size>>>(
+                volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
+                domain_min, domain_max, resolution, cell_size, num_nodes, 0,
+                sign, thickness, dt, particle_x, particle_boundary,
+                particle_boundary_kernel, num_particles);
+          },
+          "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
+          compute_particle_boundary_analytic<1, TQ, TF3, TF,
+                                             TInfiniteCylinderDistance>);
     } else {
       launch(
           num_particles,

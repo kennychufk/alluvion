@@ -17,6 +17,12 @@ class InfiniteCylinderDistance : public Distance<TF3, TF> {
   TF signedDistance(dg::Vector3r<TF> const& x) const override {
     return sqrt(x(0) * x(0) + x(2) * x(2)) - radius_;
   }
+  __device__ TF signed_distance(TF3 const& x) const {
+    return sqrt(x.x * x.x + x.z * x.z) - radius_;
+  }
+  __device__ TF3 gradient(TF3 const& x, TF scale) const {
+    return TF3{x.x, 0, x.z};
+  }
   TF radius_;
 };
 }  // namespace dg

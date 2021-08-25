@@ -6,7 +6,6 @@
 #include <memory>
 #include <vector>
 
-#include "alluvion/dg/box_distance.hpp"
 #include "alluvion/dg/cubic_lagrange_discrete_grid.hpp"
 #include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/mesh.hpp"
@@ -247,6 +246,7 @@ class Pile {
       volume_grid->set_zero();
       using TBoxDistance = dg::BoxDistance<TF3, TF>;
       using TSphereDistance = dg::SphereDistance<TF3, TF>;
+      using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
       if (TBoxDistance const* distance =
               dynamic_cast<TBoxDistance const*>(distance_list_[i].get())) {
         runner_.launch(
@@ -270,6 +270,18 @@ class Pile {
             },
             "update_volume_field(SphereDistance)",
             update_volume_field<TF3, TF, TSphereDistance>);
+      } else if (TInfiniteCylinderDistance const* distance =
+                     dynamic_cast<TInfiniteCylinderDistance const*>(
+                         distance_list_[i].get())) {
+        runner_.launch(
+            num_nodes,
+            [&](U grid_size, U block_size) {
+              update_volume_field<<<grid_size, block_size>>>(
+                  *volume_grid, *distance, domain_min, resolution_list_[i],
+                  cell_size, num_nodes, 0, sign_list_[i]);
+            },
+            "update_volume_field(InfiniteCylinderDistance)",
+            update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
       } else {
         runner_.launch(
             num_nodes,
