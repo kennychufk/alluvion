@@ -2856,16 +2856,15 @@ class Runner {
       optimal_block_size_dict_[function_name] = std::stoul(elapsed_str.c_str());
     }
   };
-  void launch_create_fluid_block(U block_size, Variable<1, TF3>& particle_x,
-                                 U num_particles, U offset, int mode,
-                                 TF3 box_min, TF3 box_max) {
+  void launch_create_fluid_block(Variable<1, TF3>& particle_x, U num_particles,
+                                 U offset, int mode, TF3 box_min, TF3 box_max) {
     launch(
-        num_particles, block_size,
+        num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_block<TF3, TF><<<grid_size, block_size>>>(
               particle_x, num_particles, offset, mode, box_min, box_max);
         },
-        "create_fluid_block");
+        "create_fluid_block", create_fluid_block<TF3, TF>);
   }
   static U get_fluid_block_num_particles(int mode, TF3 box_min, TF3 box_max,
                                          TF particle_radius) {
@@ -2887,31 +2886,31 @@ class Runner {
                             steps_y, diameter);
     return n * steps_y;
   }
-  void launch_create_fluid_cylinder_sunflower(U block_size,
-                                              Variable<1, TF3>& particle_x,
+  void launch_create_fluid_cylinder_sunflower(Variable<1, TF3>& particle_x,
                                               U num_particles, TF radius,
                                               U num_particles_per_slice,
                                               TF slice_distance, TF y_min) {
     launch(
-        num_particles, block_size,
+        num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_cylinder_sunflower<TF3, TF><<<grid_size, block_size>>>(
               particle_x, num_particles, radius, num_particles_per_slice,
               slice_distance, y_min);
         },
-        "create_fluid_cylinder_sunflower");
+        "create_fluid_cylinder_sunflower",
+        create_fluid_cylinder_sunflower<TF3, TF>);
   }
 
-  void launch_create_fluid_cylinder(U block_size, Variable<1, TF3>& particle_x,
+  void launch_create_fluid_cylinder(Variable<1, TF3>& particle_x,
                                     U num_particles, U offset, TF radius,
                                     TF y_min, TF y_max) {
     launch(
-        num_particles, block_size,
+        num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_cylinder<TF3, TF><<<grid_size, block_size>>>(
               particle_x, num_particles, offset, radius, y_min, y_max);
         },
-        "create_fluid_cylinder");
+        "create_fluid_cylinder", create_fluid_cylinder<TF3, TF>);
   }
   void launch_compute_particle_boundary(
       dg::Distance<TF3, TF> const& virtual_dist,

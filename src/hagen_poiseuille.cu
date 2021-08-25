@@ -111,9 +111,9 @@ int main(void) {
   store.copy_cn<F>();
   store.map_graphical_pointers();
   runner.launch_create_fluid_cylinder_sunflower(
-      256, *solver.particle_x, initial_num_particles,
-      R - particle_radius * 2._F, num_particles_per_slice,
-      particle_radius * 2._F, cylinder_length * -0.5_F);
+      *solver.particle_x, initial_num_particles, R - particle_radius * 2._F,
+      num_particles_per_slice, particle_radius * 2._F,
+      cylinder_length * -0.5_F);
   store.unmap_graphical_pointers();
   solver.num_particles = initial_num_particles;
 
@@ -153,9 +153,8 @@ int main(void) {
   std::unique_ptr<Variable<1, U>> sample_num_neighbors(
       store.create<1, U>({num_samples}));
   runner.launch_create_fluid_cylinder_sunflower(
-      256, *sample_x, num_samples, R - particle_radius * 2._F,
-      num_samples_per_slice, cylinder_length / num_sample_slices,
-      cylinder_length * -0.5_F);
+      *sample_x, num_samples, R - particle_radius * 2._F, num_samples_per_slice,
+      cylinder_length / num_sample_slices, cylinder_length * -0.5_F);
   std::vector<F3> sample_x_host(num_samples);
   sample_x->get_bytes(sample_x_host.data());
   assert(sample_x_host[0].x == sample_x_host[2].z == 0);

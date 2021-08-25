@@ -192,15 +192,19 @@ void declare_pile(py::module& m, const char* name) {
                         reinterpret_cast<TF3*>(omega.mutable_data()));
           })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
-           py::arg("sign"), py::arg("thickness"), py::arg("collision_mesh"),
-           py::arg("mass"), py::arg("restitution"), py::arg("friction"),
-           py::arg("inertia_tensor"), py::arg("x"), py::arg("q"),
-           py::arg("display_mesh"))
+           py::arg("sign") = 1, py::arg("thickness") = 0,
+           py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
+           py::arg("restitution") = 1, py::arg("friction") = 0,
+           py::arg("inertia_tensor") = TF3{1, 1, 1},
+           py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
+           py::arg("display_mesh") = Mesh())
       .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
-           py::arg("resolution"), py::arg("sign"), py::arg("thickness"),
-           py::arg("collision_mesh"), py::arg("mass"), py::arg("restitution"),
-           py::arg("friction"), py::arg("inertia_tensor"), py::arg("x"),
-           py::arg("q"), py::arg("display_mesh"))
+           py::arg("resolution"), py::arg("sign") = 1, py::arg("thickness") = 0,
+           py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
+           py::arg("restitution") = 1, py::arg("friction") = 0,
+           py::arg("inertia_tensor") = TF3{1, 1, 1},
+           py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
+           py::arg("display_mesh") = Mesh())
       .def("build_grids", &TPile::build_grids)
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
@@ -635,19 +639,17 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def_readonly("launch_stat_dict", &TRunner::launch_stat_dict_)
       .def("summarize", &TRunner::summarize)
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
-           py::arg("block_size"), py::arg("particle_x"),
-           py::arg("num_particles"), py::arg("offset"), py::arg("mode"),
-           py::arg("box_min"), py::arg("box_max"))
+           py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
+           py::arg("mode"), py::arg("box_min"), py::arg("box_max"))
       .def("launch_create_fluid_cylinder_sunflower",
            &TRunner::launch_create_fluid_cylinder_sunflower,
-           py::arg("block_size"), py::arg("particle_x"),
-           py::arg("num_particles"), py::arg("radius"),
+           py::arg("particle_x"), py::arg("num_particles"), py::arg("radius"),
            py::arg("num_particles_per_slice"), py::arg("slice_distance"),
            py::arg("y_min"))
       .def("launch_create_fluid_cylinder",
-           &TRunner::launch_create_fluid_cylinder, py::arg("block_size"),
-           py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
-           py::arg("radius"), py::arg("y_min"), py::arg("y_max"))
+           &TRunner::launch_create_fluid_cylinder, py::arg("particle_x"),
+           py::arg("num_particles"), py::arg("offset"), py::arg("radius"),
+           py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
            &TRunner::launch_compute_particle_boundary)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
@@ -760,6 +762,21 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_vector4<float4, float>(m, "float4");
   declare_vector4<double4, double>(m, "double4");
 
+  // Mesh should be declared before Pile to allow Mesh() as default arguments
+  py::class_<Mesh>(m, "Mesh")
+      .def_readonly("vertices", &Mesh::vertices)
+      .def_readonly("normals", &Mesh::normals)
+      .def_readonly("texcoords", &Mesh::texcoords)
+      .def_readonly("faces", &Mesh::faces)
+      .def(py::init<>())
+      .def("set_box", &Mesh::set_box)
+      .def("set_uv_sphere", &Mesh::set_uv_sphere)
+      .def("set_cylinder", &Mesh::set_cylinder)
+      .def("set_obj", &Mesh::set_obj)
+      .def("calculate_normals", &Mesh::calculate_normals)
+      .def("translate", &Mesh::translate)
+      .def("clear", &Mesh::clear)
+      .def("export_obj", &Mesh::export_obj);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 
@@ -790,21 +807,6 @@ PYBIND11_MODULE(_alluvion, m) {
       .def_readwrite("grid_offset", &ConstiN::grid_offset)
       .def_readwrite("max_num_neighbors_per_particle",
                      &ConstiN::max_num_neighbors_per_particle);
-
-  py::class_<Mesh>(m, "Mesh")
-      .def_readonly("vertices", &Mesh::vertices)
-      .def_readonly("normals", &Mesh::normals)
-      .def_readonly("texcoords", &Mesh::texcoords)
-      .def_readonly("faces", &Mesh::faces)
-      .def(py::init<>())
-      .def("set_box", &Mesh::set_box)
-      .def("set_uv_sphere", &Mesh::set_uv_sphere)
-      .def("set_cylinder", &Mesh::set_cylinder)
-      .def("set_obj", &Mesh::set_obj)
-      .def("calculate_normals", &Mesh::calculate_normals)
-      .def("translate", &Mesh::translate)
-      .def("clear", &Mesh::clear)
-      .def("export_obj", &Mesh::export_obj);
 
   py::module m_dg = m.def_submodule("dg", "Discregrid");
 

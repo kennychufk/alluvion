@@ -84,7 +84,7 @@ int main(void) {
 
   store.copy_cn<F>();
   store.map_graphical_pointers();
-  runner.launch_create_fluid_block(256, *solver.particle_x, num_particles, 0,
+  runner.launch_create_fluid_block(*solver.particle_x, num_particles, 0,
                                    block_mode, block_min, block_max);
   store.unmap_graphical_pointers();
 
