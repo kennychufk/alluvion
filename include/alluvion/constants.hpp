@@ -16,11 +16,6 @@ constexpr T kPi = T(
 template <class T>
 constexpr T kFMax = std::numeric_limits<T>::max();
 
-constexpr U kPeirceM = 7;
-constexpr U kNumPhi = 2 * kPeirceM + 2;
-constexpr U kNumTheta = 4 * kPeirceM + 4;
-constexpr U kNumR = kPeirceM + 1;
-
 constexpr U kMaxNumCellsToSearch = 128;
 
 template <U MaxNumCellsToSearch>
@@ -37,11 +32,11 @@ struct Consti {
 template <typename TF>
 struct Const {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
-  TF kCosPhi[kNumPhi];
-  TF kSinPhi[kNumPhi];
-  TF kB[kNumPhi];
-  TF kR[kNumR];
-  TF kC[kNumR];
+  TF kCosPhi[dg::kNumPhi];
+  TF kSinPhi[dg::kNumPhi];
+  TF kB[dg::kNumPhi];
+  TF kR[dg::kNumR];
+  TF kC[dg::kNumR];
   TF kernel_radius;
   TF kernel_radius_sqr;
   TF cubic_kernel_k;
@@ -78,12 +73,12 @@ struct Const {
   TF wrap_max;
 
   void set_cubic_discretization_constants() {
-    constexpr auto kPeirceConst = dg::PeirceConst<TF, kPeirceM>();
-    std::memcpy(kCosPhi, &kPeirceConst.cosphi, sizeof(TF) * kNumPhi);
-    std::memcpy(kSinPhi, &kPeirceConst.sinphi, sizeof(TF) * kNumPhi);
-    std::memcpy(kB, &kPeirceConst.b, sizeof(TF) * kNumPhi);
-    std::memcpy(kR, &kPeirceConst.r, sizeof(TF) * kNumR);
-    std::memcpy(kC, &kPeirceConst.c, sizeof(TF) * kNumR);
+    constexpr auto kPeirceConst = dg::PeirceConst<TF>();
+    std::memcpy(kCosPhi, &kPeirceConst.cosphi, sizeof(TF) * dg::kNumPhi);
+    std::memcpy(kSinPhi, &kPeirceConst.sinphi, sizeof(TF) * dg::kNumPhi);
+    std::memcpy(kB, &kPeirceConst.b, sizeof(TF) * dg::kNumPhi);
+    std::memcpy(kR, &kPeirceConst.r, sizeof(TF) * dg::kNumR);
+    std::memcpy(kC, &kPeirceConst.c, sizeof(TF) * dg::kNumR);
   }
   void set_kernel_radius(TF h) {
     TF h2 = h * h;

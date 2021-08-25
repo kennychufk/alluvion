@@ -43,7 +43,7 @@ SCENARIO("testing volume field generation") {
             if (dist <= 0.0) return static_cast<F>(1.0);
             return cubic_kernel.W(dist) / cubic_kernel.W_zero();
           };
-          return PeirceQuadrature<F, kPeirceM>::integrate(integrand, r);
+          return PeirceQuadrature<F>::integrate(integrand, r);
         },
         false);
     WHEN("a device implementation is constructed") {

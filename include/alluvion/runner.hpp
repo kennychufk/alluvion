@@ -1095,17 +1095,17 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
     TF3 x = index_to_node_position(domain_min, resolution, cell_size, l);
     TF dist = distance_nodes(node_offset + l);
     TF sum = 0;
-    constexpr TF wi = 2 * kPi<TF> / kNumTheta;
-    for (U i = 0; i < kNumTheta; ++i) {
-      TF theta = 2 * kPi<TF> * (i + 1) / kNumTheta;
+    constexpr TF wi = 2 * kPi<TF> / dg::kNumTheta;
+    for (U i = 0; i < dg::kNumTheta; ++i) {
+      TF theta = 2 * kPi<TF> * (i + 1) / dg::kNumTheta;
       TF cos_theta = cos(theta);
       TF sin_theta = sin(theta);
-      for (U j = 0; j < kNumPhi; ++j) {
+      for (U j = 0; j < dg::kNumPhi; ++j) {
         TF3 unit_sphere_point{cn<TF>().kSinPhi[j] * cos_theta,
                               cn<TF>().kSinPhi[j] * sin_theta,
                               cn<TF>().kCosPhi[j]};
         TF wij = wi * cn<TF>().kB[j];
-        for (U k = 0; k < kNumR; ++k) {
+        for (U k = 0; k < dg::kNumR; ++k) {
           TF wijk = wij * cn<TF>().kC[k];
           TF3 integrand_parameter =
               cn<TF>().kernel_radius * cn<TF>().kR[k] * unit_sphere_point;
@@ -1138,11 +1138,12 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
   forThreadMappedToElement(num_nodes, [&](U l) {
     TF3 x = index_to_node_position(domain_min, resolution, cell_size, l);
     TF sum = 0;
-    for (U i = 0; i < kNumTheta; ++i) {
-      TF theta = 2 * kPi<TF> * (i + 1) / kNumTheta;
-      for (U j = 0; j < kNumPhi; ++j) {
-        for (U k = 0; k < kNumR; ++k) {
-          TF wijk = 2 * kPi<TF> * cn<TF>().kB[j] * cn<TF>().kC[k] / kNumTheta;
+    for (U i = 0; i < dg::kNumTheta; ++i) {
+      TF theta = 2 * kPi<TF> * (i + 1) / dg::kNumTheta;
+      for (U j = 0; j < dg::kNumPhi; ++j) {
+        for (U k = 0; k < dg::kNumR; ++k) {
+          TF wijk =
+              2 * kPi<TF> * cn<TF>().kB[j] * cn<TF>().kC[k] / dg::kNumTheta;
           TF3 integrand_parameter =
               cn<TF>().kernel_radius * cn<TF>().kR[k] *
               TF3{cn<TF>().kSinPhi[j] * cos(theta),
@@ -1230,7 +1231,6 @@ __device__ TF compute_volume_and_boundary_x_analytic(
   normal = rotate_using_quaternion(
       distance.gradient(local_xi, cn<TF>().kernel_radius) * sign, rigid_q);
   nl2 = length_sqr(normal);
-  // TODO: combine the following two lines into scalar * scalar * vector
   normal *= (nl2 > 0 ? rsqrt(nl2) : 0);
   *xi_bxj = (*d) * normal;
   *boundary_xj = x - (*xi_bxj);

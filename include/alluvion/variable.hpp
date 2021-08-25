@@ -96,9 +96,9 @@ class Variable {
               offset * sizeof(M));
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
-  void set_same(int value, U num_elements = -1, U offset = 0) {
-    if (num_elements < 0) num_elements = get_linear_shape();
-    U num_bytes = num_elements * sizeof(M);
+  void set_same(int value, I num_elements = -1, U offset = 0) {
+    if (num_elements < 0) num_elements = static_cast<I>(get_linear_shape());
+    U num_bytes = static_cast<U>(num_elements) * sizeof(M);
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
