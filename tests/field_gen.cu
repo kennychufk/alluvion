@@ -101,6 +101,8 @@ SCENARIO("testing volume field generation") {
         CHECK(device_volume_nodes_copied[l] ==
               doctest::Approx(grid.node_data()[1][l]));
       }
+      store.remove(*distance_nodes);
+      store.remove(*volume_nodes);
     }
   }
 }

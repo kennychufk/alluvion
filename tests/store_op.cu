@@ -28,6 +28,7 @@ SCENARIO("testing the store") {
         CHECK(result == 21);
       }
     }
+    store.remove(*var);
   }
   GIVEN("a store with a graphical variable") {
     Store store;
@@ -50,5 +51,6 @@ SCENARIO("testing the store") {
       }
     }
     store.unmap_graphical_pointers();
+    store.remove(*var);
   }
 }

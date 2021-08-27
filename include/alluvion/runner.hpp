@@ -2488,6 +2488,107 @@ __global__ void copy_kinematics_if_within_masked(
 }
 
 // rigid
+template <typename TQ, typename TF3, typename TF, typename TDistance>
+__global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
+                               Variable<1, U> num_contacts,
+                               Variable<1, Contact<TF3, TF>> contacts,
+                               TF mass_i, TF3 inertia_tensor_i, TF3 x_i,
+                               TF3 v_i, TQ q_i, TF3 omega_i, TF mass_j,
+                               TF3 inertia_tensor_j, TF3 x_j, TF3 v_j, TQ q_j,
+                               TF3 omega_j, TQ q_initial_j, TQ q_mat_j,
+                               TF3 x0_mat_j, TF restitution, TF friction,
+
+                               const TDistance distance, TF sign,
+
+                               U num_vertices
+
+) {
+  forThreadMappedToElement(num_vertices, [&](U vertex_i) {
+    Contact<TF3, TF> contact;
+    TF3 vertex_local = vertices_i(vertex_i);
+    TQ q_initial_conjugate_j = quaternion_conjugate(q_initial_j);
+
+    TF3 v1 = -1 * rotate_using_quaternion(x0_mat_j, q_initial_conjugate_j);
+    TF3 v2 = rotate_using_quaternion(
+                 x0_mat_j, hamilton_prod(q_j, quaternion_conjugate(q_mat_j))) +
+             x_j;
+    TQ R = hamilton_prod(hamilton_prod(q_initial_conjugate_j, q_mat_j),
+                         quaternion_conjugate(q_j));
+
+    contact.cp_i = rotate_using_quaternion(vertex_local, q_i) + x_i;
+    TF3 vertex_local_wrt_j =
+        rotate_using_quaternion(contact.cp_i - x_j, R) + v1;
+
+    TF dist = distance.signed_distance(vertex_local_wrt_j) * sign -
+              cn<TF>().contact_tolerance;
+    TF3 n = distance.gradient(vertex_local_wrt_j, static_cast<TF>(1e-3)) * sign;
+    n *= rsqrt(length_sqr(n));
+
+    TF3 cp = vertex_local_wrt_j - dist * n;
+
+    if (dist < 0) {
+      U contact_insert_index = atomicAdd(&num_contacts(0), 1);
+      if (contact_insert_index == cni.max_num_contacts) {
+        printf("Reached the max. no. of contacts\n");
+      }
+      contact.i = i;
+      contact.j = j;
+      TQ R_conjugate = quaternion_conjugate(R);
+      contact.cp_j = rotate_using_quaternion(cp, R_conjugate) + v2;
+      contact.n = rotate_using_quaternion(n, R_conjugate);
+
+      contact.friction = friction;
+
+      TF3 r_i = contact.cp_i - x_i;
+      TF3 r_j = contact.cp_j - x_j;
+
+      TF3 u_i = v_i + cross(omega_i, r_i);
+      TF3 u_j = v_j + cross(omega_j, r_j);
+
+      TF3 u_rel = u_i - u_j;
+      TF u_rel_n = dot(contact.n, u_rel);
+
+      contact.t = u_rel - u_rel_n * contact.n;
+      TF tl2 = length_sqr(contact.t);
+      if (tl2 > static_cast<TF>(1e-6)) {
+        contact.t = normalize(contact.t);
+      }
+
+      calculate_congruent_matrix(1 / inertia_tensor_i, q_i,
+                                 &(contact.iiwi_diag),
+                                 &(contact.iiwi_off_diag));
+      calculate_congruent_matrix(1 / inertia_tensor_j, q_j,
+                                 &(contact.iiwj_diag),
+                                 &(contact.iiwj_off_diag));
+
+      TF3 k_i_diag, k_i_off_diag;
+      TF3 k_j_diag, k_j_off_diag;
+      calculate_congruent_k(contact.cp_i - x_i, mass_i, contact.iiwi_diag,
+                            contact.iiwi_off_diag, &k_i_diag, &k_i_off_diag);
+      calculate_congruent_k(contact.cp_j - x_j, mass_j, contact.iiwj_diag,
+                            contact.iiwj_off_diag, &k_j_diag, &k_j_off_diag);
+      TF3 k_diag = k_i_diag + k_j_diag;
+      TF3 k_off_diag = k_i_off_diag + k_j_off_diag;
+
+      contact.nkninv =
+          1 / dot(contact.n, apply_congruent(contact.n, k_diag, k_off_diag));
+      contact.pmax =
+          1 / dot(contact.t, apply_congruent(contact.t, k_diag, k_off_diag)) *
+          dot(u_rel, contact.t);  // note: error-prone when the magnitude of
+                                  // tangent is small
+
+      TF goal_u_rel_n = 0;
+      if (u_rel_n < 0) {
+        goal_u_rel_n = -restitution * u_rel_n;
+      }
+
+      contact.goalu = goal_u_rel_n;
+      contact.impulse_sum = 0;
+      contacts(contact_insert_index) = contact;
+    }
+  });
+}
+
 template <typename TQ, typename TF3, typename TF>
 __global__ void collision_test(
     U i, U j, Variable<1, TF3> vertices_i, Variable<1, U> num_contacts,
@@ -3087,6 +3188,82 @@ class Runner {
               num_copied);
         },
         "copy_kinematics_if_between", copy_kinematics_if_between<TF3>);
+  }
+  void launch_collision_test(
+      dg::Distance<TF3, TF> const& virtual_dist,
+      Variable<1, TF> const& distance_nodes, U i, U j,
+      Variable<1, TF3>& vertices_i, Variable<1, U>& num_contacts,
+      Variable<1, Contact<TF3, TF>>& contacts, TF const& mass_i,
+      TF3 const& inertia_tensor_i, TF3 const& x_i, TF3 const& v_i,
+      TQ const& q_i, TF3 const& omega_i, TF mass_j, TF3 const& inertia_tensor_j,
+      TF3 const& x_j, TF3 const& v_j, TQ const& q_j, TF3 const& omega_j,
+      TQ const& q_initial_j, TQ const& q_mat_j, TF3 const& x0_mat_j,
+      TF restitution, TF friction,
+
+      TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+      TF3 const& cell_size, U node_offset, TF sign,
+
+      U num_vertices_i) {
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    if (TBoxDistance const* distance =
+            dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
+                x0_mat_j, restitution, friction, *distance, sign,
+                num_vertices_i);
+          },
+          "collision_test(BoxDistance)",
+          collision_test<TQ, TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
+                x0_mat_j, restitution, friction, *distance, sign,
+                num_vertices_i);
+          },
+          "collision_test(SphereDistance)",
+          collision_test<TQ, TF3, TF, TSphereDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
+                x0_mat_j, restitution, friction, *distance, sign,
+                num_vertices_i);
+          },
+          "collision_test(InfiniteCylinderDistance)",
+          collision_test<TQ, TF3, TF, TInfiniteCylinderDistance>);
+    } else {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
+                x0_mat_j, restitution, friction, distance_nodes, domain_min,
+                domain_max, resolution, cell_size, node_offset, sign,
+                num_vertices_i);
+          },
+          "collision_test", collision_test<TQ, TF3, TF>);
+    }
   }
 
   using LaunchRecord = std::pair<float, float>;

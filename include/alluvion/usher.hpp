@@ -27,22 +27,38 @@ struct Usher {
   std::unique_ptr<Variable<1, TF>> sample_density;
   std::unique_ptr<Variable<1, TF>> container_dist;
   std::unique_ptr<Variable<1, TF3>> container_normal;
+  Store& store;
   U num_ushers;
 
-  Usher(Store& store, U n)
-      : num_ushers(n),
-        drive_x(store.create<1, TF3>({n})),
-        drive_v(store.create<1, TF3>({n})),
-        drive_kernel_radius(store.create<1, TF>({n})),
-        drive_strength(store.create<1, TF>({n})),
-        neighbors(store.create<2, TQ>(
-            {n, store.get_cni().max_num_neighbors_per_particle})),
-        num_neighbors(store.create<1, U>({n})),
-        sample_x(store.create<1, TF3>({n})),
-        sample_v(store.create<1, TF3>({n})),
-        sample_density(store.create<1, TF>({n})),
-        container_dist(store.create<1, TF>({n})),
-        container_normal(store.create<1, TF3>({n})) {}
+  Usher(Store& store_arg, U n)
+      : store(store_arg),
+        num_ushers(n),
+        drive_x(store_arg.create<1, TF3>({n})),
+        drive_v(store_arg.create<1, TF3>({n})),
+        drive_kernel_radius(store_arg.create<1, TF>({n})),
+        drive_strength(store_arg.create<1, TF>({n})),
+        neighbors(store_arg.create<2, TQ>(
+            {n, store_arg.get_cni().max_num_neighbors_per_particle})),
+        num_neighbors(store_arg.create<1, U>({n})),
+        sample_x(store_arg.create<1, TF3>({n})),
+        sample_v(store_arg.create<1, TF3>({n})),
+        sample_density(store_arg.create<1, TF>({n})),
+        container_dist(store_arg.create<1, TF>({n})),
+        container_normal(store_arg.create<1, TF3>({n})) {}
+  virtual ~Usher() {
+    store.remove(*drive_x);
+    store.remove(*drive_v);
+    store.remove(*drive_kernel_radius);
+    store.remove(*drive_strength);
+
+    store.remove(*sample_x);
+    store.remove(*neighbors);
+    store.remove(*num_neighbors);
+    store.remove(*sample_v);
+    store.remove(*sample_density);
+    store.remove(*container_dist);
+    store.remove(*container_normal);
+  }
 
   void set(TF3 const* x, TF3 const* v, TF const* r, TF const* strength) {
     drive_x->set_bytes(x);

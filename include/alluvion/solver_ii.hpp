@@ -22,6 +22,7 @@ struct SolverIi : public Solver<TF> {
   using Base::pile;
   using Base::runner;
   using Base::sample_usher;
+  using Base::store;
   using Base::t;
   using Base::usher;
 
@@ -42,23 +43,36 @@ struct SolverIi : public Solver<TF> {
   using Base::particle_num_neighbors;
   using Base::pid;
   using Base::pid_length;
-  SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store,
+  SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
            U max_num_particles_arg, U3 grid_res, U num_ushers,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store, max_num_particles_arg, grid_res,
+      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, grid_res,
              num_ushers, enable_surface_tension_arg, enable_vorticity_arg,
              graphical),
-        particle_pressure(store.create<1, TF>({max_num_particles_arg})),
-        particle_last_pressure(store.create<1, TF>({max_num_particles_arg})),
-        particle_aii(store.create<1, TF>({max_num_particles_arg})),
-        particle_dii(store.create<1, TF3>({max_num_particles_arg})),
-        particle_dij_pj(store.create<1, TF3>({max_num_particles_arg})),
-        particle_sum_tmp(store.create<1, TF>({max_num_particles_arg})),
-        particle_adv_density(store.create<1, TF>({max_num_particles_arg})),
-        particle_pressure_accel(store.create<1, TF3>({max_num_particles_arg})),
-        particle_density_err(store.create<1, TF>({max_num_particles_arg})) {}
-
+        particle_pressure(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_last_pressure(
+            store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_aii(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_dii(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_dij_pj(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_sum_tmp(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_adv_density(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_pressure_accel(
+            store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_density_err(store_arg.create<1, TF>({max_num_particles_arg})) {
+  }
+  virtual ~SolverIi() {
+    store.remove(*particle_pressure);
+    store.remove(*particle_last_pressure);
+    store.remove(*particle_aii);
+    store.remove(*particle_dii);
+    store.remove(*particle_dij_pj);
+    store.remove(*particle_sum_tmp);
+    store.remove(*particle_adv_density);
+    store.remove(*particle_pressure_accel);
+    store.remove(*particle_density_err);
+  }
   template <U wrap, U gravitation>
   void step() {
     particle_force->set_zero();

@@ -1023,6 +1023,9 @@ inline __host__ __device__ float2 operator/(float b, float2 a) {
   return make_float2(b / a.x, b / a.y);
 }
 
+inline __host__ __device__ float3 operator/(float3 a, uint3 b) {
+  return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
+}
 inline __host__ __device__ float3 operator/(float3 a, float3 b) {
   return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
 }
@@ -1083,6 +1086,9 @@ inline __host__ __device__ double2 operator/(double b, double2 a) {
   return make_double2(b / a.x, b / a.y);
 }
 
+inline __host__ __device__ double3 operator/(double3 a, uint3 b) {
+  return make_double3(a.x / b.x, a.y / b.y, a.z / b.z);
+}
 inline __host__ __device__ double3 operator/(double3 a, double3 b) {
   return make_double3(a.x / b.x, a.y / b.y, a.z / b.z);
 }

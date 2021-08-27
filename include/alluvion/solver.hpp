@@ -11,51 +11,74 @@ struct Solver {
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
-  Solver(TRunner& runner_arg, TPile& pile_arg, Store& store,
+  Solver(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
          U max_num_particles_arg, U3 grid_res, U num_ushers = 0,
          bool enable_surface_tension_arg = false,
          bool enable_vorticity_arg = false, bool graphical = false)
       : max_num_particles(max_num_particles_arg),
+        store(store_arg),
         runner(runner_arg),
         pile(pile_arg),
-        usher(new Usher<TF>(store, num_ushers)),
+        usher(new Usher<TF>(store_arg, num_ushers)),
         dt(0),
         t(0),
-        particle_radius(store.get_cn<TF>().particle_radius),
+        particle_radius(store_arg.get_cn<TF>().particle_radius),
         next_emission_t(-1),
-        particle_x(graphical
-                       ? store.create_graphical<1, TF3>({max_num_particles_arg})
-                       : store.create<1, TF3>({max_num_particles_arg})),
-        particle_v(store.create<1, TF3>({max_num_particles_arg})),
-        particle_a(store.create<1, TF3>({max_num_particles_arg})),
-        particle_density(store.create<1, TF>({max_num_particles_arg})),
+        particle_x(
+            graphical
+                ? store_arg.create_graphical<1, TF3>({max_num_particles_arg})
+                : store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_v(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_a(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_density(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_boundary(
-            store.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
         particle_boundary_kernel(
-            store.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
         particle_force(
-            store.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
+            store_arg.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
         particle_torque(
-            store.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
-        particle_cfl_v2(store.create<1, TF>({max_num_particles_arg})),
+            store_arg.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
+        particle_cfl_v2(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_normal(enable_surface_tension_arg
-                            ? store.create<1, TF3>({max_num_particles_arg})
+                            ? store_arg.create<1, TF3>({max_num_particles_arg})
                             : new Variable<1, TF3>()),
         particle_omega(enable_vorticity_arg
-                           ? store.create<1, TF3>({max_num_particles_arg})
+                           ? store_arg.create<1, TF3>({max_num_particles_arg})
                            : new Variable<1, TF3>()),
         particle_angular_acceleration(
-            enable_vorticity_arg ? store.create<1, TF3>({max_num_particles_arg})
-                                 : new Variable<1, TF3>()),
-        pid(store.create<4, TQ>({grid_res.x, grid_res.y, grid_res.z,
-                                 store.get_cni().max_num_particles_per_cell})),
-        pid_length(store.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
-        particle_neighbors(store.create<2, TQ>(
+            enable_vorticity_arg
+                ? store_arg.create<1, TF3>({max_num_particles_arg})
+                : new Variable<1, TF3>()),
+        pid(store_arg.create<4, TQ>(
+            {grid_res.x, grid_res.y, grid_res.z,
+             store_arg.get_cni().max_num_particles_per_cell})),
+        pid_length(
+            store_arg.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
+        particle_neighbors(store_arg.create<2, TQ>(
             {max_num_particles_arg,
-             store.get_cni().max_num_neighbors_per_particle})),
-        particle_num_neighbors(store.create<1, U>({max_num_particles_arg})),
+             store_arg.get_cni().max_num_neighbors_per_particle})),
+        particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {}
+  virtual ~Solver() {
+    store.remove(*particle_x);
+    store.remove(*particle_v);
+    store.remove(*particle_a);
+    store.remove(*particle_density);
+    store.remove(*particle_boundary);
+    store.remove(*particle_boundary_kernel);
+    store.remove(*particle_force);
+    store.remove(*particle_torque);
+    store.remove(*particle_cfl_v2);
+    store.remove(*particle_normal);
+    store.remove(*particle_omega);
+    store.remove(*particle_angular_acceleration);
+    store.remove(*pid);
+    store.remove(*pid_length);
+    store.remove(*particle_neighbors);
+    store.remove(*particle_num_neighbors);
+  }
   void normalize(Variable<1, TF3> const* v,
                  Variable<1, TF>* particle_normalized_attr, TF lower_bound,
                  TF upper_bound) {
@@ -177,6 +200,7 @@ struct Solver {
   bool enable_vorticity;
   TF next_emission_t;
 
+  Store& store;
   TRunner& runner;
   TPile& pile;
   std::unique_ptr<Usher<TF>> usher;

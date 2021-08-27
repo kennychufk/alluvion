@@ -51,6 +51,7 @@ SCENARIO("testing index-to-node") {
           CHECK(device_position.y == doctest::Approx(host_position(1)));
           CHECK(device_position.z == doctest::Approx(host_position(2)));
         }
+        store.remove(*device_positions);
       }
     }
   }

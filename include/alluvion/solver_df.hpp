@@ -24,6 +24,7 @@ struct SolverDf : public Solver<TF> {
   using Base::pile;
   using Base::runner;
   using Base::sample_usher;
+  using Base::store;
   using Base::t;
   using Base::usher;
 
@@ -46,18 +47,24 @@ struct SolverDf : public Solver<TF> {
   using Base::pid_length;
 
   // TODO: get grid_res from store.get_cni()
-  SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store,
+  SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
            U max_num_particles_arg, U3 grid_res, U num_ushers = 0,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store, max_num_particles_arg, grid_res,
+      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, grid_res,
              num_ushers, enable_surface_tension_arg, enable_vorticity_arg,
              graphical),
-        particle_dfsph_factor(store.create<1, TF>({max_num_particles_arg})),
-        particle_kappa(store.create<1, TF>({max_num_particles_arg})),
-        particle_kappa_v(store.create<1, TF>({max_num_particles_arg})),
-        particle_density_adv(store.create<1, TF>({max_num_particles_arg})) {}
-
+        particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_kappa(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_density_adv(store_arg.create<1, TF>({max_num_particles_arg})) {
+  }
+  virtual ~SolverDf() {
+    store.remove(*particle_dfsph_factor);
+    store.remove(*particle_kappa);
+    store.remove(*particle_kappa_v);
+    store.remove(*particle_density_adv);
+  }
   template <U wrap, U gravitation>
   void step() {
     particle_force->set_zero();

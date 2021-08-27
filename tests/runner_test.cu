@@ -31,5 +31,6 @@ SCENARIO("testing the runner") {
         }
       }
     }
+    store.remove(*var);
   }
 }

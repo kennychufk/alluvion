@@ -34,12 +34,23 @@ class Pile {
     return new dg::MeshDistance<TF3, TF>(
         dg::TriangleMesh<TF>(dg_vertices, dg_faces));
   }
-  static std::vector<TF> construct_distance_grid(
-      dg::Distance<TF3, TF> const& distance, U3 const& resolution, TF margin,
-      TF sign, TF thickness, TF3& domain_min, TF3& domain_max, U& grid_size,
-      TF3& cell_size) {
+  static void calculate_grid_attributes(dg::Distance<TF3, TF> const& distance,
+                                        U3 const& resolution, TF margin,
+                                        TF3& domain_min, TF3& domain_max,
+                                        U& grid_size, TF3& cell_size) {
     domain_min = distance.get_aabb_min() - margin;
     domain_max = distance.get_aabb_max() + margin;
+    cell_size = (domain_max - domain_min) / resolution;
+    U nv = (resolution.x + 1) * (resolution.y + 1) * (resolution.z + 1);
+    U ne_x = (resolution.x + 0) * (resolution.y + 1) * (resolution.z + 1);
+    U ne_y = (resolution.x + 1) * (resolution.y + 0) * (resolution.z + 1);
+    U ne_z = (resolution.x + 1) * (resolution.y + 1) * (resolution.z + 0);
+    U ne = ne_x + ne_y + ne_z;
+    grid_size = nv + 2 * ne;
+  }
+  static std::vector<TF> construct_distance_grid(
+      dg::Distance<TF3, TF> const& distance, U3 const& resolution, TF margin,
+      TF sign, TF thickness, TF3 const& domain_min, TF3 const& domain_max) {
     dg::CubicLagrangeDiscreteGrid grid_host(
         dg::AlignedBox3r<TF>(
             dg::Vector3r<TF>(domain_min.x, domain_min.y, domain_min.z),
@@ -50,9 +61,7 @@ class Pile {
       return distance.signedDistance(xi);
     });
     std::vector<TF>& nodes = grid_host.node_data()[0];
-    grid_size = nodes.size();
     dg::Vector3r<TF> dg_cell_size = grid_host.cellSize();
-    cell_size = TF3{dg_cell_size(0), dg_cell_size(1), dg_cell_size(2)};
     return nodes;
   }
 
@@ -120,7 +129,26 @@ class Pile {
     store.get_cni().max_num_contacts = max_num_contacts;
   }
 
-  virtual ~Pile() {}
+  virtual ~Pile() {
+    for (U i = 0; i < get_size(); ++i) {
+      store_.remove(*distance_grids_[i]);
+      store_.remove(*volume_grids_[i]);
+      store_.remove(*collision_vertex_list_[i]);
+    }
+    // PinnedVariable
+    store_.remove(x_);
+    store_.remove(q_);
+    store_.remove(v_);
+    store_.remove(omega_);
+    store_.remove(contacts_pinned_);
+    store_.remove(num_contacts_pinned_);
+
+    store_.remove(*x_device_);
+    store_.remove(*v_device_);
+    store_.remove(*omega_device_);
+    store_.remove(*contacts_);
+    store_.remove(*num_contacts_);
+  }
   U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
         TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
         TF friction, TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
@@ -231,18 +259,14 @@ class Pile {
       TF3& cell_size = cell_size_list_[i];
       TF3& domain_min = domain_min_list_[i];
       TF3& domain_max = domain_max_list_[i];
-      std::vector<TF> nodes_host = construct_distance_grid(
-          *distance_list_[i], resolution_list_[i], margin, sign_list_[i],
-          thickness_list_[i], domain_min, domain_max, num_nodes, cell_size);
 
-      store_.remove(*distance_grids_[i]);
+      calculate_grid_attributes(*distance_list_[i], resolution_list_[i], margin,
+                                domain_min, domain_max, num_nodes, cell_size);
+
       store_.remove(*volume_grids_[i]);
-      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
       Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
-      distance_grids_[i].reset(distance_grid);
       volume_grids_[i].reset(volume_grid);
 
-      distance_grid->set_bytes(nodes_host.data());
       volume_grid->set_zero();
       using TBoxDistance = dg::BoxDistance<TF3, TF>;
       using TSphereDistance = dg::SphereDistance<TF3, TF>;
@@ -283,6 +307,14 @@ class Pile {
             "update_volume_field(InfiniteCylinderDistance)",
             update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
       } else {
+        store_.remove(*distance_grids_[i]);
+        Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+        distance_grids_[i].reset(distance_grid);
+
+        std::vector<TF> nodes_host = construct_distance_grid(
+            *distance_list_[i], resolution_list_[i], margin, sign_list_[i],
+            thickness_list_[i], domain_min, domain_max);
+        distance_grid->set_bytes(nodes_host.data());
         runner_.launch(
             num_nodes,
             [&](U grid_size, U block_size) {
@@ -403,19 +435,14 @@ class Pile {
     num_contacts_->set_zero();
     Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
     U num_vertices_i = vertices_i.get_linear_shape();
-    runner_.launch(
-        num_vertices_i,
-        [&](U grid_size, U block_size) {
-          collision_test<<<grid_size, block_size>>>(
-              i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
-              inertia_tensor_[i], x_(i), v_(i), q_(i), omega_(i), mass_[j],
-              inertia_tensor_[j], x_(j), v_(j), q_(j), omega_(j), q_initial_[j],
-              q_mat_[j], x_mat_[j], restitution_[i] * restitution_[j],
-              friction_[i] + friction_[j], *distance_grids_[j],
-              domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
-              cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
-        },
-        "collision_test", collision_test<TQ, TF3, TF>);
+    runner_.launch_collision_test(
+        *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
+        *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i), v_(i),
+        q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j), q_(j),
+        omega_(j), q_initial_[j], q_mat_[j], x_mat_[j],
+        restitution_[i] * restitution_[j], friction_[i] + friction_[j],
+        domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
+        cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
   }
   void find_contacts() {
     num_contacts_->set_zero();
@@ -424,20 +451,14 @@ class Pile {
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
         if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
-        runner_.launch(
-            num_vertices_i,
-            [&](U grid_size, U block_size) {
-              collision_test<<<grid_size, block_size>>>(
-                  i, j, vertices_i, *num_contacts_, *contacts_, mass_[i],
-                  inertia_tensor_[i], x_(i), v_(i), q_(i), omega_(i), mass_[j],
-                  inertia_tensor_[j], x_(j), v_(j), q_(j), omega_(j),
-                  q_initial_[j], q_mat_[j], x_mat_[j],
-                  restitution_[i] * restitution_[j],
-                  friction_[i] + friction_[j], *distance_grids_[j],
-                  domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
-                  cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
-            },
-            "collision_test", collision_test<TQ, TF3, TF>);
+        runner_.launch_collision_test(
+            *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
+            *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
+            v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j),
+            q_(j), omega_(j), q_initial_[j], q_mat_[j], x_mat_[j],
+            restitution_[i] * restitution_[j], friction_[i] + friction_[j],
+            domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
+            cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
       }
     }
   }
