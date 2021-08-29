@@ -42,4 +42,20 @@ void Store::unmap_graphical_pointers() {
   }
 }
 
+std::tuple<std::vector<U>, U, char> Store::get_alu_info(const char* filename) {
+  std::tuple<std::vector<U>, U, char> result;
+  std::vector<U>& shape = std::get<0>(result);
+  U& num_primitives_per_element = std::get<1>(result);
+  char& type_label = std::get<2>(result);
+  std::ifstream stream(filename, std::ios::binary);
+  while (true) {
+    U shape_item;
+    stream.read(reinterpret_cast<char*>(&shape_item), sizeof(U));
+    if (shape_item == 0) break;
+    shape.push_back(shape_item);
+  }
+  stream.read(reinterpret_cast<char*>(&num_primitives_per_element), sizeof(U));
+  stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
+  return result;
+}
 }  // namespace alluvion

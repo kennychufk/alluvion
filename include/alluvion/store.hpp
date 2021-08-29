@@ -136,6 +136,7 @@ class Store {
 
   void map_graphical_pointers();
   void unmap_graphical_pointers();
+  static std::tuple<std::vector<U>, U, char> get_alu_info(const char* filename);
 };
 }  // namespace alluvion
 
