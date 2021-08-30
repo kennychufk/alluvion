@@ -2484,8 +2484,7 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
                                TF mass_i, TF3 inertia_tensor_i, TF3 x_i,
                                TF3 v_i, TQ q_i, TF3 omega_i, TF mass_j,
                                TF3 inertia_tensor_j, TF3 x_j, TF3 v_j, TQ q_j,
-                               TF3 omega_j, TQ q_initial_j, TQ q_mat_j,
-                               TF3 x0_mat_j, TF restitution, TF friction,
+                               TF3 omega_j, TF restitution, TF friction,
 
                                const TDistance distance, TF sign,
 
@@ -2495,18 +2494,10 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
   forThreadMappedToElement(num_vertices, [&](U vertex_i) {
     Contact<TF3, TF> contact;
     TF3 vertex_local = vertices_i(vertex_i);
-    TQ q_initial_conjugate_j = quaternion_conjugate(q_initial_j);
-
-    TF3 v1 = -1 * rotate_using_quaternion(x0_mat_j, q_initial_conjugate_j);
-    TF3 v2 = rotate_using_quaternion(
-                 x0_mat_j, hamilton_prod(q_j, quaternion_conjugate(q_mat_j))) +
-             x_j;
-    TQ R = hamilton_prod(hamilton_prod(q_initial_conjugate_j, q_mat_j),
-                         quaternion_conjugate(q_j));
 
     contact.cp_i = rotate_using_quaternion(vertex_local, q_i) + x_i;
     TF3 vertex_local_wrt_j =
-        rotate_using_quaternion(contact.cp_i - x_j, R) + v1;
+        rotate_using_quaternion(contact.cp_i - x_j, quaternion_conjugate(q_j));
 
     TF dist = distance.signed_distance(vertex_local_wrt_j) * sign -
               cn<TF>().contact_tolerance;
@@ -2522,9 +2513,8 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
       }
       contact.i = i;
       contact.j = j;
-      TQ R_conjugate = quaternion_conjugate(R);
-      contact.cp_j = rotate_using_quaternion(cp, R_conjugate) + v2;
-      contact.n = rotate_using_quaternion(n, R_conjugate);
+      contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
+      contact.n = rotate_using_quaternion(n, q_j);
 
       contact.friction = friction;
 
@@ -2583,8 +2573,7 @@ __global__ void collision_test(
     U i, U j, Variable<1, TF3> vertices_i, Variable<1, U> num_contacts,
     Variable<1, Contact<TF3, TF>> contacts, TF mass_i, TF3 inertia_tensor_i,
     TF3 x_i, TF3 v_i, TQ q_i, TF3 omega_i, TF mass_j, TF3 inertia_tensor_j,
-    TF3 x_j, TF3 v_j, TQ q_j, TF3 omega_j, TQ q_initial_j, TQ q_mat_j,
-    TF3 x0_mat_j, TF restitution, TF friction,
+    TF3 x_j, TF3 v_j, TQ q_j, TF3 omega_j, TF restitution, TF friction,
 
     Variable<1, TF> distance_nodes, TF3 domain_min, TF3 domain_max,
     U3 resolution, TF3 cell_size, U node_offset, TF sign,
@@ -2595,18 +2584,10 @@ __global__ void collision_test(
   forThreadMappedToElement(num_vertices, [&](U vertex_i) {
     Contact<TF3, TF> contact;
     TF3 vertex_local = vertices_i(vertex_i);
-    TQ q_initial_conjugate_j = quaternion_conjugate(q_initial_j);
-
-    TF3 v1 = -1 * rotate_using_quaternion(x0_mat_j, q_initial_conjugate_j);
-    TF3 v2 = rotate_using_quaternion(
-                 x0_mat_j, hamilton_prod(q_j, quaternion_conjugate(q_mat_j))) +
-             x_j;
-    TQ R = hamilton_prod(hamilton_prod(q_initial_conjugate_j, q_mat_j),
-                         quaternion_conjugate(q_j));
 
     contact.cp_i = rotate_using_quaternion(vertex_local, q_i) + x_i;
     TF3 vertex_local_wrt_j =
-        rotate_using_quaternion(contact.cp_i - x_j, R) + v1;
+        rotate_using_quaternion(contact.cp_i - x_j, quaternion_conjugate(q_j));
 
     TF3 n;
     TF dist = collision_find_dist_normal(
@@ -2621,9 +2602,8 @@ __global__ void collision_test(
       }
       contact.i = i;
       contact.j = j;
-      TQ R_conjugate = quaternion_conjugate(R);
-      contact.cp_j = rotate_using_quaternion(cp, R_conjugate) + v2;
-      contact.n = rotate_using_quaternion(n, R_conjugate);
+      contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
+      contact.n = rotate_using_quaternion(n, q_j);
 
       contact.friction = friction;
 
@@ -3190,7 +3170,6 @@ class Runner {
       TF3 const& inertia_tensor_i, TF3 const& x_i, TF3 const& v_i,
       TQ const& q_i, TF3 const& omega_i, TF mass_j, TF3 const& inertia_tensor_j,
       TF3 const& x_j, TF3 const& v_j, TQ const& q_j, TF3 const& omega_j,
-      TQ const& q_initial_j, TQ const& q_mat_j, TF3 const& x0_mat_j,
       TF restitution, TF friction,
 
       TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
@@ -3208,9 +3187,8 @@ class Runner {
             collision_test<<<grid_size, block_size>>>(
                 i, j, vertices_i, num_contacts, contacts, mass_i,
                 inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
-                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
-                x0_mat_j, restitution, friction, *distance, sign,
-                num_vertices_i);
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                *distance, sign, num_vertices_i);
           },
           "collision_test(BoxDistance)",
           collision_test<TQ, TF3, TF, TBoxDistance>);
@@ -3222,9 +3200,8 @@ class Runner {
             collision_test<<<grid_size, block_size>>>(
                 i, j, vertices_i, num_contacts, contacts, mass_i,
                 inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
-                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
-                x0_mat_j, restitution, friction, *distance, sign,
-                num_vertices_i);
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                *distance, sign, num_vertices_i);
           },
           "collision_test(SphereDistance)",
           collision_test<TQ, TF3, TF, TSphereDistance>);
@@ -3237,9 +3214,8 @@ class Runner {
             collision_test<<<grid_size, block_size>>>(
                 i, j, vertices_i, num_contacts, contacts, mass_i,
                 inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
-                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
-                x0_mat_j, restitution, friction, *distance, sign,
-                num_vertices_i);
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                *distance, sign, num_vertices_i);
           },
           "collision_test(InfiniteCylinderDistance)",
           collision_test<TQ, TF3, TF, TInfiniteCylinderDistance>);
@@ -3250,10 +3226,9 @@ class Runner {
             collision_test<<<grid_size, block_size>>>(
                 i, j, vertices_i, num_contacts, contacts, mass_i,
                 inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
-                inertia_tensor_j, x_j, v_j, q_j, omega_j, q_initial_j, q_mat_j,
-                x0_mat_j, restitution, friction, distance_nodes, domain_min,
-                domain_max, resolution, cell_size, node_offset, sign,
-                num_vertices_i);
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                distance_nodes, domain_min, domain_max, resolution, cell_size,
+                node_offset, sign, num_vertices_i);
           },
           "collision_test", collision_test<TQ, TF3, TF>);
     }

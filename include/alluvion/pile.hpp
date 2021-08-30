@@ -72,10 +72,6 @@ class Pile {
   std::vector<TF> friction_;
   std::vector<TF3> inertia_tensor_;
 
-  std::vector<TF3> x_mat_;
-  std::vector<TQ> q_mat_;
-  std::vector<TQ> q_initial_;
-
   PinnedVariable<1, TF3> x_;
   std::vector<TF3> oldx_;
   PinnedVariable<1, TF3> v_;
@@ -158,10 +154,6 @@ class Pile {
     friction_.push_back(friction);
     inertia_tensor_.push_back(inertia_tensor);
 
-    x_mat_.push_back(TF3{0, 0, 0});
-    q_mat_.push_back(q);
-    q_initial_.push_back(q);
-
     oldx_.push_back(x);
     a_.push_back(TF3{0, 0, 0});
     force_.push_back(TF3{0, 0, 0});
@@ -208,10 +200,6 @@ class Pile {
     restitution_[i] = restitution;
     friction_[i] = friction;
     inertia_tensor_[i] = inertia_tensor;
-
-    x_mat_[i] = TF3{0, 0, 0};
-    q_mat_[i] = q;
-    q_initial_[i] = q;
 
     oldx_[i] = x;
     a_[i] = TF3{0, 0, 0};
@@ -439,10 +427,10 @@ class Pile {
         *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
         *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i), v_(i),
         q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j), q_(j),
-        omega_(j), q_initial_[j], q_mat_[j], x_mat_[j],
-        restitution_[i] * restitution_[j], friction_[i] + friction_[j],
-        domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
-        cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
+        omega_(j), restitution_[i] * restitution_[j],
+        friction_[i] + friction_[j], domain_min_list_[j], domain_max_list_[j],
+        resolution_list_[j], cell_size_list_[j], 0, sign_list_[j],
+        num_vertices_i);
   }
   void find_contacts() {
     num_contacts_->set_zero();
@@ -455,10 +443,10 @@ class Pile {
             *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
             *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
             v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j),
-            q_(j), omega_(j), q_initial_[j], q_mat_[j], x_mat_[j],
-            restitution_[i] * restitution_[j], friction_[i] + friction_[j],
-            domain_min_list_[j], domain_max_list_[j], resolution_list_[j],
-            cell_size_list_[j], 0, sign_list_[j], num_vertices_i);
+            q_(j), omega_(j), restitution_[i] * restitution_[j],
+            friction_[i] + friction_[j], domain_min_list_[j],
+            domain_max_list_[j], resolution_list_[j], cell_size_list_[j], 0,
+            sign_list_[j], num_vertices_i);
       }
     }
   }
