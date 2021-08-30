@@ -12,6 +12,7 @@ struct SolverIi : public Solver<TF> {
   using TRunner = Runner<TF>;
   using Base = Solver<TF>;
   using Base::cfl;
+  using Base::compute_all_boundaries;
   using Base::dt;
   using Base::enable_surface_tension;
   using Base::enable_vorticity;
@@ -95,43 +96,8 @@ struct SolverIi : public Solver<TF> {
           },
           "apply_axial_gravitation", apply_axial_gravitation<TF3>);
     }
-    pile.for_each_rigid(
-        [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
-            Variable<1, TF> const& distance_grid,
-            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
-            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
-            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign,
-            TF thickness) {
-          runner.launch_compute_particle_boundary(
-              distance, volume_grid, distance_grid, rigid_x, rigid_q,
-              boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, 0, sign, thickness, dt, *particle_x,
-              *particle_boundary, *particle_boundary_kernel, num_particles);
-        });
-    pid_length->set_zero();
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          update_particle_grid<<<grid_size, block_size>>>(
-              *particle_x, *pid, *pid_length, num_particles);
-        },
-        "update_particle_grid", update_particle_grid<TQ, TF3>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          make_neighbor_list<wrap><<<grid_size, block_size>>>(
-              *particle_x, *pid, *pid_length, *particle_neighbors,
-              *particle_num_neighbors, num_particles);
-        },
-        "make_neighbor_list", make_neighbor_list<wrap, TQ, TF3>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_density<<<grid_size, block_size>>>(
-              *particle_x, *particle_neighbors, *particle_num_neighbors,
-              *particle_density, *particle_boundary_kernel, num_particles);
-        },
-        "compute_density", compute_density<TQ, TF3, TF>);
+    compute_all_boundaries();
+    Base::template update_particle_neighbors<wrap>();
     if (usher->num_ushers > 0) {
       sample_usher();
     }

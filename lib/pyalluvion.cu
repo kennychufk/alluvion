@@ -466,6 +466,7 @@ void declare_solver(py::module& m, const char* name) {
            py::arg("exclusion_max") = TF3{-1, -1, -1})
       .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
            py::arg("box_max"))
+      .def("compute_all_boundaries", &TSolver::compute_all_boundaries)
       .def("update_particle_neighbors",
            &TSolver::template update_particle_neighbors<0>)
       .def("update_particle_neighbors_wrap1",
