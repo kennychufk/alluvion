@@ -1,6 +1,10 @@
 #ifndef ALLUVION_VARIABLE_HPP
 #define ALLUVION_VARIABLE_HPP
 
+#include <thrust/device_ptr.h>
+#include <thrust/functional.h>
+#include <thrust/transform.h>
+
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -90,15 +94,15 @@ class Variable {
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
-  void set_from(Variable<D, M> const& src, I num_elements = -1, U offset = 0) {
-    if (num_elements < 0) num_elements = static_cast<I>(src.get_linear_shape());
-    set_bytes(src.ptr_, static_cast<U>(num_elements) * sizeof(M),
-              offset * sizeof(M));
+  void set_from(Variable<D, M> const& src, U num_elements, U offset = 0) {
+    set_bytes(src.ptr_, num_elements * sizeof(M), offset * sizeof(M));
+  }
+  void set_from(Variable<D, M> const& src) {
+    set_from(src, src.get_linear_shape());
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
-  void set_same(int value, I num_elements = -1, U offset = 0) {
-    if (num_elements < 0) num_elements = static_cast<I>(get_linear_shape());
-    U num_bytes = static_cast<U>(num_elements) * sizeof(M);
+  void set_same(int value, U num_elements, U offset = 0) {
+    U num_bytes = num_elements * sizeof(M);
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
@@ -108,6 +112,15 @@ class Variable {
     }
     Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes, value);
   }
+  void set_same(int value) { set_same(value, get_linear_shape()); }
+  void scale(M multiplier, U num_elements, U offset = 0) {
+    using namespace thrust::placeholders;
+    thrust::transform(
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset, multiplier * _1);
+  }
+  void scale(M multiplier) { scale(multiplier, get_linear_shape()); }
 
   void write_file(const char* filename, U shape_outermost = 0) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);

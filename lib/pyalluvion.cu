@@ -118,11 +118,23 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
             variable.set_bytes(bytes.data(), bytes.size(), offset);
           },
           py::arg("bytes"), py::arg("offset") = 0)
-      .def("set_from", &VariableClass::set_from, py::arg("src"),
-           py::arg("num_elements") = -1, py::arg("offset") = 0)
+      .def("set_from",
+           py::overload_cast<VariableClass const&, U, U>(
+               &VariableClass::set_from),
+           py::arg("src"), py::arg("num_elements") = -1, py::arg("offset") = 0)
+      .def("set_from",
+           py::overload_cast<VariableClass const&>(&VariableClass::set_from),
+           py::arg("src"))
       .def("set_zero", &VariableClass::set_zero)
-      .def("set_same", &VariableClass::set_same, py::arg("value"),
-           py::arg("num_elements") = -1, py::arg("offset") = 0)
+      .def("set_same", py::overload_cast<int, U, U>(&VariableClass::set_same),
+           py::arg("value"), py::arg("num_elements") = -1,
+           py::arg("offset") = 0)
+      .def("set_same", py::overload_cast<int>(&VariableClass::set_same),
+           py::arg("value"))
+      .def("scale", py::overload_cast<M>(&VariableClass::scale))
+      .def("scale", py::overload_cast<M, U, U>(&VariableClass::scale),
+           py::arg("multiplier"), py::arg("num_elements"),
+           py::arg("offset") = 0)
       .def("get_type", &VariableClass::get_type)
       .def("get_num_primitives_per_element",
            &VariableClass::get_num_primitives_per_element)
