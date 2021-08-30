@@ -5,7 +5,6 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -2805,7 +2804,6 @@ class Runner {
   }
   virtual ~Runner() {
     summarize();
-    std::filesystem::create_directory(".alcache");
     std::stringstream filename_stream;
     filename_stream << ".alcache/";
     if (optimal_block_size_dict_.empty()) {
@@ -2935,6 +2933,11 @@ class Runner {
   }
   void save_stat(const char* filename) const {
     std::ofstream stream(filename, std::ios::trunc);
+    if (!stream) {
+      std::cerr << "Failed writing Runner statistics to " << filename
+                << std::endl;
+      return;
+    }
     for (auto const& item : launch_stat_dict_) {
       stream << item.first << ": ";
       stream << "[";
