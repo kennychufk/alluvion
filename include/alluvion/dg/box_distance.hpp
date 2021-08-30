@@ -23,7 +23,7 @@ class BoxDistance : public Distance<TF3, TF> {
     TF3 clipped_diff = fmax(diff, TF3{0});
     return length(clipped_diff) + min(max(diff.x, max(diff.y, diff.z)), TF{0});
   }
-  // TODO: make analytical
+  // finite difference gives more stable results
   __device__ TF3 gradient(TF3 const& x, TF scale) const {
     constexpr TF kEps = 0.00390625;
     TF step = scale * kEps;

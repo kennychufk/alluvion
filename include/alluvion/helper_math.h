@@ -1224,6 +1224,34 @@ inline __host__ __device__ uint4 max(uint4 a, uint4 b) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// copysign
+////////////////////////////////////////////////////////////////////////////////
+
+inline __host__ __device__ float2 copysign(float2 a, float2 b) {
+  return make_float2(copysign(a.x, b.x), copysign(a.y, b.y));
+}
+inline __host__ __device__ float3 copysign(float3 a, float3 b) {
+  return make_float3(copysign(a.x, b.x), copysign(a.y, b.y),
+                     copysign(a.z, b.z));
+}
+inline __host__ __device__ float4 copysign(float4 a, float4 b) {
+  return make_float4(copysign(a.x, b.x), copysign(a.y, b.y), copysign(a.z, b.z),
+                     copysign(a.w, b.w));
+}
+
+inline __host__ __device__ double2 copysign(double2 a, double2 b) {
+  return make_double2(copysign(a.x, b.x), copysign(a.y, b.y));
+}
+inline __host__ __device__ double3 copysign(double3 a, double3 b) {
+  return make_double3(copysign(a.x, b.x), copysign(a.y, b.y),
+                      copysign(a.z, b.z));
+}
+inline __host__ __device__ double4 copysign(double4 a, double4 b) {
+  return make_double4(copysign(a.x, b.x), copysign(a.y, b.y),
+                      copysign(a.z, b.z), copysign(a.w, b.w));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // lerp
 // - linear interpolation between a and b, based on value t in [0, 1] range
 ////////////////////////////////////////////////////////////////////////////////
