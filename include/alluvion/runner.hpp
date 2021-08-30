@@ -1499,9 +1499,7 @@ __global__ void compute_viscosity(
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
       da += d * cn<TF>().viscosity * cn<TF>().particle_mass /
             particle_density(p_j) *
-            dot(xixj, displacement_cubic_kernel_grad(xixj)) /
-            (length_sqr(xixj) +
-             static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+            dot(xixj, displacement_cubic_kernel_grad(xixj)) / length_sqr(xixj) *
             (v_i - particle_v(p_j));
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
@@ -1545,21 +1543,13 @@ __global__ void compute_viscosity(
 
         // compute forces for both sample point
         TF3 a1 = d * cn<TF>().boundary_viscosity * vol * dot(xix1, gradW1) /
-                 (length_sqr(xix1) +
-                  static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 (v_i - v1);
+                 length_sqr(xix1) * (v_i - v1);
         TF3 a2 = d * cn<TF>().boundary_viscosity * vol * dot(xix2, gradW2) /
-                 (length_sqr(xix2) +
-                  static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 (v_i - v2);
+                 length_sqr(xix2) * (v_i - v2);
         TF3 a3 = d * cn<TF>().boundary_viscosity * vol * dot(xix3, gradW3) /
-                 (length_sqr(xix3) +
-                  static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 (v_i - v3);
+                 length_sqr(xix3) * (v_i - v3);
         TF3 a4 = d * cn<TF>().boundary_viscosity * vol * dot(xix4, gradW4) /
-                 (length_sqr(xix4) +
-                  static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                 (v_i - v4);
+                 length_sqr(xix4) * (v_i - v4);
         da += a1 + a2 + a3 + a4;
 
         TF3 f1 = -cn<TF>().particle_mass * a1;
