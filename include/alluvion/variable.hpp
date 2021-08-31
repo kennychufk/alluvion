@@ -30,10 +30,12 @@ class Variable {
   // ==== numpy-related functions
   constexpr NumericType get_type() const {
     if (typeid(M) == typeid(float) || typeid(M) == typeid(float2) ||
-        typeid(M) == typeid(float3) || typeid(M) == typeid(float4))
+        typeid(M) == typeid(float3a) || typeid(M) == typeid(float3) ||
+        typeid(M) == typeid(float4))
       return NumericType::f32;
     if (typeid(M) == typeid(double) || typeid(M) == typeid(double2) ||
-        typeid(M) == typeid(double3) || typeid(M) == typeid(double4))
+        typeid(M) == typeid(double3a) || typeid(M) == typeid(double3) ||
+        typeid(M) == typeid(double4))
       return NumericType::f64;
     if (typeid(M) == typeid(I)) return NumericType::i32;
     if (typeid(M) == typeid(U)) return NumericType::u32;
@@ -52,10 +54,17 @@ class Variable {
     if (typeid(M) == typeid(double3)) return 3;
     if (typeid(M) == typeid(I3)) return 3;
     if (typeid(M) == typeid(U3)) return 3;
+    if (typeid(M) == typeid(float3a)) return 4;
+    if (typeid(M) == typeid(double3a)) return 4;
     if (typeid(M) == typeid(float4)) return 4;
     if (typeid(M) == typeid(double4)) return 4;
     if (typeid(M) == typeid(I4)) return 4;
     if (typeid(M) == typeid(U4)) return 4;
+    return 0;
+  }
+  constexpr U get_padding_per_element() const {
+    if (typeid(M) == typeid(float3a)) return 1;
+    if (typeid(M) == typeid(double3a)) return 1;
     return 0;
   }
   U get_num_primitives() const {

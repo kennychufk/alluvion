@@ -138,6 +138,7 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
       .def("get_type", &VariableClass::get_type)
       .def("get_num_primitives_per_element",
            &VariableClass::get_num_primitives_per_element)
+      .def("get_padding_per_element", &VariableClass::get_padding_per_element)
       .def("get_linear_shape", &VariableClass::get_linear_shape)
       .def("get_num_primitives", &VariableClass::get_num_primitives)
       .def("read_file", &VariableClass::read_file)
@@ -165,7 +166,7 @@ void declare_pinned_variable(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_pile(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
@@ -394,7 +395,7 @@ void declare_const(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_solver(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   using TSolver = Solver<TF>;
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
@@ -499,7 +500,7 @@ void declare_solver(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_solver_df(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TSolver = Solver<TF>;
   using TSolverDf = SolverDf<TF>;
@@ -533,7 +534,7 @@ void declare_solver_df(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_solver_ii(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TSolver = Solver<TF>;
   using TSolverIi = SolverIi<TF>;
@@ -585,7 +586,7 @@ void declare_solver_ii(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_usher(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   using TUsher = Usher<TF>;
   std::string class_name = std::string("Usher") + name;
   py::class_<TUsher>(m, class_name.c_str())
@@ -623,7 +624,7 @@ void declare_usher(py::module& m, const char* name) {
 
 template <typename TF>
 void declare_display_proxy(py::module& m, const char* name) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TDisplayProxy = DisplayProxy<TF>;
   using TSolverIi = SolverIi<TF>;
@@ -654,7 +655,7 @@ void declare_display_proxy(py::module& m, const char* name) {
 template <typename TF>
 py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   std::string class_name = std::string("Runner") + name;
   return py::class_<TRunner>(m, class_name.c_str())
@@ -740,11 +741,11 @@ PYBIND11_MODULE(_alluvion, m) {
       declare_runner<double>(m, "double");
 
   declare_variable<1, float>(m, store_class, &runner_float, nullptr, "1Dfloat");
-  declare_variable<1, float3>(m, store_class, &runner_float, nullptr,
-                              "1Dfloat3");
+  declare_variable<1, float3a>(m, store_class, &runner_float, nullptr,
+                               "1Dfloat3");
   declare_variable<2, float>(m, store_class, &runner_float, nullptr, "2Dfloat");
-  declare_variable<2, float3>(m, store_class, &runner_float, nullptr,
-                              "2Dfloat3");
+  declare_variable<2, float3a>(m, store_class, &runner_float, nullptr,
+                               "2Dfloat3");
   declare_variable<2, float4>(m, store_class, &runner_float, nullptr,
                               "2Dfloat4");
   declare_variable<4, float4>(m, store_class, &runner_float, nullptr,
@@ -754,10 +755,10 @@ PYBIND11_MODULE(_alluvion, m) {
                               "1Ddouble");
   declare_variable<2, double>(m, store_class, nullptr, &runner_double,
                               "2Ddouble");
-  declare_variable<1, double3>(m, store_class, nullptr, &runner_double,
-                               "1Ddouble3");
-  declare_variable<2, double3>(m, store_class, nullptr, &runner_double,
-                               "2Ddouble3");
+  declare_variable<1, double3a>(m, store_class, nullptr, &runner_double,
+                                "1Ddouble3");
+  declare_variable<2, double3a>(m, store_class, nullptr, &runner_double,
+                                "2Ddouble3");
   declare_variable<2, double4>(m, store_class, nullptr, &runner_double,
                                "2Ddouble4");
   declare_variable<4, double4>(m, store_class, nullptr, &runner_double,
@@ -768,8 +769,8 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_variable<3, uint>(m, store_class, &runner_float, &runner_double,
                             "3Duint");
 
-  declare_pinned_variable<1, float3>(m, "1Dfloat3");
-  declare_pinned_variable<1, double3>(m, "1Ddouble3");
+  declare_pinned_variable<1, float3a>(m, "1Dfloat3");
+  declare_pinned_variable<1, double3a>(m, "1Ddouble3");
   declare_pinned_variable<1, float4>(m, "1Dfloat4");
   declare_pinned_variable<1, double4>(m, "1Ddouble4");
 
@@ -780,8 +781,8 @@ PYBIND11_MODULE(_alluvion, m) {
       .value("u32", NumericType::u32)
       .value("undefined", NumericType::undefined);
 
-  declare_vector3<float3, float>(m, "float3");
-  declare_vector3<double3, double>(m, "double3");
+  declare_vector3<float3a, float>(m, "float3");
+  declare_vector3<double3a, double>(m, "double3");
   declare_vector3<int3, int>(m, "int3");
   declare_vector3<uint3, uint>(m, "uint3");
 
@@ -836,21 +837,21 @@ PYBIND11_MODULE(_alluvion, m) {
 
   py::module m_dg = m.def_submodule("dg", "Discregrid");
 
-  declare_distance<float3, float>(m_dg, "float");
-  declare_distance<double3, double>(m_dg, "double");
+  declare_distance<float3a, float>(m_dg, "float");
+  declare_distance<double3a, double>(m_dg, "double");
 
-  declare_sphere_distance<float3, float>(m_dg, "float");
-  declare_sphere_distance<double3, double>(m_dg, "double");
-  declare_box_distance<float3, float>(m_dg, "float");
-  declare_box_distance<double3, double>(m_dg, "double");
-  declare_cylinder_distance<float3, float>(m_dg, "float");
-  declare_cylinder_distance<double3, double>(m_dg, "double");
-  declare_infinite_cylinder_distance<float3, float>(m_dg, "float");
-  declare_infinite_cylinder_distance<double3, double>(m_dg, "double");
-  declare_capsule_distance<float3, float>(m_dg, "float");
-  declare_capsule_distance<double3, double>(m_dg, "double");
-  declare_mesh_distance<float3, float>(m_dg, "float");
-  declare_mesh_distance<double3, double>(m_dg, "double");
+  declare_sphere_distance<float3a, float>(m_dg, "float");
+  declare_sphere_distance<double3a, double>(m_dg, "double");
+  declare_box_distance<float3a, float>(m_dg, "float");
+  declare_box_distance<double3a, double>(m_dg, "double");
+  declare_cylinder_distance<float3a, float>(m_dg, "float");
+  declare_cylinder_distance<double3a, double>(m_dg, "double");
+  declare_infinite_cylinder_distance<float3a, float>(m_dg, "float");
+  declare_infinite_cylinder_distance<double3a, double>(m_dg, "double");
+  declare_capsule_distance<float3a, float>(m_dg, "float");
+  declare_capsule_distance<double3a, double>(m_dg, "double");
+  declare_mesh_distance<float3a, float>(m_dg, "float");
+  declare_mesh_distance<double3a, double>(m_dg, "double");
   declare_triangle_mesh<float>(m_dg, "float");
   declare_triangle_mesh<double>(m_dg, "double");
 }

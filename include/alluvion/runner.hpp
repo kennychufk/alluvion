@@ -34,30 +34,30 @@ template <typename TF3, typename TF>
 __device__ __host__ TF3 make_vector(TF x, TF y, TF z) = delete;
 
 template <>
-constexpr __device__ __host__ float3 make_vector<float3>(uint x, uint y,
-                                                         uint z) {
-  return float3{static_cast<float>(x), static_cast<float>(y),
-                static_cast<float>(z)};
+constexpr __device__ __host__ float3a make_vector<float3a>(uint x, uint y,
+                                                           uint z) {
+  return float3a{static_cast<float>(x), static_cast<float>(y),
+                 static_cast<float>(z)};
 }
 
 template <>
-constexpr __device__ __host__ double3 make_vector<double3>(uint x, uint y,
-                                                           uint z) {
-  return double3{static_cast<double>(x), static_cast<double>(y),
-                 static_cast<double>(z)};
+constexpr __device__ __host__ double3a make_vector<double3a>(uint x, uint y,
+                                                             uint z) {
+  return double3a{static_cast<double>(x), static_cast<double>(y),
+                  static_cast<double>(z)};
 }
 
 template <typename TF3, typename TF>
 __device__ TF3 make_vector(TF s) = delete;
 
 template <>
-inline __device__ float3 make_vector<float3>(float s) {
-  return make_float3(s);
+inline __device__ float3a make_vector<float3a>(float s) {
+  return make_float3a(s);
 }
 
 template <>
-inline __device__ double3 make_vector<double3>(double s) {
-  return make_double3(s);
+inline __device__ double3a make_vector<double3a>(double s) {
+  return make_double3a(s);
 }
 
 template <typename T>
@@ -94,21 +94,22 @@ inline __host__ T3 from_string(std::string const& s0, std::string const& s1,
                                std::string const& s2) = delete;
 
 template <>
-inline __host__ float3 from_string(std::string const& s0, std::string const& s1,
-                                   std::string const& s2) {
-  return float3{stof(s0), stof(s1), stof(s2)};
+inline __host__ float3a from_string(std::string const& s0,
+                                    std::string const& s1,
+                                    std::string const& s2) {
+  return float3a{stof(s0), stof(s1), stof(s2)};
 }
 
 template <>
-inline __host__ double3 from_string(std::string const& s0,
-                                    std::string const& s1,
-                                    std::string const& s2) {
-  return double3{stod(s0), stod(s1), stod(s2)};
+inline __host__ double3a from_string(std::string const& s0,
+                                     std::string const& s1,
+                                     std::string const& s2) {
+  return double3a{stod(s0), stod(s1), stod(s2)};
 }
 
 template <typename TF3>
 inline __device__ void get_orthogonal_vectors(TF3 vec, TF3* x, TF3* y) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   TF3 v{1, 0, 0};
   if (fabs(dot(v, vec)) > static_cast<TF>(0.999)) {
     v.x = 0;
@@ -154,7 +155,7 @@ inline __device__ TQ hamilton_prod(TQ q0, TQ q1) {
 template <typename TQ, typename TF3>
 constexpr __device__ __host__ void calculate_congruent_matrix(
     TF3 v, TQ q, TF3* congruent_diag, TF3* congruent_off_diag) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   TF qm00 = 1 - 2 * (q.y * q.y + q.z * q.z);
   TF qm01 = 2 * (q.x * q.y - q.z * q.w);
   TF qm02 = 2 * (q.x * q.z + q.y * q.w);
@@ -178,7 +179,7 @@ constexpr __device__ __host__ void calculate_congruent_matrix(
 template <typename TQ, typename TF3>
 constexpr __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
                                                       TF3 torque) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   TF3 inertia_inverse = 1 / inertia;
   TF qm00 = 1 - 2 * (q.y * q.y + q.z * q.z);
   TF qm01 = 2 * (q.x * q.y - q.z * q.w);
@@ -216,7 +217,7 @@ constexpr __host__ TF3 calculate_angular_acceleration(TF3 inertia, TQ q,
 
 template <typename TQ, typename TF3>
 constexpr __host__ TQ calculate_dq(TF3 omega, TQ q) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   return static_cast<TF>(0.5) *
          TQ{
              omega.x * q.w + omega.y * q.z - omega.z * q.y,   // x
@@ -317,7 +318,7 @@ constexpr __device__ TF d2_cubic_kernel(TF r2) {
 
 template <typename TF3>
 constexpr __device__
-    std::conditional_t<std::is_same_v<TF3, float3>, float, double>
+    std::conditional_t<std::is_same_v<TF3, float3a>, float, double>
     displacement_cubic_kernel(TF3 d) {
   return d2_cubic_kernel(length_sqr(d));
 }
@@ -342,7 +343,7 @@ constexpr __device__ TF displacement_cubic_kernel(TF3 d, TF h) {
 
 template <typename TF3>
 inline __device__ TF3 displacement_cubic_kernel_grad(TF3 d) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   TF rl2 = length_sqr(d);
   TF rl = sqrt(rl2);
   TF q = rl / cn<TF>().kernel_radius;
@@ -367,8 +368,9 @@ inline __device__ TF distance_adhesion_kernel(TF r2) {
 }
 
 template <typename TF3>
-inline __device__ std::conditional_t<std::is_same_v<TF3, float3>, float, double>
-displacement_adhesion_kernel(TF3 d) {
+inline __device__
+    std::conditional_t<std::is_same_v<TF3, float3a>, float, double>
+    displacement_adhesion_kernel(TF3 d) {
   return distance_adhesion_kernel(length_sqr(d));
 }
 
@@ -391,8 +393,9 @@ inline __device__ TF distance_cohesion_kernel(TF r2) {
 }
 
 template <typename TF3>
-inline __device__ std::conditional_t<std::is_same_v<TF3, float3>, float, double>
-displacement_cohesion_kernel(TF3 d) {
+inline __device__
+    std::conditional_t<std::is_same_v<TF3, float3a>, float, double>
+    displacement_cohesion_kernel(TF3 d) {
   return distance_cohesion_kernel(length_sqr(d));
 }
 
@@ -407,7 +410,7 @@ inline __device__ TI3 wrap_ipos_y(TI3 ipos) {
 }
 template <typename TF3>
 inline __device__ TF3 wrap_y(TF3 v) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   if (v.y >= cn<TF>().wrap_max) {
     v.y -= cn<TF>().wrap_length;
   } else if (v.y < cn<TF>().wrap_min) {
@@ -605,7 +608,7 @@ template <typename TF3>
 constexpr __device__ TF3 index_to_node_position(TF3 const& domain_min,
                                                 U3 const& resolution,
                                                 TF3 const& cell_size, U l) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   TF3 x;
   U nv = (resolution.x + 1) * (resolution.y + 1) * (resolution.z + 1);
   U ne_x = (resolution.x + 0) * (resolution.y + 1) * (resolution.z + 1);
@@ -1306,7 +1309,7 @@ __device__ TF collision_find_dist_normal(Variable<1, TF>* distance_nodes,
 // fluid neighbor list
 template <typename TF3>
 __device__ I3 get_ipos(TF3 x) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   return make_int3(floor(x / cn<TF>().kernel_radius)) - cni.grid_offset;
 }
 
@@ -1322,7 +1325,7 @@ __global__ void update_particle_grid(Variable<1, TF3> particle_x,
                                      Variable<4, TQ> pid,
                                      Variable<3, U> pid_length,
                                      U num_particles) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     I3 ipos = get_ipos(x_i);
@@ -1351,7 +1354,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
                                    Variable<2, TQ> sample_neighbors,
                                    Variable<1, U> sample_num_neighbors,
                                    U num_samples) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF3 x = sample_x(p_i);
     I3 ipos = get_ipos(x);
@@ -1390,7 +1393,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
 template <typename TF3>
 __global__ void clear_acceleration(Variable<1, TF3> particle_a,
                                    U num_particles) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   forThreadMappedToElement(num_particles,
                            [&](U p_i) { particle_a(p_i) = cn<TF>().gravity; });
 }
@@ -1399,7 +1402,7 @@ template <typename TF3>
 __global__ void apply_axial_gravitation(Variable<1, TF3> particle_a,
                                         Variable<1, TF3> particle_x,
                                         U num_particles) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
+  typedef std::conditional_t<std::is_same_v<TF3, float3a>, float, double> TF;
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     particle_a(p_i) =
@@ -2771,7 +2774,7 @@ __global__ void scale(Variable<1, TF> original, Variable<1, TF> scaled,
 template <typename TF>
 class Runner {
  public:
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   Runner() : default_block_size_(256) {
     Allocator::abort_if_error(cudaEventCreate(&abs_start_));

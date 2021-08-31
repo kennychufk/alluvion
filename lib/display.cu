@@ -272,9 +272,9 @@ GLuint Display::create_monochrome_texture(unsigned char const *texture_data,
 MeshBuffer Display::create_mesh_buffer(Mesh const &mesh) {
   U num_indices = mesh.faces.size() * 3;
   MeshBuffer mesh_buffer(
-      GraphicalAllocator::allocate_static_array_buffer<float3>(
+      GraphicalAllocator::allocate_static_array_buffer<float3a>(
           mesh.vertices.size(), mesh.vertices.data()),
-      GraphicalAllocator::allocate_static_array_buffer<float3>(
+      GraphicalAllocator::allocate_static_array_buffer<float3a>(
           mesh.normals.size(), mesh.normals.data()),
       GraphicalAllocator::allocate_static_array_buffer<float2>(
           mesh.texcoords.size(), mesh.texcoords.data()),

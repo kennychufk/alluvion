@@ -1,6 +1,16 @@
 #ifndef ALLUVION_DATA_TYPE_HPP
 #define ALLUVION_DATA_TYPE_HPP
 
+#include <cuda_runtime.h>
+
+struct float3a {
+  float x, y, z, _;
+};
+
+struct double3a {
+  double x, y, z, _;
+};
+
 namespace alluvion {
 using I = int;
 using I2 = int2;
