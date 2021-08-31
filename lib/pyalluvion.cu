@@ -192,6 +192,17 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly(
           "num_contacts",
           [](TPile const& pile) { return pile.num_contacts_.get(); })
+      .def_property_readonly(
+          "collision_vertex_list",
+          [](TPile const& pile) {
+            std::vector<Variable<1, TF3> const*> result;
+            result.reserve(pile.collision_vertex_list_.size());
+            for (std::unique_ptr<Variable<1, TF3>> const& collision_vertex :
+                 pile.collision_vertex_list_) {
+              result.push_back(collision_vertex.get());
+            }
+            return result;
+          })
       .def_static(
           "read",
           [](const char* filename, U num_rigids, py::array_t<unsigned char> x,

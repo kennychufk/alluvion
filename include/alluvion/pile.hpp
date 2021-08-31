@@ -183,7 +183,7 @@ class Pile {
     Variable<1, TF3>* collision_vertices_var =
         store_.create<1, TF3>({static_cast<U>(collision_mesh.vertices.size())});
     collision_vertex_list_.emplace_back(collision_vertices_var);
-    collision_vertices_var->set_bytes(collision_mesh.vertices.data());
+    cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
     reallocate_kinematics_on_pinned();
     v_(get_size() - 1) = TF3{0, 0, 0};
@@ -233,7 +233,7 @@ class Pile {
         store_.create<1, TF3>({static_cast<U>(collision_mesh.vertices.size())});
     store_.remove(*collision_vertex_list_[i]);
     collision_vertex_list_[i].reset(collision_vertices_var);
-    collision_vertices_var->set_bytes(collision_mesh.vertices.data());
+    cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
     v_(get_size() - 1) = TF3{0, 0, 0};
     x_(get_size() - 1) = x;
@@ -534,6 +534,19 @@ class Pile {
       grid_copy.push_back(*grid);
     }
     return grid_copy;
+  }
+  static void cast_vertices(Variable<1, TF3>& vertex_var,
+                            VertexList const& vertices) {
+    if constexpr (std::is_same_v<TF3, float3>) {
+      vertex_var.set_bytes(vertices.data());
+    } else if constexpr (std::is_same_v<TF3, double3>) {
+      std::vector<TF3> converted_vertices;
+      converted_vertices.reserve(vertices.size());
+      for (float3 const& vertex : vertices) {
+        converted_vertices.push_back(TF3{vertex.x, vertex.y, vertex.z});
+      }
+      vertex_var.set_bytes(converted_vertices.data());
+    }
   }
   glm::mat4 get_matrix(U i) const {
     TQ const& q = q_(i);
