@@ -27,20 +27,19 @@ Display* Store::get_display() { return display_.get(); }
 bool Store::has_display() const { return static_cast<bool>(display_); }
 void Store::map_graphical_pointers() {
   GraphicalAllocator::map(resource_array_);
+
   for (auto& entry : graphical_resource_dict_) {
     UniqueGraphicalResource& unique_resource = entry.second;
     unique_resource.set_mapped_pointer(
         GraphicalAllocator::get_mapped_pointer(unique_resource.res_));
-    unique_resource.create_texture();
   }
 }
 void Store::unmap_graphical_pointers() {
+  GraphicalAllocator::unmap(resource_array_);
   for (auto& entry : graphical_resource_dict_) {
     UniqueGraphicalResource& unique_resource = entry.second;
-    unique_resource.destroy_texture();
     unique_resource.set_mapped_pointer(nullptr);
   }
-  GraphicalAllocator::unmap(resource_array_);
 }
 
 std::tuple<std::vector<U>, U, char> Store::get_alu_info(const char* filename) {

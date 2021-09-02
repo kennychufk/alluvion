@@ -48,7 +48,7 @@ class Store {
     if (var->ptr_) {
       pointer_dict_.emplace(std::piecewise_construct,
                             std::forward_as_tuple(var->ptr_),
-                            std::forward_as_tuple(var->ptr_, var->tex_));
+                            std::forward_as_tuple(var->ptr_));
     }
     return var;
   }
@@ -107,9 +107,7 @@ class Store {
     GraphicalVariable<D, M>* var = new GraphicalVariable<D, M>(shape);
     graphical_resource_dict_.emplace(
         std::piecewise_construct, std::forward_as_tuple(var->vbo_),
-        std::forward_as_tuple(var->vbo_, var->res_, &(var->ptr_), &(var->tex_),
-                              var->get_num_bytes(),
-                              create_channel_format_desc<M>()));
+        std::forward_as_tuple(var->vbo_, var->res_, &(var->ptr_)));
     update_resource_array();
     return var;
   }

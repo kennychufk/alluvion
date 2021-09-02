@@ -307,9 +307,9 @@ class Pile {
             num_nodes,
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, distance_grid->get_tex(), domain_min,
-                  domain_max, resolution_list_[i], cell_size, num_nodes, 0,
-                  sign_list_[i], thickness_list_[i]);
+                  *volume_grid, *distance_grid, domain_min, domain_max,
+                  resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
+                  thickness_list_[i]);
             },
             "update_volume_field", update_volume_field<TF3, TF>);
       }

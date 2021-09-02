@@ -15,18 +15,16 @@
 #include "alluvion/allocator.hpp"
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
-#include "alluvion/texture.hpp"
 
 namespace alluvion {
 template <U D, typename M>
 class Variable {
  public:
-  Variable() : ptr_(nullptr), tex_(0) {}
+  Variable() : ptr_(nullptr) {}
   Variable(const Variable& var) = default;
-  Variable(std::array<U, D> const& shape) : ptr_(nullptr), tex_(0) {
+  Variable(std::array<U, D> const& shape) : ptr_(nullptr) {
     std::copy(std::begin(shape), std::end(shape), std::begin(shape_));
     Allocator::allocate<M>(&ptr_, get_linear_shape());
-    tex_ = Allocator::create_texture<M>(ptr_, get_num_bytes());
   }
   virtual ~Variable() {}
   // ==== numpy-related functions
@@ -83,12 +81,10 @@ class Variable {
     return std::accumulate(std::begin(shape_), std::end(shape_), 1,
                            std::multiplies<U>());
   }
-  size_t get_num_bytes() const {
-    return static_cast<size_t>(get_linear_shape()) * sizeof(M);
-  }
-  void get_bytes(void* dst, size_t num_bytes, size_t offset = 0) const {
+  U get_num_bytes() const { return get_linear_shape() * sizeof(M); }
+  void get_bytes(void* dst, U num_bytes, U offset = 0) const {
     if (num_bytes == 0) return;
-    size_t byte_offset = offset * sizeof(M);
+    U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
       std::cerr << "retrieving more than allocated" << std::endl;
       abort();
@@ -96,9 +92,9 @@ class Variable {
     Allocator::copy(dst, static_cast<char*>(ptr_) + byte_offset, num_bytes);
   }
   void get_bytes(void* dst) const { get_bytes(dst, get_num_bytes()); }
-  void set_bytes(void const* src, size_t num_bytes, size_t offset = 0) {
+  void set_bytes(void const* src, U num_bytes, U offset = 0) {
     if (num_bytes == 0) return;
-    size_t byte_offset = offset * sizeof(M);
+    U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
       std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
                 << " " << get_num_bytes() << std::endl;
@@ -107,18 +103,17 @@ class Variable {
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
   void set_bytes(void const* src) { set_bytes(src, get_num_bytes()); }
-  void set_from(Variable<D, M> const& src, U num_elements, size_t offset = 0) {
-    set_bytes(src.ptr_, static_cast<size_t>(num_elements) * sizeof(M),
-              offset * sizeof(M));
+  void set_from(Variable<D, M> const& src, U num_elements, U offset = 0) {
+    set_bytes(src.ptr_, num_elements * sizeof(M), offset * sizeof(M));
   }
   void set_from(Variable<D, M> const& src) {
     set_from(src, src.get_linear_shape());
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
-  void set_same(int value, U num_elements, size_t offset = 0) {
-    size_t num_bytes = static_cast<size_t>(num_elements) * sizeof(M);
+  void set_same(int value, U num_elements, U offset = 0) {
+    U num_bytes = num_elements * sizeof(M);
     if (num_bytes == 0) return;
-    size_t byte_offset = offset * sizeof(M);
+    U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
       std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
                 << " " << get_num_bytes() << std::endl;
@@ -127,7 +122,7 @@ class Variable {
     Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes, value);
   }
   void set_same(int value) { set_same(value, get_linear_shape()); }
-  void scale(M multiplier, U num_elements, size_t offset = 0) {
+  void scale(M multiplier, U num_elements, U offset = 0) {
     using namespace thrust::placeholders;
     thrust::transform(
         thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
@@ -157,7 +152,7 @@ class Variable {
     char type_label = numeric_type_to_label(get_type());
     stream.write(reinterpret_cast<const char*>(&type_label), sizeof(char));
     U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
-    size_t num_bytes = static_cast<size_t>(linear_shape) * sizeof(M);
+    U num_bytes = linear_shape * sizeof(M);
     std::vector<M> host_copy(linear_shape);
     get_bytes(host_copy.data(), num_bytes);
     stream.write(reinterpret_cast<const char*>(host_copy.data()), num_bytes);
@@ -205,7 +200,7 @@ class Variable {
     }
     char type_label;
     stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
-    size_t num_bytes = static_cast<size_t>(linear_shape) * sizeof(M);
+    U num_bytes = linear_shape * sizeof(M);
     std::vector<M> host_buffer(linear_shape);
 
     if (type_label == numeric_type_to_label(get_type())) {
@@ -248,8 +243,6 @@ class Variable {
     if (numeric_type == NumericType::u32) return 'u';
     return '!';
   }
-
-  Texture<D, M> get_tex() const { return Texture<D, M>(tex_, shape_); }
 
   constexpr __device__ M& operator()(U i) {
     return *(static_cast<M*>(ptr_) + i);
@@ -295,7 +288,6 @@ class Variable {
 
   U shape_[D];
   void* ptr_;
-  cudaTextureObject_t tex_;
 };
 
 }  // namespace alluvion

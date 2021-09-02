@@ -178,7 +178,7 @@ struct SolverDf : public Solver<TF> {
           num_particles,
           [&](U grid_size, U block_size) {
             apply_axial_gravitation<<<grid_size, block_size>>>(
-                *particle_a, particle_x->get_tex(), num_particles);
+                *particle_a, *particle_x, num_particles);
           },
           "apply_axial_gravitation", apply_axial_gravitation<TF3>);
     }
@@ -201,16 +201,15 @@ struct SolverDf : public Solver<TF> {
           },
           "compute_surface_tension", compute_surface_tension<TQ, TF3, TF>);
     }
+
     runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {
           compute_viscosity<<<grid_size, block_size>>>(
-              particle_x->get_tex(), particle_v->get_tex(),
-              particle_density->get_tex(), particle_neighbors->get_tex(),
-              particle_num_neighbors->get_tex(), *particle_a, *particle_force,
-              *particle_torque, particle_boundary->get_tex(),
-              pile.x_device_->get_tex(), pile.v_device_->get_tex(),
-              pile.omega_device_->get_tex(), num_particles);
+              *particle_x, *particle_v, *particle_density, *particle_neighbors,
+              *particle_num_neighbors, *particle_a, *particle_force,
+              *particle_torque, *particle_boundary, *pile.x_device_,
+              *pile.v_device_, *pile.omega_device_, num_particles);
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
 
