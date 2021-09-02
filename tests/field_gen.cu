@@ -85,8 +85,9 @@ SCENARIO("testing volume field generation") {
           num_nodes,
           [&](U grid_size, U block_size) {
             update_volume_field<<<grid_size, block_size>>>(
-                *volume_nodes, *distance_nodes, domain_min, domain_max,
-                resolution, cell_size, num_nodes, 0, sign, map_thickness);
+                *volume_nodes, distance_nodes->get_tex(), domain_min,
+                domain_max, resolution, cell_size, num_nodes, 0, sign,
+                map_thickness);
           },
           "update_volume_field", update_volume_field<F3, F>);
 
