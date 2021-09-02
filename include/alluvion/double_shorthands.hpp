@@ -3,12 +3,11 @@
 
 #include <glad/glad.h>
 // glad first
-#include "alluvion/data_type.hpp"
 
 namespace alluvion {
 using F = double;
 using F2 = double2;
-using F3 = double3a;
+using F3 = double3;
 using F4 = double4;
 using Q = double4;
 __device__ __host__ constexpr F operator"" _F(long double a) {

@@ -14,8 +14,7 @@ SCENARIO("testing the store") {
   GIVEN("a store with a variable") {
     Store store;
     std::unique_ptr<Variable<1, F3>> var(store.create<1, F3>({2}));
-    REQUIRE(var->get_num_primitives() ==
-            2 * var->get_num_primitives_per_element());
+    REQUIRE(var->get_num_primitives() == 6);
     WHEN("setting from host") {
       std::vector<F> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
       var->set_bytes(v.data(), v.size() * sizeof(F));
@@ -37,8 +36,7 @@ SCENARIO("testing the store") {
     std::unique_ptr<GraphicalVariable<1, F3>> var(
         store.create_graphical<1, F3>({2}));
     store.map_graphical_pointers();
-    REQUIRE(var->get_num_primitives() ==
-            2 * var->get_num_primitives_per_element());
+    REQUIRE(var->get_num_primitives() == 6);
     WHEN("setting from host") {
       std::vector<F> v{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
       var->set_bytes(v.data(), v.size() * sizeof(F));

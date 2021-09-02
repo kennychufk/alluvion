@@ -8,7 +8,7 @@
 namespace alluvion {
 template <typename TF>
 struct SolverDf : public Solver<TF> {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;

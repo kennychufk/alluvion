@@ -17,7 +17,7 @@ namespace alluvion {
 template <typename TF>
 class DisplayProxy {
  public:
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   DisplayProxy(Display* display) : display_(display) {}
   GLuint create_colormap_viridis() {
@@ -135,7 +135,7 @@ class DisplayProxy {
         },
         {std::make_tuple(
              reinterpret_cast<GraphicalVariable<1, TF3> const&>(x).vbo_, 3,
-             attribute_type, sizeof(TF) * 4),
+             attribute_type, 0),
          std::make_tuple(
              reinterpret_cast<GraphicalVariable<1, TF> const&>(attr).vbo_, 1,
              attribute_type, 0)},
@@ -229,8 +229,8 @@ class DisplayProxy {
          "point_lights[1].linear", "point_lights[1].quadratic",
          "point_lights[1].ambient", "point_lights[1].diffuse",
          "point_lights[1].specular"},
-        {std::make_tuple(0, 3, GL_FLOAT, sizeof(float) * 4),
-         std::make_tuple(0, 3, GL_FLOAT, sizeof(float) * 4)},
+        {std::make_tuple(0, 3, GL_FLOAT, 0),
+         std::make_tuple(0, 3, GL_FLOAT, 0)},
         [&pile](ShadingProgram& program, Display& display) {
           glm::mat4 const& projection_matrix =
               display.camera_.getProjectionMatrix();
@@ -303,12 +303,10 @@ class DisplayProxy {
 
               glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.vertex);
               glEnableVertexAttribArray(0);
-              glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 4,
-                                    0);
+              glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
               glBindBuffer(GL_ARRAY_BUFFER, mesh_buffer.normal);
               glEnableVertexAttribArray(1);
-              glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 4,
-                                    0);
+              glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
               glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh_buffer.index);
               glDrawElements(GL_TRIANGLES, mesh_buffer.num_indices,
                              GL_UNSIGNED_INT, 0);
@@ -320,7 +318,7 @@ class DisplayProxy {
   }
   void run() { return display_->run(); }
   void draw() { return display_->draw(); }
-  void set_camera(float3a camera_pos, float3a center) {
+  void set_camera(float3 camera_pos, float3 center) {
     display_->camera_.setEye(camera_pos.x, camera_pos.y, camera_pos.z);
     display_->camera_.setCenter(center.x, center.y, center.z);
     display_->camera_.update();

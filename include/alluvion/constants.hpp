@@ -31,7 +31,7 @@ struct Consti {
 
 template <typename TF>
 struct Const {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   TF kCosPhi[dg::kNumPhi];
   TF kSinPhi[dg::kNumPhi];
   TF kB[dg::kNumPhi];

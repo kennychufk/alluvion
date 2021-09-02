@@ -39,7 +39,7 @@ int main(void) {
   U max_num_contacts = 512;
   Pile<F> pile(store, runner, max_num_contacts);
   Mesh cube_mesh;
-  cube_mesh.set_box(float3a{4, 3, 1.5}, 4);
+  cube_mesh.set_box(float3{4, 3, 1.5}, 4);
   Mesh sphere_mesh;
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);

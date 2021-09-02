@@ -16,7 +16,7 @@ namespace alluvion {
 template <typename TF>
 class Pile {
  private:
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3a, double3a> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TRunner = Runner<TF>;
   static dg::MeshDistance<TF3, TF>* construct_mesh_distance(
@@ -537,12 +537,12 @@ class Pile {
   }
   static void cast_vertices(Variable<1, TF3>& vertex_var,
                             VertexList const& vertices) {
-    if constexpr (std::is_same_v<TF3, float3a>) {
+    if constexpr (std::is_same_v<TF3, float3>) {
       vertex_var.set_bytes(vertices.data());
-    } else if constexpr (std::is_same_v<TF3, double3a>) {
+    } else if constexpr (std::is_same_v<TF3, double3>) {
       std::vector<TF3> converted_vertices;
       converted_vertices.reserve(vertices.size());
-      for (float3a const& vertex : vertices) {
+      for (float3 const& vertex : vertices) {
         converted_vertices.push_back(TF3{vertex.x, vertex.y, vertex.z});
       }
       vertex_var.set_bytes(converted_vertices.data());

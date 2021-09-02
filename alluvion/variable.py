@@ -27,25 +27,14 @@ def get_func(self, shape=None):
     self.get_bytes(dst.view(np.ubyte))
     if self.get_num_primitives_per_element() == 1:
         return dst.reshape(shape)
-    reshaped = dst.reshape(*shape, -1)
-    padding = self.get_padding_per_element()
-    if (padding > 0):
-        reshaped = reshaped[..., :(self.get_num_primitives_per_element() -
-                                   padding)]
-    return reshaped
+    else:
+        return dst.reshape(*shape, -1)
 
 
 def set_func(self, src, offset=0):
     dtype = self.type_enum_to_dtype()
     if src.dtype != dtype:
         src = src.astype(dtype)
-    padding = self.get_padding_per_element()
-    if (padding > 0):
-        num_primitives = self.get_num_primitives_per_element()
-        src = src.reshape(-1, num_primitives - padding)
-        padded = np.empty((src.shape[0], num_primitives), dtype=dtype)
-        padded[..., :(num_primitives - padding)] = src
-        src = padded
     self.set_bytes(src.view(np.ubyte), offset)
 
 
