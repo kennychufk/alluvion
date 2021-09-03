@@ -20,6 +20,7 @@ struct Solver {
         runner(runner_arg),
         pile(pile_arg),
         usher(new Usher<TF>(store_arg, num_ushers)),
+        initial_dt(0),
         dt(0),
         t(0),
         particle_radius(store_arg.get_cn<TF>().particle_radius),
@@ -107,6 +108,10 @@ struct Solver {
     if (enable_vorticity) {
       particle_omega->set_zero();
     }
+  }
+  virtual void reset_t() {
+    t = 0;
+    dt = initial_dt;
   }
   void emit_single(TF3 const& x, TF3 const& v) {
     if (t < next_emission_t || num_particles == max_num_particles) return;
@@ -207,6 +212,7 @@ struct Solver {
   U num_particles;
   TF t;
   TF dt;
+  TF initial_dt;
   TF max_dt;
   TF min_dt;
   TF cfl;

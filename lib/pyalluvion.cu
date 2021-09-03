@@ -409,6 +409,7 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("num_particles", &TSolver::num_particles)
       .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
+      .def_readwrite("initial_dt", &TSolver::initial_dt)
       .def_readwrite("max_dt", &TSolver::max_dt)
       .def_readwrite("min_dt", &TSolver::min_dt)
       .def_readwrite("cfl", &TSolver::cfl)
@@ -476,6 +477,7 @@ void declare_solver(py::module& m, const char* name) {
            py::overload_cast<Variable<1, TF> const*, Variable<1, TF>*, TF, TF>(
                &TSolver::normalize))
       .def("reset_solving_var", &TSolver::reset_solving_var)
+      .def("reset_t", &TSolver::reset_t)
       .def("emit_single", &TSolver::emit_single, py::arg("x"), py::arg("v"))
       .def("emit_circle", &TSolver::emit_circle, py::arg("center"),
            py::arg("v"), py::arg("radius"), py::arg("num_emission"))
