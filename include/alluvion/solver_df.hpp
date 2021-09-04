@@ -13,13 +13,10 @@ struct SolverDf : public Solver<TF> {
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   using Base = Solver<TF>;
-  using Base::cfl;
   using Base::compute_all_boundaries;
   using Base::dt;
   using Base::enable_surface_tension;
   using Base::enable_vorticity;
-  using Base::max_dt;
-  using Base::min_dt;
   using Base::num_particles;
   using Base::particle_radius;
   using Base::pile;
@@ -27,6 +24,7 @@ struct SolverDf : public Solver<TF> {
   using Base::sample_usher;
   using Base::store;
   using Base::t;
+  using Base::update_dt;
   using Base::usher;
 
   using Base::particle_a;
@@ -58,8 +56,9 @@ struct SolverDf : public Solver<TF> {
         particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),
-        particle_density_adv(store_arg.create<1, TF>({max_num_particles_arg})) {
-  }
+        particle_density_adv(store_arg.create<1, TF>({max_num_particles_arg})),
+        density_change_tolerance(1e-3),
+        density_error_tolerance(1e-3) {}
   virtual ~SolverDf() {
     store.remove(*particle_dfsph_factor);
     store.remove(*particle_kappa);
@@ -122,11 +121,10 @@ struct SolverDf : public Solver<TF> {
         "compute_velocity_of_density_change",
         compute_velocity_of_density_change<TQ, TF3, TF>);
 
-    TF avg_density_err = std::numeric_limits<TF>::max();
-    constexpr TF kMaxError = 1e-3;
-    U num_divergence_solve_iteration = 0;
-    while (num_divergence_solve_iteration < 1 ||
-           avg_density_err > kMaxError / dt) {
+    mean_density_change = std::numeric_limits<TF>::max();
+    num_divergence_solve = 0;
+    while (num_divergence_solve < 1 ||
+           mean_density_change > density_change_tolerance / dt) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -152,9 +150,9 @@ struct SolverDf : public Solver<TF> {
           },
           "compute_divergence_solve_density_error",
           compute_divergence_solve_density_error<TQ, TF3, TF>);
-      avg_density_err =
+      mean_density_change =
           TRunner::sum(*particle_density_adv, num_particles) / num_particles;
-      ++num_divergence_solve_iteration;
+      ++num_divergence_solve;
     }
     runner.launch(
         num_particles,
@@ -247,20 +245,7 @@ struct SolverDf : public Solver<TF> {
           },
           "drive_linear", drive_linear<TF3, TF>);
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          calculate_cfl_v2<<<grid_size, block_size>>>(
-              *particle_v, *particle_a, *particle_cfl_v2, dt, num_particles);
-        },
-        "calculate_cfl_v2", calculate_cfl_v2<TF3, TF>);
-    TF particle_max_v2 = TRunner::max(*particle_cfl_v2, num_particles);
-    TF pile_max_v2 = pile.calculate_cfl_v2();
-    TF max_v2 = max(particle_max_v2, pile_max_v2);
-    dt = cfl * ((particle_radius * 2) / sqrt(max_v2));
-    dt = max(min(dt, max_dt), min_dt);
-
-    // update_dt
+    update_dt();
 
     runner.launch(
         num_particles,
@@ -303,9 +288,10 @@ struct SolverDf : public Solver<TF> {
               *pile.omega_device_, dt, num_particles);
         },
         "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
-    avg_density_err = std::numeric_limits<TF>::max();
-    U num_pressure_solve_iteration = 0;
-    while (num_pressure_solve_iteration < 2 || avg_density_err > kMaxError) {
+    mean_density_error = std::numeric_limits<TF>::max();
+    num_density_solve = 0;
+    while (num_density_solve < 2 ||
+           mean_density_error > density_error_tolerance) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -330,11 +316,11 @@ struct SolverDf : public Solver<TF> {
           },
           "compute_pressure_solve_density_error",
           compute_pressure_solve_density_error<TQ, TF3, TF>);
-      avg_density_err =
+      mean_density_error =
           TRunner::sum(*particle_density_adv, num_particles) / num_particles -
           1;  // TODO: add variable to store *particle_density_adv - 1
               // (better numerical precision)
-      ++num_pressure_solve_iteration;
+      ++num_density_solve;
     }
     runner.launch(
         num_particles,
@@ -377,6 +363,15 @@ struct SolverDf : public Solver<TF> {
   std::unique_ptr<Variable<1, TF>> particle_kappa;
   std::unique_ptr<Variable<1, TF>> particle_kappa_v;
   std::unique_ptr<Variable<1, TF>> particle_density_adv;
+
+  TF density_change_tolerance;
+  TF density_error_tolerance;
+
+  // report
+  U num_divergence_solve;
+  U num_density_solve;
+  TF mean_density_change;
+  TF mean_density_error;
 };
 }  // namespace alluvion
 

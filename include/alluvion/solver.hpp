@@ -113,6 +113,20 @@ struct Solver {
     t = 0;
     dt = initial_dt;
   }
+  virtual void update_dt() {
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          calculate_cfl_v2<<<grid_size, block_size>>>(
+              *particle_v, *particle_a, *particle_cfl_v2, dt, num_particles);
+        },
+        "calculate_cfl_v2", calculate_cfl_v2<TF3, TF>);
+    particle_max_v2 = TRunner::max(*particle_cfl_v2, num_particles);
+    pile_max_v2 = pile.calculate_cfl_v2();
+    max_v2 = max(particle_max_v2, pile_max_v2);
+    cfl_dt = cfl * ((particle_radius * 2) / sqrt(max_v2));
+    dt = max(min(cfl_dt, max_dt), min_dt);
+  }
   void emit_single(TF3 const& x, TF3 const& v) {
     if (t < next_emission_t || num_particles == max_num_particles) return;
     particle_x->set_bytes(&x, sizeof(TF3), sizeof(TF3) * num_particles);
@@ -220,6 +234,12 @@ struct Solver {
   bool enable_surface_tension;
   bool enable_vorticity;
   TF next_emission_t;
+
+  // report
+  TF particle_max_v2;
+  TF pile_max_v2;
+  TF max_v2;
+  TF cfl_dt;
 
   Store& store;
   TRunner& runner;

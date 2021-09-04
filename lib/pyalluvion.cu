@@ -406,6 +406,10 @@ void declare_solver(py::module& m, const char* name) {
            py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("max_num_particles", &TSolver::max_num_particles)
+      .def_readonly("particle_max_v2", &TSolver::particle_max_v2)
+      .def_readonly("pile_max_v2", &TSolver::pile_max_v2)
+      .def_readonly("max_v2", &TSolver::max_v2)
+      .def_readonly("cfl_dt", &TSolver::cfl_dt)
       .def_readwrite("num_particles", &TSolver::num_particles)
       .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
@@ -514,6 +518,14 @@ void declare_solver_df(py::module& m, const char* name) {
            py::arg("max_num_particles"), py::arg("grid_res"),
            py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+      .def_readonly("num_divergence_solve", &TSolverDf::num_divergence_solve)
+      .def_readonly("num_density_solve", &TSolverDf::num_density_solve)
+      .def_readonly("mean_density_change", &TSolverDf::mean_density_change)
+      .def_readonly("mean_density_error", &TSolverDf::mean_density_error)
+      .def_readwrite("density_change_tolerance",
+                     &TSolverDf::density_change_tolerance)
+      .def_readwrite("density_error_tolerance",
+                     &TSolverDf::density_error_tolerance)
       .def_property_readonly("particle_dfsph_factor",
                              [](TSolverDf const& solver) {
                                return solver.particle_dfsph_factor.get();
@@ -548,6 +560,10 @@ void declare_solver_ii(py::module& m, const char* name) {
            py::arg("max_num_particles"), py::arg("grid_res"),
            py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+      .def_readonly("num_density_solve", &TSolverIi::num_density_solve)
+      .def_readonly("mean_density_error", &TSolverIi::mean_density_error)
+      .def_readwrite("density_error_tolerance",
+                     &TSolverIi::density_error_tolerance)
       .def_property_readonly("particle_pressure",
                              [](TSolverIi const& solver) {
                                return solver.particle_pressure.get();
