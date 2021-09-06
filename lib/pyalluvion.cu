@@ -496,6 +496,7 @@ void declare_solver(py::module& m, const char* name) {
       .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
            py::arg("box_max"))
       .def("compute_all_boundaries", &TSolver::compute_all_boundaries)
+      .def("sample_all_boundaries", &TSolver::sample_all_boundaries)
       .def("update_particle_neighbors",
            &TSolver::template update_particle_neighbors<0>)
       .def("update_particle_neighbors_wrap1",
@@ -702,6 +703,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def("launch_sample_density", &TRunner::launch_sample_density)
       .def("launch_copy_kinematics_if_within",
            &TRunner::launch_copy_kinematics_if_within)
       .def("launch_copy_kinematics_if_within_masked",

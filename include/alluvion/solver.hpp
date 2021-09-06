@@ -195,6 +195,24 @@ struct Solver {
               *particle_boundary, *particle_boundary_kernel, num_particles);
         });
   }
+  void sample_all_boundaries(Variable<1, TF3>& sample_x,
+                             Variable<2, TQ>& sample_boundary,
+                             Variable<2, TQ>& sample_boundary_kernel,
+                             U num_samples) {
+    pile.for_each_rigid(
+        [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+            Variable<1, TF> const& distance_grid,
+            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign,
+            TF thickness) {
+          runner.launch_compute_particle_boundary(
+              distance, volume_grid, distance_grid, rigid_x, rigid_q,
+              boundary_id, domain_min, domain_max, resolution, cell_size,
+              num_nodes, 0, sign, thickness, dt, sample_x, sample_boundary,
+              sample_boundary_kernel, num_samples);
+        });
+  }
   template <U wrap>
   void update_particle_neighbors() {
     pid_length->set_zero();

@@ -1477,6 +1477,29 @@ __global__ void compute_density(Variable<1, TF3> particle_x,
   });
 }
 
+template <typename TQ, typename TF3, typename TF>
+__global__ void sample_position_density(Variable<1, TF3> sample_x,
+                                        Variable<2, TQ> sample_neighbors,
+                                        Variable<1, U> sample_num_neighbors,
+                                        Variable<1, TF> sample_density,
+                                        Variable<2, TQ> sample_boundary_kernel,
+                                        U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF density = 0;
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      TF3 xixj;
+      extract_displacement(sample_neighbors(p_i, neighbor_id), xixj);
+      density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
+    }
+    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
+      density += sample_boundary_kernel(boundary_id, p_i).w;
+    }
+    sample_density(p_i) = density * cn<TF>().density0;
+  });
+}
+
 // Viscosity_Standard
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_viscosity(
@@ -3127,6 +3150,21 @@ class Runner {
               num_samples);
         },
         "sample_fluid", sample_fluid<TQ, TF3, TF, TQuantity>);
+  }
+  void launch_sample_density(Variable<1, TF3>& sample_x,
+                             Variable<2, TQ>& sample_neighbors,
+                             Variable<1, U>& sample_num_neighbors,
+                             Variable<1, TF>& sample_density,
+                             Variable<2, TQ>& sample_boundary_kernel,
+                             U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          sample_position_density<<<grid_size, block_size>>>(
+              sample_x, sample_neighbors, sample_num_neighbors, sample_density,
+              sample_boundary_kernel, num_samples);
+        },
+        "sample_position_density", sample_position_density<TQ, TF3, TF>);
   }
   void launch_copy_kinematics_if_within(
       Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
