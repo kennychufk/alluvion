@@ -83,13 +83,20 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
   using VariableClass = Variable<D, M>;
   using GraphicalVariableClass = GraphicalVariable<D, M>;
   std::string create_func_name = std::string("create") + name;
+  std::string remove_func_name = std::string("remove") + name;
   store_class.def(create_func_name.c_str(), &Store::create<D, M>,
                   py::return_value_policy::take_ownership);
+  store_class.def(remove_func_name.c_str(),
+                  py::overload_cast<Variable<D, M>&>(&Store::remove<D, M>));
   std::string create_graphical_func_name =
       std::string("create_graphical") + name;
+  std::string remove_graphical_func_name =
+      std::string("remove_graphical") + name;
   store_class.def(create_graphical_func_name.c_str(),
                   &Store::create_graphical<D, M>,
                   py::return_value_policy::take_ownership);
+  store_class.def(remove_graphical_func_name.c_str(),
+                  &Store::remove_graphical<D, M>);
 
   if (runner_float_class != nullptr)
     runner_float_class->def_static("sum", &Runner<float>::template sum<D, M>,

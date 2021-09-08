@@ -46,9 +46,7 @@ class Depot(Store):
                 dtype=None):
         if isinstance(shape, int):
             shape = [shape]
-        dim = len(shape)
-        numeric_type_str = self.dtype_to_string(dtype)
-        variable_postfix = f"{dim}D{numeric_type_str}{n if n>1 else ''}"
+        variable_postfix = self.get_variable_postfix(len(shape), dtype, n)
         create_str = "create_graphical" if is_graphical else "create"
         variable_prefix = "Graphical" if is_graphical else ""
         create_func = getattr(super(), f"{create_str}{variable_postfix}")
@@ -69,6 +67,16 @@ class Depot(Store):
                       dtype=None):
         return self.coat(self.create(shape, n, dtype))
 
+    def remove(self, var):
+        coated = self.coat(var)
+        variable_postfix = self.get_variable_postfix(
+            dim=len(var.get_shape()),
+            dtype=coated.type_enum_to_dtype(),
+            n=var.get_num_primitives_per_element())
+        remove_str = "remove_graphical" if coated.is_graphical else "remove"
+        remove_func = getattr(super(), f"{remove_str}{variable_postfix}")
+        remove_func(var)
+
     def dtype_to_string(self, dtype):
         if dtype is None:
             dtype = self.default_dtype
@@ -81,6 +89,9 @@ class Depot(Store):
         if dtype == np.int32:
             return 'int'
         raise NotImplementedError(f'{dtype} not yet implemented.')
+
+    def get_variable_postfix(self, dim, dtype, n):
+        return f"{dim}D{self.dtype_to_string(dtype)}{n if n>1 else ''}"
 
     @classmethod
     def coat(cls, var):

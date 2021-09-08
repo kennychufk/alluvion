@@ -116,5 +116,6 @@ int main(void) {
 
   display_proxy.add_pile_shading_program(pile);
   display->run();
-  store.remove(*particle_normalized_attr);
+  store.remove_graphical(
+      dynamic_cast<GraphicalVariable<1, F>&>(*particle_normalized_attr));
 }

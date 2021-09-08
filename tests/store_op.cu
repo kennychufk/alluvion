@@ -51,6 +51,6 @@ SCENARIO("testing the store") {
       }
     }
     store.unmap_graphical_pointers();
-    store.remove(*var);
+    store.remove_graphical(*var);
   }
 }

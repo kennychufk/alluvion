@@ -5,6 +5,8 @@
 #include "alluvion/variable.hpp"
 namespace alluvion {
 template <U D, typename M>
+// https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__INTEROP.html
+// "The value set in devPtr may change every time that resource is mapped."
 class GraphicalVariable : public Variable<D, M> {
  public:
   using Base = Variable<D, M>;

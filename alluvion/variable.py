@@ -45,10 +45,12 @@ for class_name in dir(_al):
     if not class_name.startswith("Variable") and not class_name.startswith(
             "GraphicalVariable"):
         continue
+    is_graphical = class_name.startswith("GraphicalVariable")
     coated_class_name = "Coated" + class_name
     variable_class_dict[class_name] = type(
         coated_class_name, (getattr(_al, class_name), ), {
             "type_enum_to_dtype": type_enum_to_dtype_func,
             "get": get_func,
-            "set": set_func
+            "set": set_func,
+            "is_graphical": is_graphical
         })

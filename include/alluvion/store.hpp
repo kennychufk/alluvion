@@ -65,6 +65,16 @@ class Store {
   }
 
   template <unsigned int D, typename M>
+  void remove_graphical(GraphicalVariable<D, M>& var) {
+    if (var.vbo_ != 0) {
+      graphical_resource_dict_.erase(var.vbo_);
+    }
+    var.ptr_ = nullptr;
+    var.vbo_ = 0;
+    var.res_ = nullptr;
+  }
+
+  template <unsigned int D, typename M>
   void remove(Variable<D, M>& var) {
     if (var.ptr_) {
       pointer_dict_.erase(var.ptr_);

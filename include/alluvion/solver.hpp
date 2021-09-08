@@ -63,7 +63,12 @@ struct Solver {
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {}
   virtual ~Solver() {
-    store.remove(*particle_x);
+    if (GraphicalVariable<1, TF3>* graphical_particle_x =
+            dynamic_cast<GraphicalVariable<1, TF3>*>(particle_x.get())) {
+      store.remove_graphical(*graphical_particle_x);
+    } else {
+      store.remove(*particle_x);
+    }
     store.remove(*particle_v);
     store.remove(*particle_a);
     store.remove(*particle_density);
