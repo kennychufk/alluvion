@@ -181,8 +181,9 @@ struct SolverIi : public Solver<TF> {
           predict_advection1<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_dii, *particle_adv_density,
               *particle_aii, *particle_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary, *pile.x_device_,
-              *pile.v_device_, *pile.omega_device_, dt, num_particles);
+              *particle_num_neighbors, *particle_boundary,
+              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+              *pile.omega_device_, dt, num_particles);
         },
         "predict_advection1", predict_advection1<TQ, TF3, TF>);
     mean_density_error = std::numeric_limits<TF>::max();

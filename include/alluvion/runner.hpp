@@ -1808,16 +1808,17 @@ __global__ void predict_advection1(
     Variable<1, TF3> particle_dii, Variable<1, TF> particle_adv_density,
     Variable<1, TF> particle_aii, Variable<1, TF> particle_density,
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<2, TQ> particle_boundary, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, TF dt,
-    U num_particles) {
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
+    Variable<1, TF3> rigid_omega, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF3 dii = particle_dii(p_i);
     TF density = particle_density(p_i) / cn<TF>().density0;
     TF density2 = density * density;
-    TF dpi = cn<TF>().particle_vol / density2;
+    TF inv_density2 = 1 / density2;
+    TF dpi = cn<TF>().particle_vol * inv_density2;
 
     // target
     TF density_adv = density;
@@ -1838,14 +1839,15 @@ __global__ void predict_advection1(
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TQ boundary = particle_boundary(boundary_id, p_i);
+      TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
       TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
+      TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
 
       TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
                  rigid_v(boundary_id);
-      TF3 grad_w = displacement_cubic_kernel_grad(x_i - bx_j);
-      TF3 dji = dpi * grad_w;
-      density_adv += dt * boundary.w * dot(v - velj, grad_w);
-      aii += boundary.w * dot(dii - dji, grad_w);
+      TF3 dji = inv_density2 * grad_wvol;
+      density_adv += dt * dot(v - velj, grad_wvol);
+      aii += dot(dii - dji, grad_wvol);
     }
     particle_adv_density(p_i) = density_adv;
     particle_aii(p_i) = aii;
