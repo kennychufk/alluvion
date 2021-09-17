@@ -60,7 +60,9 @@ struct SolverIi : public Solver<TF> {
         particle_pressure_accel(
             store_arg.create<1, TF3>({max_num_particles_arg})),
         particle_density_err(store_arg.create<1, TF>({max_num_particles_arg})),
-        density_error_tolerance(1e-3) {}
+        density_error_tolerance(1e-3),
+        min_density_solve(2),
+        max_density_solve(100) {}
   virtual ~SolverIi() {
     store.remove(*particle_pressure);
     store.remove(*particle_last_pressure);
@@ -188,8 +190,9 @@ struct SolverIi : public Solver<TF> {
         "predict_advection1", predict_advection1<TQ, TF3, TF>);
     mean_density_error = std::numeric_limits<TF>::max();
     num_density_solve = 0;
-    while (num_density_solve < 2 ||
-           mean_density_error > density_error_tolerance) {
+    while ((num_density_solve < min_density_solve ||
+            mean_density_error > density_error_tolerance) &&
+           num_density_solve <= max_density_solve) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -275,6 +278,8 @@ struct SolverIi : public Solver<TF> {
   std::unique_ptr<Variable<1, TF>> particle_density_err;
 
   TF density_error_tolerance;
+  U min_density_solve;
+  U max_density_solve;
 
   // report
   U num_density_solve;

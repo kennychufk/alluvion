@@ -542,6 +542,10 @@ void declare_solver_df(py::module& m, const char* name) {
                      &TSolverDf::density_change_tolerance)
       .def_readwrite("density_error_tolerance",
                      &TSolverDf::density_error_tolerance)
+      .def_readwrite("min_density_solve", &TSolverDf::min_density_solve)
+      .def_readwrite("max_density_solve", &TSolverDf::max_density_solve)
+      .def_readwrite("min_divergence_solve", &TSolverDf::min_divergence_solve)
+      .def_readwrite("max_divergence_solve", &TSolverDf::max_divergence_solve)
       .def_property_readonly("particle_dfsph_factor",
                              [](TSolverDf const& solver) {
                                return solver.particle_dfsph_factor.get();
@@ -580,6 +584,8 @@ void declare_solver_ii(py::module& m, const char* name) {
       .def_readonly("mean_density_error", &TSolverIi::mean_density_error)
       .def_readwrite("density_error_tolerance",
                      &TSolverIi::density_error_tolerance)
+      .def_readwrite("min_density_solve", &TSolverIi::min_density_solve)
+      .def_readwrite("max_density_solve", &TSolverIi::max_density_solve)
       .def_property_readonly("particle_pressure",
                              [](TSolverIi const& solver) {
                                return solver.particle_pressure.get();

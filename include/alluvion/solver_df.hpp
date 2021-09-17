@@ -58,7 +58,11 @@ struct SolverDf : public Solver<TF> {
         particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_density_adv(store_arg.create<1, TF>({max_num_particles_arg})),
         density_change_tolerance(1e-3),
-        density_error_tolerance(1e-3) {}
+        density_error_tolerance(1e-3),
+        min_density_solve(2),
+        max_density_solve(100),
+        min_divergence_solve(1),
+        max_divergence_solve(100) {}
   virtual ~SolverDf() {
     store.remove(*particle_dfsph_factor);
     store.remove(*particle_kappa);
@@ -123,8 +127,9 @@ struct SolverDf : public Solver<TF> {
 
     mean_density_change = std::numeric_limits<TF>::max();
     num_divergence_solve = 0;
-    while (num_divergence_solve < 1 ||
-           mean_density_change > density_change_tolerance / dt) {
+    while ((num_divergence_solve < min_divergence_solve ||
+            mean_density_change > density_change_tolerance / dt) &&
+           num_divergence_solve <= max_divergence_solve) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -290,8 +295,9 @@ struct SolverDf : public Solver<TF> {
         "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
     mean_density_error = std::numeric_limits<TF>::max();
     num_density_solve = 0;
-    while (num_density_solve < 2 ||
-           mean_density_error > density_error_tolerance) {
+    while ((num_density_solve < min_density_solve ||
+            mean_density_error > density_error_tolerance) &&
+           num_density_solve <= max_density_solve) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -366,6 +372,10 @@ struct SolverDf : public Solver<TF> {
 
   TF density_change_tolerance;
   TF density_error_tolerance;
+  U min_density_solve;
+  U max_density_solve;
+  U min_divergence_solve;
+  U max_divergence_solve;
 
   // report
   U num_divergence_solve;

@@ -1235,6 +1235,8 @@ __device__ TF compute_volume_and_boundary_x_analytic(
       distance.gradient(local_xi, cn<TF>().kernel_radius) * sign, rigid_q);
   nl2 = length_sqr(normal);
   normal *= (nl2 > 0 ? rsqrt(nl2) : 0);
+  *xi_bxj = (*d) * normal;
+  *boundary_xj = x - (*xi_bxj);
   resolve(domain_min, domain_max, resolution, cell_size, local_xi, &ipos,
           &inner_x);
   if (ipos.x >= 0) {
@@ -1243,34 +1245,7 @@ __device__ TF compute_volume_and_boundary_x_analytic(
     boundary_volume = interpolate(volume_nodes, node_offset, cells, N);
   }
 
-  // shifting model boundary
-  // TF v_dot_n = dot(v, normal);
-  // TF v_tangential = length(v - v_dot_n * normal);
-  // TF rshift = (1 - exp(-cn<TF>().boundary_vshift * sqrt(v_tangential))) *
-  // exp(-cn<TF>().rshift_switch_k * v_dot_n * v_dot_n);
-  TF rshift = max(density - cn<TF>().rshift_base_density, static_cast<TF>(0)) *
-              cn<TF>().rshift_density_factor;
-
-  // estimate new volume
-  TF plus_side = cn<TF>().kernel_radius * 2 - rshift;
-  TF minus_side = cn<TF>().kernel_radius * 2;
-  TF plus_aug = plus_side * plus_side;
-  TF minus_aug = minus_side * minus_side;
-  TF volume_inv =
-      1 / (max(static_cast<TF>(0), boundary_volume) + cn<TF>().boundary_param0);
-  TF m = (cn<TF>().boundary_param1 * (*d) +
-          cn<TF>().boundary_param2 * volume_inv + cn<TF>().boundary_param3) *
-         rshift * 3;
-  TF nom = plus_aug - (*d) * (*d);
-  TF denom = plus_aug + minus_aug;
-  TF vol_ratio = pow(max(static_cast<TF>(0), nom / denom), m);
-
-  (*d) += rshift;
-
-  *xi_bxj = (*d) * normal;
-  *boundary_xj = x - (*xi_bxj);
-
-  return boundary_volume * vol_ratio;
+  return boundary_volume;
 }
 
 // gradient must be initialized to zero
