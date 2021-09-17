@@ -22,18 +22,19 @@ int main(void) {
   DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
 
-  F particle_radius = 0.025;
+  F scale_factor = 1.0;
+  F particle_radius = 0.25 * scale_factor;
   F kernel_radius = particle_radius * 4;
-  F density0 = 1000.0;
+  F density0 = 1.0 / (scale_factor * scale_factor * scale_factor);
   F particle_mass = 0.1;
   F dt = 2e-3;
-  F3 gravity = {0._F, -9.81_F, 0._F};
+  F3 gravity = {0._F, -98.1_F * scale_factor, 0._F};
   store.get_cn<F>().set_cubic_discretization_constants();
   store.get_cn<F>().set_kernel_radius(kernel_radius);
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().gravity = gravity;
   store.get_cn<F>().viscosity = 0.001;
-  store.get_cn<F>().boundary_viscosity = 0.0;
+  store.get_cn<F>().boundary_viscosity = 0.001;
 
   // rigids
   U max_num_contacts = 512;
@@ -43,9 +44,9 @@ int main(void) {
   Mesh sphere_mesh;
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
-  pile.add(new BoxDistance<F3, F>(F3{4, 3, 1.5}), U3{80, 60, 30}, -1._F, 0,
-           cube_mesh, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 1.5, 0}, Q{0, 0, 0, 1},
-           Mesh());
+  pile.add(new BoxDistance<F3, F>(scale_factor * F3{40, 30, 15}),
+           U3{80, 60, 30}, -1._F, 0, cube_mesh, 0._F, 1, 0, F3{1, 1, 1},
+           F3{0, 15 * scale_factor, 0}, Q{0, 0, 0, 1}, Mesh());
   // SphereDistance<F3, F> sphere_distance(sphere_radius);
   // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
   // 0.4,
@@ -58,8 +59,8 @@ int main(void) {
 
   // particles
   int block_mode = 0;
-  F3 block_min{-1.95, -0.0, -0.5};
-  F3 block_max{-0.95, 1.0, 0.5};
+  F3 block_min = scale_factor * F3{-19.5, 0.0, -5.0};
+  F3 block_max = scale_factor * F3{-9.5, 10.0, 5.0};
   U num_particles = Runner<F>::get_fluid_block_num_particles(
       block_mode, block_min, block_max, particle_radius);
 
@@ -71,15 +72,15 @@ int main(void) {
   store.get_cni().max_num_particles_per_cell = 64;
   store.get_cni().max_num_neighbors_per_particle = 64;
 
-  SolverIi<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
+  SolverDf<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
                      false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
   solver.dt = dt;
   solver.max_dt = 0.005;
-  solver.min_dt = 0.0001;
-  solver.cfl = 0.4;
+  solver.min_dt = 0.0;
+  solver.cfl = 0.2;
   solver.particle_radius = particle_radius;
 
   store.copy_cn<F>();
@@ -88,8 +89,8 @@ int main(void) {
                                    block_mode, block_min, block_max);
   store.unmap_graphical_pointers();
 
-  display->camera_.setEye(0.f, 06.00f, 6.0f);
-  display->camera_.setCenter(0.f, -0.20f, 0.f);
+  display->camera_.setEye(0.f, 60.0f * scale_factor, 60.0f * scale_factor);
+  display->camera_.setCenter(0.f, -2.0f * scale_factor, 0.f);
   display->camera_.update();
   display->update_trackball_camera();
 
