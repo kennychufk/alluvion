@@ -57,6 +57,8 @@ struct SolverDf : public Solver<TF> {
         particle_kappa(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_density_adv(store_arg.create<1, TF>({max_num_particles_arg})),
+        enable_divergence_solve(true),
+        enable_density_solve(true),
         density_change_tolerance(1e-3),
         density_error_tolerance(1e-3),
         min_density_solve(2),
@@ -79,94 +81,98 @@ struct SolverDf : public Solver<TF> {
     if (usher->num_ushers > 0) {
       sample_usher();
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_dfsph_factor<<<grid_size, block_size>>>(
-              *particle_x, *particle_neighbors, *particle_num_neighbors,
-              *particle_dfsph_factor, *particle_boundary_kernel, num_particles);
-        },
-        "compute_dfsph_factor", compute_dfsph_factor<TQ, TF3, TF>);
-    // ===== [divergence solve
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          warm_start_divergence_solve_0<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_kappa_v, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
-        },
-        "warm_start_divergence_solve_0",
-        warm_start_divergence_solve_0<TQ, TF3, TF>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          warm_start_divergence_solve_1<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_kappa_v, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *particle_force, *particle_torque,
-              *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-              num_particles);
-        },
-        "warm_start_divergence_solve_1",
-        warm_start_divergence_solve_1<TQ, TF3, TF>);
-
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_velocity_of_density_change<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_dfsph_factor,
-              *particle_density_adv, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
-        },
-        "compute_velocity_of_density_change",
-        compute_velocity_of_density_change<TQ, TF3, TF>);
-
-    mean_density_change = std::numeric_limits<TF>::max();
-    num_divergence_solve = 0;
-    while ((num_divergence_solve < min_divergence_solve ||
-            mean_density_change > density_change_tolerance / dt) &&
-           num_divergence_solve <= max_divergence_solve) {
+    if (enable_divergence_solve) {
+      // ===== [divergence solve
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            divergence_solve_iteration<<<grid_size, block_size>>>(
-                *particle_x, *particle_v, *particle_dfsph_factor,
-                *particle_density_adv, *particle_kappa_v, *particle_neighbors,
-                *particle_num_neighbors, *particle_boundary,
-                *particle_boundary_kernel, *particle_force, *particle_torque,
-                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+            compute_dfsph_factor<<<grid_size, block_size>>>(
+                *particle_x, *particle_neighbors, *particle_num_neighbors,
+                *particle_dfsph_factor, *particle_boundary_kernel,
                 num_particles);
           },
-          "divergence_solve_iteration",
-          divergence_solve_iteration<TQ, TF3, TF>);
-
+          "compute_dfsph_factor", compute_dfsph_factor<TQ, TF3, TF>);
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_divergence_solve_density_error<<<grid_size, block_size>>>(
-                *particle_x, *particle_v, *particle_density_adv,
+            warm_start_divergence_solve_0<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_kappa_v,
                 *particle_neighbors, *particle_num_neighbors,
                 *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
                 *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
-          "compute_divergence_solve_density_error",
-          compute_divergence_solve_density_error<TQ, TF3, TF>);
-      mean_density_change =
-          TRunner::sum(*particle_density_adv, num_particles) / num_particles;
-      ++num_divergence_solve;
+          "warm_start_divergence_solve_0",
+          warm_start_divergence_solve_0<TQ, TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            warm_start_divergence_solve_1<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_kappa_v,
+                *particle_neighbors, *particle_num_neighbors,
+                *particle_boundary, *particle_boundary_kernel, *particle_force,
+                *particle_torque, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
+          },
+          "warm_start_divergence_solve_1",
+          warm_start_divergence_solve_1<TQ, TF3, TF>);
+
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_velocity_of_density_change<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_dfsph_factor,
+                *particle_density_adv, *particle_neighbors,
+                *particle_num_neighbors, *particle_boundary,
+                *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
+          },
+          "compute_velocity_of_density_change",
+          compute_velocity_of_density_change<TQ, TF3, TF>);
+
+      mean_density_change = std::numeric_limits<TF>::max();
+      num_divergence_solve = 0;
+      while ((num_divergence_solve < min_divergence_solve ||
+              mean_density_change > density_change_tolerance / dt) &&
+             num_divergence_solve <= max_divergence_solve) {
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              divergence_solve_iteration<<<grid_size, block_size>>>(
+                  *particle_x, *particle_v, *particle_dfsph_factor,
+                  *particle_density_adv, *particle_kappa_v, *particle_neighbors,
+                  *particle_num_neighbors, *particle_boundary,
+                  *particle_boundary_kernel, *particle_force, *particle_torque,
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
+            },
+            "divergence_solve_iteration",
+            divergence_solve_iteration<TQ, TF3, TF>);
+
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              compute_divergence_solve_density_error<<<grid_size, block_size>>>(
+                  *particle_x, *particle_v, *particle_density_adv,
+                  *particle_neighbors, *particle_num_neighbors,
+                  *particle_boundary, *particle_boundary_kernel,
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
+            },
+            "compute_divergence_solve_density_error",
+            compute_divergence_solve_density_error<TQ, TF3, TF>);
+        mean_density_change =
+            TRunner::sum(*particle_density_adv, num_particles) / num_particles;
+        ++num_divergence_solve;
+      }
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            divergence_solve_finish<<<grid_size, block_size>>>(
+                *particle_dfsph_factor, *particle_kappa_v, dt, num_particles);
+          },
+          "divergence_solve_finish", divergence_solve_finish<TF>);
+      // ===== ]divergence solve
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          divergence_solve_finish<<<grid_size, block_size>>>(
-              *particle_dfsph_factor, *particle_kappa_v, dt, num_particles);
-        },
-        "divergence_solve_finish", divergence_solve_finish<TF>);
-    // ===== ]divergence solve
 
     if constexpr (gravitation == 0) {
       runner.launch(
@@ -260,82 +266,86 @@ struct SolverDf : public Solver<TF> {
         },
         "integrate_non_pressure_acceleration",
         integrate_non_pressure_acceleration<TF3, TF>);
-    // ===== [pressure solve
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          warm_start_pressure_solve0<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_density, *particle_kappa,
-              *particle_neighbors, *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
-        },
-        "warm_start_pressure_solve0", warm_start_pressure_solve0<TQ, TF3, TF>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          warm_start_pressure_solve1<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_kappa, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *particle_force, *particle_torque,
-              *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-              num_particles);
-        },
-        "warm_start_pressure_solve1", warm_start_pressure_solve1<TQ, TF3, TF>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_rho_adv<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_density,
-              *particle_dfsph_factor, *particle_density_adv,
-              *particle_neighbors, *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
-        },
-        "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
-    mean_density_error = std::numeric_limits<TF>::max();
-    num_density_solve = 0;
-    while ((num_density_solve < min_density_solve ||
-            mean_density_error > density_error_tolerance) &&
-           num_density_solve <= max_density_solve) {
+    if (enable_density_solve) {
+      // ===== [density solve
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            pressure_solve_iteration<<<grid_size, block_size>>>(
-                *particle_x, *particle_v, *particle_dfsph_factor,
-                *particle_density_adv, *particle_kappa, *particle_neighbors,
+            warm_start_pressure_solve0<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_density, *particle_kappa,
+                *particle_neighbors, *particle_num_neighbors,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
+                *pile.v_device_, *pile.omega_device_, dt, num_particles);
+          },
+          "warm_start_pressure_solve0",
+          warm_start_pressure_solve0<TQ, TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            warm_start_pressure_solve1<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_kappa, *particle_neighbors,
                 *particle_num_neighbors, *particle_boundary,
                 *particle_boundary_kernel, *particle_force, *particle_torque,
                 *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
                 num_particles);
           },
-          "pressure_solve_iteration", pressure_solve_iteration<TQ, TF3, TF>);
+          "warm_start_pressure_solve1",
+          warm_start_pressure_solve1<TQ, TF3, TF>);
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_pressure_solve_density_error<<<grid_size, block_size>>>(
+            compute_rho_adv<<<grid_size, block_size>>>(
                 *particle_x, *particle_v, *particle_density,
-                *particle_density_adv, *particle_neighbors,
-                *particle_num_neighbors, *particle_boundary,
-                *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-                *pile.omega_device_, dt, num_particles);
+                *particle_dfsph_factor, *particle_density_adv,
+                *particle_neighbors, *particle_num_neighbors,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
+                *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
-          "compute_pressure_solve_density_error",
-          compute_pressure_solve_density_error<TQ, TF3, TF>);
-      mean_density_error =
-          TRunner::sum(*particle_density_adv, num_particles) / num_particles -
-          1;  // TODO: add variable to store *particle_density_adv - 1
-              // (better numerical precision)
-      ++num_density_solve;
+          "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
+      mean_density_error = std::numeric_limits<TF>::max();
+      num_density_solve = 0;
+      while ((num_density_solve < min_density_solve ||
+              mean_density_error > density_error_tolerance) &&
+             num_density_solve <= max_density_solve) {
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              pressure_solve_iteration<<<grid_size, block_size>>>(
+                  *particle_x, *particle_v, *particle_dfsph_factor,
+                  *particle_density_adv, *particle_kappa, *particle_neighbors,
+                  *particle_num_neighbors, *particle_boundary,
+                  *particle_boundary_kernel, *particle_force, *particle_torque,
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
+            },
+            "pressure_solve_iteration", pressure_solve_iteration<TQ, TF3, TF>);
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              compute_pressure_solve_density_error<<<grid_size, block_size>>>(
+                  *particle_x, *particle_v, *particle_density,
+                  *particle_density_adv, *particle_neighbors,
+                  *particle_num_neighbors, *particle_boundary,
+                  *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+                  *pile.omega_device_, dt, num_particles);
+            },
+            "compute_pressure_solve_density_error",
+            compute_pressure_solve_density_error<TQ, TF3, TF>);
+        mean_density_error =
+            TRunner::sum(*particle_density_adv, num_particles) / num_particles -
+            1;  // TODO: add variable to store *particle_density_adv - 1
+                // (better numerical precision)
+        ++num_density_solve;
+      }
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            pressure_solve_finish<<<grid_size, block_size>>>(*particle_kappa,
+                                                             dt, num_particles);
+          },
+          "pressure_solve_finish", pressure_solve_finish<TF>);
+      // ===== ]density solve
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          pressure_solve_finish<<<grid_size, block_size>>>(*particle_kappa, dt,
-                                                           num_particles);
-        },
-        "pressure_solve_finish", pressure_solve_finish<TF>);
-    // ===== ]pressure solve
     runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {
@@ -370,6 +380,8 @@ struct SolverDf : public Solver<TF> {
   std::unique_ptr<Variable<1, TF>> particle_kappa_v;
   std::unique_ptr<Variable<1, TF>> particle_density_adv;
 
+  bool enable_divergence_solve;
+  bool enable_density_solve;
   TF density_change_tolerance;
   TF density_error_tolerance;
   U min_density_solve;

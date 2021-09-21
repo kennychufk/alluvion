@@ -538,6 +538,9 @@ void declare_solver_df(py::module& m, const char* name) {
       .def_readonly("num_density_solve", &TSolverDf::num_density_solve)
       .def_readonly("mean_density_change", &TSolverDf::mean_density_change)
       .def_readonly("mean_density_error", &TSolverDf::mean_density_error)
+      .def_readwrite("enable_divergence_solve",
+                     &TSolverDf::enable_divergence_solve)
+      .def_readwrite("enable_density_solve", &TSolverDf::enable_density_solve)
       .def_readwrite("density_change_tolerance",
                      &TSolverDf::density_change_tolerance)
       .def_readwrite("density_error_tolerance",
