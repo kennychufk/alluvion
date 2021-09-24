@@ -276,11 +276,6 @@ constexpr __device__ void extract_pid(TQ const& pid_entry, TF3& x_j, U& p_j) {
   p_j = reinterpret_cast<U const&>(pid_entry.w);
 }
 
-template <typename TQ>
-constexpr __device__ void extract_pid(TQ const& pid_entry, U& p_j) {
-  p_j = reinterpret_cast<U const&>(pid_entry.w);
-}
-
 template <typename TQ, typename TF3>
 constexpr __device__ void extract_displacement(TQ const& pid_entry,
                                                TF3& displacement) {
@@ -328,7 +323,7 @@ constexpr __device__
 }
 
 template <typename TF>
-constexpr __device__ __host__ TF d2_cubic_kernel(TF r2, TF h) {
+constexpr __device__ TF d2_cubic_kernel(TF r2, TF h) {
   TF q2 = r2 / (h * h);
   TF q = sqrt(r2) / h;
   TF conj = 1 - q;
@@ -341,20 +336,8 @@ constexpr __device__ __host__ TF d2_cubic_kernel(TF r2, TF h) {
 }
 
 template <typename TF3, typename TF>
-constexpr __device__ __host__ TF displacement_cubic_kernel(TF3 d, TF h) {
+constexpr __device__ TF displacement_cubic_kernel(TF3 d, TF h) {
   return d2_cubic_kernel(length_sqr(d), h);
-}
-
-template <typename TF3, typename TF>
-constexpr __device__ __host__ TF3 displacement_cubic_kernel_grad(TF3 d, TF h) {
-  TF l = static_cast<TF>(48.0) / (h * h * h * h) / kPi<TF>;
-  TF rl2 = length_sqr(d);
-  TF rl = sqrt(rl2);
-  TF q = rl / h;
-  TF scale =
-      (q <= static_cast<TF>(0.5) ? (q * 3 - 2) / h
-                                 : (q <= 1 ? (1 - q) * (q - 1) / rl : 0));
-  return l * scale * d;
 }
 
 template <typename TF3>
@@ -2434,89 +2417,6 @@ __global__ void pressure_solve_finish(Variable<1, TF> particle_kappa, TF dt,
                                       U num_particles) {
   forThreadMappedToElement(num_particles,
                            [&](U p_i) { particle_kappa(p_i) *= dt * dt; });
-}
-
-// PCISPH
-template <U wrap, typename TF3, typename TF>
-__global__ void kinematic_integration_predicted(
-    Variable<1, TF3> particle_predicted_x,
-    Variable<1, TF3> particle_predicted_v, Variable<1, TF3> particle_x,
-    Variable<1, TF3> particle_v, Variable<1, TF3> particle_a,
-    Variable<1, TF3> particle_pressure_accel, TF dt, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 predicted_v =
-        particle_v(p_i) + dt * (particle_a(p_i) + particle_pressure_accel(p_i));
-    if constexpr (wrap == 0)
-      particle_predicted_x(p_i) = particle_x(p_i) + dt * predicted_v;
-    else
-      particle_predicted_x(p_i) = wrap_y(particle_x(p_i) + dt * predicted_v);
-    particle_predicted_v(p_i) = predicted_v;
-  });
-}
-template <typename TQ, typename TF3, typename TF>
-__global__ void predict_density(
-    Variable<1, TF> particle_pressure, Variable<1, TF> particle_density_err,
-    Variable<1, TF> particle_density_adv, Variable<1, TF3> particle_predicted_x,
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<2, TQ> particle_boundary_kernel, TF dt, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 predicted_xi = particle_predicted_x(p_i);
-    TF density_adv = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      extract_pid(particle_neighbors(p_i, neighbor_id), p_j);
-      density_adv +=
-          cn<TF>().particle_vol *
-          displacement_cubic_kernel(predicted_xi - particle_predicted_x(p_j));
-    }
-    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
-      TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
-      density_adv += boundary_kernel.w;
-    }
-    particle_density_err(p_i) = density_adv - 1;  // TODO: use abs?
-    particle_density_adv(p_i) = density_adv;
-    particle_pressure(p_i) =
-        max(static_cast<TF>(0),
-            particle_pressure(p_i) +
-                (density_adv - 1) * cn<TF>().pci_scale / (dt * dt));
-  });
-}
-template <typename TQ, typename TF3, typename TF>
-__global__ void compute_pressure_force(
-    Variable<1, TF> particle_pressure, Variable<1, TF3> particle_pressure_accel,
-    Variable<1, TF3> particle_x, Variable<2, TQ> particle_neighbors,
-    Variable<1, U> particle_num_neighbors, Variable<2, TF3> particle_force,
-    Variable<2, TF3> particle_torque, Variable<2, TQ> particle_boundary,
-    Variable<2, TQ> particle_boundary_kernel, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, TF dt,
-    U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    const TF dpi = particle_pressure(p_i);
-    TF3 pressure_accel{0};
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      pressure_accel -= cn<TF>().particle_vol * (dpi + particle_pressure(p_j)) *
-                        displacement_cubic_kernel_grad(xixj);
-    }
-    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
-      TQ boundary = particle_boundary(boundary_id, p_i);
-      TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
-      TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
-      TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
-      TF3 a = dpi * boundary.w * displacement_cubic_kernel_grad(x_i - bx_j);
-      TF3 force = cn<TF>().particle_mass * a;
-      pressure_accel -= a;
-      particle_force(boundary_id, p_i) += force;
-      particle_torque(boundary_id, p_i) +=
-          cross(bx_j - rigid_x(boundary_id), force);
-    }
-    particle_pressure_accel(p_i) = pressure_accel;
-  });
 }
 
 template <U wrap, typename TF3, typename TF>

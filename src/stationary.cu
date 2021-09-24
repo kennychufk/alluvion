@@ -11,7 +11,6 @@
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/solver_ii.hpp"
-#include "alluvion/solver_pci.hpp"
 #include "alluvion/store.hpp"
 
 using namespace alluvion;
@@ -73,8 +72,8 @@ int main(void) {
   store.get_cni().max_num_particles_per_cell = 64;
   store.get_cni().max_num_neighbors_per_particle = 64;
 
-  SolverPci<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
-                      false, true);
+  SolverDf<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
+                     false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
@@ -83,34 +82,6 @@ int main(void) {
   solver.min_dt = 0.0;
   solver.cfl = 0.2;
   solver.particle_radius = particle_radius;
-
-  {
-    // estimate pci_scale
-    F3 sum_grad_w{0};
-    F sum_grad_w2 = 0;
-    F diam = particle_radius * 2;
-    F3 xj{-kernel_radius, -kernel_radius, -kernel_radius};
-    while (xj.x <= kernel_radius) {
-      while (xj.y <= kernel_radius) {
-        while (xj.z <= kernel_radius) {
-          const F3 grad_w = displacement_cubic_kernel_grad(-xj, kernel_radius);
-          sum_grad_w += grad_w;
-          sum_grad_w2 += length_sqr(grad_w);
-          xj.z += diam;
-        }
-        xj.y += diam;
-        xj.z = -kernel_radius;
-      }
-      xj.x += diam;
-      xj.y = -kernel_radius;
-      xj.z = -kernel_radius;
-    }
-    F beta =
-        2 * store.get_cn<F>().particle_vol * store.get_cn<F>().particle_vol;
-    store.get_cn<F>().pci_scale =
-        1 / (beta * (length_sqr(sum_grad_w) + sum_grad_w2));
-    std::cout << "PCI scale = " << store.get_cn<F>().pci_scale << std::endl;
-  }
 
   store.copy_cn<F>();
   store.map_graphical_pointers();

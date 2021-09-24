@@ -74,7 +74,6 @@ struct Const {
   TF boundary_vol_factor;
   TF boundary_epsilon;
   TF dfsph_factor_epsilon;
-  TF pci_scale;
 
   TF contact_tolerance;
 
