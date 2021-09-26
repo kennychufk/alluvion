@@ -1758,7 +1758,7 @@ __global__ void predict_advection0(
     particle_v(p_i) += dt * particle_a(p_i);
     particle_last_pressure(p_i) = particle_pressure(p_i) * static_cast<TF>(0.5);
     TF3 x_i = particle_x(p_i);
-    TF density = particle_density(p_i) / cn<TF>().density0;
+    TF density = particle_density(p_i);
     TF density2 = density * density;
 
     TF3 dii{0};
@@ -1774,7 +1774,7 @@ __global__ void predict_advection0(
       TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
       dii -= grad_wvol / density2;
     }
-    particle_dii(p_i) = dii;
+    particle_dii(p_i) = dii * cn<TF>().density0;
   });
 }
 template <typename TQ, typename TF3, typename TF>
@@ -1790,13 +1790,13 @@ __global__ void predict_advection1(
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF3 dii = particle_dii(p_i);
-    TF density = particle_density(p_i) / cn<TF>().density0;
+    TF density = particle_density(p_i);
     TF density2 = density * density;
     TF inv_density2 = 1 / density2;
     TF dpi = cn<TF>().particle_vol * inv_density2;
 
     // target
-    TF density_adv = density;
+    TF density_adv = density / cn<TF>().density0;
     TF aii = 0;
 
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
@@ -1806,7 +1806,7 @@ __global__ void predict_advection1(
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
 
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
-      TF3 dji = dpi * grad_w;
+      TF3 dji = dpi * cn<TF>().density0 * grad_w;
 
       density_adv +=
           dt * cn<TF>().particle_vol * dot(v - particle_v(p_j), grad_w);
@@ -1820,12 +1820,12 @@ __global__ void predict_advection1(
 
       TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
                  rigid_v(boundary_id);
-      TF3 dji = inv_density2 * grad_wvol;
+      TF3 dji = inv_density2 * cn<TF>().density0 * grad_wvol;
       density_adv += dt * dot(v - velj, grad_wvol);
       aii += dot(dii - dji, grad_wvol);
     }
     particle_adv_density(p_i) = density_adv;
-    particle_aii(p_i) = aii;
+    particle_aii(p_i) = aii * cn<TF>().density0;
   });
 }
 template <typename TQ, typename TF3, typename TF>
@@ -1843,14 +1843,14 @@ __global__ void pressure_solve_iteration0(
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
 
-      TF densityj = particle_density(p_j) / cn<TF>().density0;
+      TF densityj = particle_density(p_j);
       TF densityj2 = densityj * densityj;
       TF last_pressure = particle_last_pressure(p_j);
 
       dij_pj -= cn<TF>().particle_vol / densityj2 * last_pressure *
                 displacement_cubic_kernel_grad(xixj);
     }
-    particle_dij_pj(p_i) = dij_pj;
+    particle_dij_pj(p_i) = dij_pj * cn<TF>().density0;
   });
 }
 template <typename TQ, typename TF3, typename TF>
@@ -1864,7 +1864,7 @@ __global__ void pressure_solve_iteration1(
     TF3 x_i = particle_x(p_i);
     TF last_pressure = particle_last_pressure(p_i);
     TF3 dij_pj = particle_dij_pj(p_i);
-    TF density = particle_density(p_i) / cn<TF>().density0;
+    TF density = particle_density(p_i);
     TF density2 = density * density;
     TF dpi = cn<TF>().particle_vol / density2;
 
@@ -1877,7 +1877,7 @@ __global__ void pressure_solve_iteration1(
 
       TF3 djk_pk = particle_dij_pj(p_j);
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
-      TF3 dji = dpi * grad_w;
+      TF3 dji = dpi * cn<TF>().density0 * grad_w;
       TF3 dji_pi = dji * last_pressure;
 
       sum_tmp += cn<TF>().particle_vol *
@@ -1890,7 +1890,7 @@ __global__ void pressure_solve_iteration1(
       TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
       sum_tmp += dot(dij_pj, grad_wvol);
     }
-    particle_sum_tmp(p_i) = sum_tmp;
+    particle_sum_tmp(p_i) = sum_tmp * cn<TF>().density0;
   });
 }
 template <typename TF>
@@ -1915,7 +1915,7 @@ __global__ void pressure_solve_iteration1_summarize(
               static_cast<TF>(0));
     }
     particle_density_err(p_i) =
-        pressure == 0 ? 0 : ((aii * pressure + sum_tmp) * dt2 - b);
+        pressure == 0 ? 0 : (denom * pressure + sum_tmp * dt2 - b);
     particle_pressure(p_i) = pressure;
     particle_last_pressure(p_i) = pressure;
   });
@@ -1931,7 +1931,7 @@ __global__ void compute_pressure_accels(
     Variable<1, TF3> rigid_x, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
-    TF density = particle_density(p_i) / cn<TF>().density0;
+    TF density = particle_density(p_i);
     TF density2 = density * density;
     TF dpi = particle_pressure(p_i) / density2;
 
@@ -1944,7 +1944,7 @@ __global__ void compute_pressure_accels(
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
 
-      TF densityj = particle_density(p_j) / cn<TF>().density0;
+      TF densityj = particle_density(p_j);
       TF densityj2 = densityj * densityj;
       TF dpj = particle_pressure(p_j) / densityj2;
       ai -= cn<TF>().particle_vol * (dpi + dpj) *
@@ -1962,7 +1962,7 @@ __global__ void compute_pressure_accels(
       particle_torque(boundary_id, p_i) +=
           cross(bx_j - rigid_x(boundary_id), force);
     }
-    particle_pressure_accel(p_i) = ai;
+    particle_pressure_accel(p_i) = cn<TF>().density0 * cn<TF>().density0 * ai;
   });
 }
 template <U wrap, typename TF3, typename TF>
