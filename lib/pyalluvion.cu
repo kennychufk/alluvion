@@ -17,6 +17,7 @@
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/solver_df.hpp"
+#include "alluvion/solver_i.hpp"
 #include "alluvion/solver_ii.hpp"
 #include "alluvion/store.hpp"
 
@@ -624,6 +625,51 @@ void declare_solver_ii(py::module& m, const char* name) {
 }
 
 template <typename TF>
+void declare_solver_i(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  using TSolver = Solver<TF>;
+  using TSolverI = SolverI<TF>;
+  using TPile = Pile<TF>;
+  using TRunner = Runner<TF>;
+  std::string class_name = std::string("SolverI") + name;
+  py::class_<TSolverI, TSolver>(m, class_name.c_str())
+      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
+           py::arg("runner"), py::arg("pile"), py::arg("store"),
+           py::arg("max_num_particles"), py::arg("grid_res"),
+           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
+           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+      .def_readonly("num_density_solve", &TSolverI::num_density_solve)
+      .def_readonly("mean_density_error", &TSolverI::mean_density_error)
+      .def_readwrite("density_error_tolerance",
+                     &TSolverI::density_error_tolerance)
+      .def_readwrite("min_density_solve", &TSolverI::min_density_solve)
+      .def_readwrite("max_density_solve", &TSolverI::max_density_solve)
+      .def_property_readonly(
+          "particle_pressure",
+          [](TSolverI const& solver) { return solver.particle_pressure.get(); })
+      .def_property_readonly("particle_last_pressure",
+                             [](TSolverI const& solver) {
+                               return solver.particle_last_pressure.get();
+                             })
+      .def_property_readonly("particle_diag_adv_density",
+                             [](TSolverI const& solver) {
+                               return solver.particle_diag_adv_density.get();
+                             })
+      .def_property_readonly("particle_pressure_accel",
+                             [](TSolverI const& solver) {
+                               return solver.particle_pressure_accel.get();
+                             })
+      .def_property_readonly("particle_density_err",
+                             [](TSolverI const& solver) {
+                               return solver.particle_density_err.get();
+                             })
+      .def("step", &TSolverI::template step<0, 0>)
+      .def("step_wrap1", &TSolverI::template step<1, 0>)
+      .def("step_wrap1_gravitation1", &TSolverI::template step<1, 1>);
+}
+
+template <typename TF>
 void declare_usher(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   using TUsher = Usher<TF>;
@@ -855,6 +901,9 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_solver_ii<float>(m, "float");
   declare_solver_ii<double>(m, "double");
+
+  declare_solver_i<float>(m, "float");
+  declare_solver_i<double>(m, "double");
 
   declare_usher<float>(m, "float");
   declare_usher<double>(m, "double");

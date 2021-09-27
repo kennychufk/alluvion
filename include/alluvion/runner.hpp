@@ -1985,6 +1985,119 @@ __global__ void move_particles(Variable<1, TF3> particle_x,
   });
 }
 
+// ISPH
+template <typename TF3, typename TF>
+__global__ void advect_and_init_pressure(Variable<1, TF3> particle_v,
+                                         Variable<1, TF3> particle_a,
+                                         Variable<1, TF> particle_pressure,
+                                         Variable<1, TF> particle_last_pressure,
+                                         TF dt, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    particle_v(p_i) += dt * particle_a(p_i);
+    particle_last_pressure(p_i) = particle_pressure(p_i) * static_cast<TF>(0.5);
+  });
+}
+template <typename TQ, typename TF3, typename TF2, typename TF>
+__global__ void calculate_isph_diagonal_adv_density(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, TF> particle_density,
+    Variable<1, TF2> particle_diag_adv_density,
+    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
+    Variable<1, TF3> rigid_omega, TF dt, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    TF3 x_i = particle_x(p_i);
+    TF3 v = particle_v(p_i);
+    TF density = particle_density(p_i);
+
+    // target
+    TF density_adv = density / cn<TF>().density0;
+    TF diag = 0;
+
+    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
+      TF densityj = particle_density(p_j);
+
+      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
+
+      density_adv +=
+          dt * cn<TF>().particle_vol * dot(v - particle_v(p_j), grad_w);
+      diag += cn<TF>().particle_vol * (density + densityj) /
+              (density * densityj) /
+              (length_sqr(xixj) +
+               static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+              dot(xixj, grad_w);
+    }
+    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
+      TQ boundary = particle_boundary(boundary_id, p_i);
+      TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
+      TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
+      TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
+
+      TF3 xib = x_i - bx_j;
+      TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
+                 rigid_v(boundary_id);
+      density_adv += dt * dot(v - velj, grad_wvol);
+      diag += (density + cn<TF>().density0) / (density * cn<TF>().density0) /
+              (length_sqr(xib) +
+               static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+              dot(xib, grad_wvol);
+    }
+    particle_diag_adv_density(p_i) = TF2{diag * cn<TF>().density0, density_adv};
+  });
+}
+
+template <typename TQ, typename TF3, typename TF2, typename TF>
+__global__ void isph_solve_iteration(
+    Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
+    Variable<1, TF> particle_last_pressure, Variable<1, TF> particle_pressure,
+    Variable<1, TF2> particle_diag_adv_density,
+    Variable<1, TF> particle_density_err, Variable<2, TQ> particle_neighbors,
+    Variable<1, U> particle_num_neighbors, TF dt, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    TF3 x_i = particle_x(p_i);
+    TF last_pressure = particle_last_pressure(p_i);
+    TF density = particle_density(p_i);
+    TF2 diag_adv_density = particle_diag_adv_density(p_i);
+
+    TF b = 1 - diag_adv_density.y;
+    TF dt2 = dt * dt;
+    TF denom = diag_adv_density.x * dt2;
+    TF omega = static_cast<TF>(0.5);
+    TF pressure = 0;
+
+    TF off_diag = 0;
+    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
+
+      TF densityj = particle_density(p_j);
+      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
+
+      off_diag -= cn<TF>().particle_vol * (density + densityj) /
+                  (density * densityj) /
+                  (length_sqr(xixj) +
+                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+                  dot(xixj, grad_w) * particle_last_pressure(p_j);
+    }
+    off_diag *= cn<TF>().density0;
+    if (fabs(denom) > static_cast<TF>(1.0e-9)) {
+      pressure = max(
+          (1 - omega) * last_pressure + omega / denom * (b - dt2 * off_diag),
+          static_cast<TF>(0));
+    }
+    particle_density_err(p_i) =
+        pressure == 0 ? 0 : (denom * pressure + off_diag * dt2 - b);
+    particle_pressure(p_i) = pressure;
+  });
+}
+
 // DFSPH
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_dfsph_factor(Variable<1, TF3> particle_x,
