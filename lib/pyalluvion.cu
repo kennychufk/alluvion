@@ -606,9 +606,6 @@ void declare_solver_ii(py::module& m, const char* name) {
       .def_property_readonly(
           "particle_dij_pj",
           [](TSolverIi const& solver) { return solver.particle_dij_pj.get(); })
-      .def_property_readonly(
-          "particle_sum_tmp",
-          [](TSolverIi const& solver) { return solver.particle_sum_tmp.get(); })
       .def_property_readonly("particle_adv_density",
                              [](TSolverIi const& solver) {
                                return solver.particle_adv_density.get();

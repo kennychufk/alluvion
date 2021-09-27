@@ -55,7 +55,6 @@ struct SolverIi : public Solver<TF> {
         particle_aii(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_dii(store_arg.create<1, TF3>({max_num_particles_arg})),
         particle_dij_pj(store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_sum_tmp(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_adv_density(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_pressure_accel(
             store_arg.create<1, TF3>({max_num_particles_arg})),
@@ -69,7 +68,6 @@ struct SolverIi : public Solver<TF> {
     store.remove(*particle_aii);
     store.remove(*particle_dii);
     store.remove(*particle_dij_pj);
-    store.remove(*particle_sum_tmp);
     store.remove(*particle_adv_density);
     store.remove(*particle_pressure_accel);
     store.remove(*particle_density_err);
@@ -207,21 +205,13 @@ struct SolverIi : public Solver<TF> {
           [&](U grid_size, U block_size) {
             pressure_solve_iteration1<<<grid_size, block_size>>>(
                 *particle_x, *particle_density, *particle_last_pressure,
-                *particle_dii, *particle_dij_pj, *particle_sum_tmp,
+                *particle_pressure, *particle_dii, *particle_dij_pj,
+                *particle_aii, *particle_adv_density, *particle_density_err,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary_kernel, num_particles);
+                *particle_boundary_kernel, dt, num_particles);
           },
           "pressure_solve_iteration1", pressure_solve_iteration1<TQ, TF3, TF>);
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            pressure_solve_iteration1_summarize<<<grid_size, block_size>>>(
-                *particle_aii, *particle_adv_density, *particle_sum_tmp,
-                *particle_last_pressure, *particle_pressure,
-                *particle_density_err, dt, num_particles);
-          },
-          "pressure_solve_iteration1_summarize",
-          pressure_solve_iteration1_summarize<TF>);
+      particle_last_pressure->set_from(*particle_pressure);
       mean_density_error =
           TRunner::sum(*particle_density_err, num_particles) / num_particles;
       ++num_density_solve;
@@ -272,7 +262,6 @@ struct SolverIi : public Solver<TF> {
   std::unique_ptr<Variable<1, TF>> particle_aii;
   std::unique_ptr<Variable<1, TF3>> particle_dii;
   std::unique_ptr<Variable<1, TF3>> particle_dij_pj;
-  std::unique_ptr<Variable<1, TF>> particle_sum_tmp;
   std::unique_ptr<Variable<1, TF>> particle_adv_density;
   std::unique_ptr<Variable<1, TF3>> particle_pressure_accel;
   std::unique_ptr<Variable<1, TF>> particle_density_err;

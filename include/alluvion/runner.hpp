@@ -1856,10 +1856,12 @@ __global__ void pressure_solve_iteration0(
 template <typename TQ, typename TF3, typename TF>
 __global__ void pressure_solve_iteration1(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
-    Variable<1, TF> particle_last_pressure, Variable<1, TF3> particle_dii,
-    Variable<1, TF3> particle_dij_pj, Variable<1, TF> particle_sum_tmp,
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<2, TQ> particle_boundary_kernel, U num_particles) {
+    Variable<1, TF> particle_last_pressure, Variable<1, TF> particle_pressure,
+    Variable<1, TF3> particle_dii, Variable<1, TF3> particle_dij_pj,
+    Variable<1, TF> particle_aii, Variable<1, TF> particle_adv_density,
+    Variable<1, TF> particle_density_err, Variable<2, TQ> particle_neighbors,
+    Variable<1, U> particle_num_neighbors,
+    Variable<2, TQ> particle_boundary_kernel, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF last_pressure = particle_last_pressure(p_i);
@@ -1867,6 +1869,13 @@ __global__ void pressure_solve_iteration1(
     TF density = particle_density(p_i);
     TF density2 = density * density;
     TF dpi = cn<TF>().particle_vol / density2;
+
+    TF b = 1 - particle_adv_density(p_i);
+    TF dt2 = dt * dt;
+    TF aii = particle_aii(p_i);
+    TF denom = aii * dt2;
+    TF omega = static_cast<TF>(0.5);
+    TF pressure = 0;
 
     TF sum_tmp = 0;
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
@@ -1890,25 +1899,7 @@ __global__ void pressure_solve_iteration1(
       TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
       sum_tmp += dot(dij_pj, grad_wvol);
     }
-    particle_sum_tmp(p_i) = sum_tmp * cn<TF>().density0;
-  });
-}
-template <typename TF>
-__global__ void pressure_solve_iteration1_summarize(
-    Variable<1, TF> particle_aii, Variable<1, TF> particle_adv_density,
-    Variable<1, TF> particle_sum_tmp, Variable<1, TF> particle_last_pressure,
-    Variable<1, TF> particle_pressure, Variable<1, TF> particle_density_err,
-    TF dt, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF last_pressure = particle_last_pressure(p_i);
-    TF b = 1 - particle_adv_density(p_i);
-    TF dt2 = dt * dt;
-    TF aii = particle_aii(p_i);
-    TF denom = aii * dt2;
-    TF omega = static_cast<TF>(0.5);
-    TF sum_tmp = particle_sum_tmp(p_i);
-
-    TF pressure = 0;
+    sum_tmp *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
       pressure =
           max((1 - omega) * last_pressure + omega / denom * (b - dt2 * sum_tmp),
@@ -1917,7 +1908,6 @@ __global__ void pressure_solve_iteration1_summarize(
     particle_density_err(p_i) =
         pressure == 0 ? 0 : (denom * pressure + sum_tmp * dt2 - b);
     particle_pressure(p_i) = pressure;
-    particle_last_pressure(p_i) = pressure;
   });
 }
 
