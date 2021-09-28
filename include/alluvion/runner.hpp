@@ -1214,8 +1214,8 @@ template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
     TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, U node_offset,
-    TF sign, TF thickness, TF3& x, TF3& v, TF& density, TF3& rigid_x,
-    TQ& rigid_q, TF dt, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
+    TF sign, TF thickness, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt,
+    TF3* boundary_xj, TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1413,17 +1413,15 @@ __global__ void compute_particle_boundary_analytic(
     Variable<1, TF> volume_nodes, const TDistance distance, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
     TF3 cell_size, U num_nodes, U node_offset, TF sign, TF thickness, TF dt,
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF> particle_density, Variable<2, TQ> particle_boundary,
+    Variable<1, TF3> particle_x, Variable<2, TQ> particle_boundary,
     Variable<2, TQ> particle_boundary_kernel, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x_analytic<wrap>(
         &volume_nodes, distance, domain_min, domain_max, resolution, cell_size,
-        num_nodes, node_offset, sign, thickness, particle_x(p_i),
-        particle_v(p_i), particle_density(p_i), rigid_x, rigid_q, dt,
-        &boundary_xj, &xi_bxj, &d);
+        num_nodes, node_offset, sign, thickness, particle_x(p_i), rigid_x,
+        rigid_q, dt, &boundary_xj, &xi_bxj, &d);
     TF3 kernel_grad = displacement_cubic_kernel_grad(xi_bxj);
     particle_boundary(boundary_id, p_i) =
         TQ{boundary_xj.x, boundary_xj.y, boundary_xj.z, boundary_volume};
@@ -3137,8 +3135,7 @@ class Runner {
       TQ const& rigid_q, U boundary_id, TF3 const& domain_min,
       TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
       U num_nodes, U node_offset, TF sign, TF thickness, TF dt,
-      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-      Variable<1, TF>& particle_density, Variable<2, TQ>& particle_boundary,
+      Variable<1, TF3>& particle_x, Variable<2, TQ>& particle_boundary,
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
@@ -3151,8 +3148,8 @@ class Runner {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, 0,
-                sign, thickness, dt, particle_x, particle_v, particle_density,
-                particle_boundary, particle_boundary_kernel, num_particles);
+                sign, thickness, dt, particle_x, particle_boundary,
+                particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(BoxDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
@@ -3164,8 +3161,8 @@ class Runner {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, 0,
-                sign, thickness, dt, particle_x, particle_v, particle_density,
-                particle_boundary, particle_boundary_kernel, num_particles);
+                sign, thickness, dt, particle_x, particle_boundary,
+                particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(SphereDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
@@ -3178,8 +3175,8 @@ class Runner {
             compute_particle_boundary_analytic<1><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, 0,
-                sign, thickness, dt, particle_x, particle_v, particle_density,
-                particle_boundary, particle_boundary_kernel, num_particles);
+                sign, thickness, dt, particle_x, particle_boundary,
+                particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
           compute_particle_boundary_analytic<1, TQ, TF3, TF,

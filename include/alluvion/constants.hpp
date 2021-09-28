@@ -62,16 +62,6 @@ struct Const {
   TF axial_gravity;
   TF radial_gravity;
 
-  TF rshift_base_density;
-  TF rshift_density_factor;
-  TF boundary_vshift;
-  TF rshift_switch_k;
-  TF boundary_param0;
-  TF boundary_param1;
-  TF boundary_param2;
-  TF boundary_param3;
-
-  TF boundary_vol_factor;
   TF boundary_epsilon;
   TF dfsph_factor_epsilon;
 
