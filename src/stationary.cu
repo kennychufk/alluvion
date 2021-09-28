@@ -1,6 +1,8 @@
+#include <chrono>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <memory>
+#include <thread>
 
 #include "alluvion/colormaps.hpp"
 #include "alluvion/constants.hpp"
@@ -10,6 +12,7 @@
 #include "alluvion/float_shorthands.hpp"
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
+#include "alluvion/solver_i.hpp"
 #include "alluvion/solver_ii.hpp"
 #include "alluvion/store.hpp"
 
@@ -22,7 +25,7 @@ int main(void) {
   DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
 
-  F scale_factor = 1.0;
+  F scale_factor = 0.1;
   F particle_radius = 0.25 * scale_factor;
   F kernel_radius = particle_radius * 4;
   F density0 = 1.0 / (scale_factor * scale_factor * scale_factor);
@@ -33,8 +36,8 @@ int main(void) {
   store.get_cn<F>().set_kernel_radius(kernel_radius);
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().gravity = gravity;
-  store.get_cn<F>().viscosity = 0.001;
-  store.get_cn<F>().boundary_viscosity = 0.001;
+  store.get_cn<F>().viscosity = 0.002 * scale_factor * scale_factor;
+  store.get_cn<F>().boundary_viscosity = 0.0063 * scale_factor * scale_factor;
 
   // rigids
   U max_num_contacts = 512;
@@ -72,8 +75,8 @@ int main(void) {
   store.get_cni().max_num_particles_per_cell = 64;
   store.get_cni().max_num_neighbors_per_particle = 64;
 
-  SolverDf<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
-                     false, true);
+  SolverI<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
+                    false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
@@ -81,6 +84,8 @@ int main(void) {
   solver.max_dt = 0.005;
   solver.min_dt = 0.0;
   solver.cfl = 0.2;
+  solver.min_density_solve = 20;
+  solver.max_density_solve = 20;
   solver.particle_radius = particle_radius;
 
   store.copy_cn<F>();
@@ -98,6 +103,8 @@ int main(void) {
   display->add_shading_program(new ShadingProgram(
       nullptr, nullptr, {}, {}, [&](ShadingProgram& program, Display& display) {
         // std::cout << "============= frame_id = " << frame_id << std::endl;
+        // using namespace std::chrono_literals;
+        // std::this_thread::sleep_for(2000ms);
 
         store.map_graphical_pointers();
         // start of simulation loop
