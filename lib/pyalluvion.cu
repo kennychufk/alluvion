@@ -888,6 +888,7 @@ PYBIND11_MODULE(_alluvion, m) {
       .def("set_obj", &Mesh::set_obj)
       .def("calculate_normals", &Mesh::calculate_normals)
       .def("translate", &Mesh::translate)
+      .def("scale", &Mesh::scale)
       .def("clear", &Mesh::clear)
       .def("export_obj", &Mesh::export_obj);
   declare_pile<float>(m, "float");

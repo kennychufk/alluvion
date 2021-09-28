@@ -281,6 +281,12 @@ void Mesh::translate(float3 dx) {
   }
 }
 
+void Mesh::scale(float s) {
+  for (float3& vertex : vertices) {
+    vertex *= s;
+  }
+}
+
 void Mesh::set_obj(const char* filename) {
   clear();
   std::vector<U3> tex_faces;

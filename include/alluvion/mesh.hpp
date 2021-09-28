@@ -23,6 +23,7 @@ struct Mesh {
   void export_obj(const char* filename);
   void calculate_normals();
   void translate(float3 dx);
+  void scale(float s);
   void clear();
 };
 }  // namespace alluvion
