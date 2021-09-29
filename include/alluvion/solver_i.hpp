@@ -183,9 +183,9 @@ struct SolverI : public Solver<TF> {
         calculate_isph_diagonal_adv_density<TQ, TF3, TF2, TF>);
     mean_density_error = std::numeric_limits<TF>::max();
     num_density_solve = 0;
-    while ((num_density_solve < min_density_solve ||
-            mean_density_error > density_error_tolerance) &&
-           num_density_solve <= max_density_solve) {
+    while ((mean_density_error > density_error_tolerance ||
+            num_density_solve < min_density_solve) &&
+           num_density_solve < max_density_solve) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {

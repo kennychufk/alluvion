@@ -131,9 +131,9 @@ struct SolverDf : public Solver<TF> {
 
       mean_density_change = std::numeric_limits<TF>::max();
       num_divergence_solve = 0;
-      while ((num_divergence_solve < min_divergence_solve ||
-              mean_density_change > density_change_tolerance / dt) &&
-             num_divergence_solve <= max_divergence_solve) {
+      while ((mean_density_change > density_change_tolerance / dt ||
+              num_divergence_solve < min_divergence_solve) &&
+             num_divergence_solve < max_divergence_solve) {
         runner.launch(
             num_particles,
             [&](U grid_size, U block_size) {
@@ -304,9 +304,9 @@ struct SolverDf : public Solver<TF> {
           "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
       mean_density_error = std::numeric_limits<TF>::max();
       num_density_solve = 0;
-      while ((num_density_solve < min_density_solve ||
-              mean_density_error > density_error_tolerance) &&
-             num_density_solve <= max_density_solve) {
+      while ((mean_density_error > density_error_tolerance ||
+              num_density_solve < min_density_solve) &&
+             num_density_solve < max_density_solve) {
         runner.launch(
             num_particles,
             [&](U grid_size, U block_size) {

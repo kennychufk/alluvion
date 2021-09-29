@@ -129,8 +129,11 @@ struct Solver {
     particle_max_v2 = TRunner::max(*particle_cfl_v2, num_particles);
     pile_max_v2 = pile.calculate_cfl_v2();
     max_v2 = max(particle_max_v2, pile_max_v2);
-    cfl_dt = cfl * ((particle_radius * 2) / sqrt(max_v2));
+    TF max_v = sqrt(max_v2);
+    TF length_scale = particle_radius * 2;
+    cfl_dt = cfl * length_scale / max_v;
     dt = max(min(cfl_dt, max_dt), min_dt);
+    utilized_cfl = dt * max_v / length_scale;
   }
   void emit_single(TF3 const& x, TF3 const& v) {
     if (t < next_emission_t || num_particles == max_num_particles) return;
@@ -263,6 +266,7 @@ struct Solver {
   TF pile_max_v2;
   TF max_v2;
   TF cfl_dt;
+  TF utilized_cfl;
 
   Store& store;
   TRunner& runner;

@@ -417,6 +417,7 @@ void declare_solver(py::module& m, const char* name) {
       .def_readonly("pile_max_v2", &TSolver::pile_max_v2)
       .def_readonly("max_v2", &TSolver::max_v2)
       .def_readonly("cfl_dt", &TSolver::cfl_dt)
+      .def_readonly("utilized_cfl", &TSolver::utilized_cfl)
       .def_readwrite("num_particles", &TSolver::num_particles)
       .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
