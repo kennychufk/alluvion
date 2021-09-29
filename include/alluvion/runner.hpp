@@ -1872,7 +1872,7 @@ __global__ void pressure_solve_iteration1(
     TF dt2 = dt * dt;
     TF aii = particle_aii(p_i);
     TF denom = aii * dt2;
-    TF omega = static_cast<TF>(0.5);
+    constexpr TF jacobi_weight = static_cast<TF>(2) / 3;
     TF pressure = 0;
 
     TF sum_tmp = 0;
@@ -1899,9 +1899,9 @@ __global__ void pressure_solve_iteration1(
     }
     sum_tmp *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
-      pressure =
-          max((1 - omega) * last_pressure + omega / denom * (b - dt2 * sum_tmp),
-              static_cast<TF>(0));
+      pressure = max((1 - jacobi_weight) * last_pressure +
+                         jacobi_weight / denom * (b - dt2 * sum_tmp),
+                     static_cast<TF>(0));
     }
     particle_density_err(p_i) =
         pressure == 0 ? 0 : (denom * pressure + sum_tmp * dt2 - b);
@@ -2065,7 +2065,8 @@ __global__ void isph_solve_iteration(
     TF b = 1 - diag_adv_density.y;
     TF dt2 = dt * dt;
     TF denom = diag_adv_density.x * dt2;
-    TF omega = static_cast<TF>(0.5);
+    // https://ocw.mit.edu/courses/mathematics/18-086-mathematical-methods-for-engineers-ii-spring-2006/readings/am62.pdf
+    constexpr TF jacobi_weight = static_cast<TF>(2) / 3;
     TF pressure = 0;
 
     TF off_diag = 0;
@@ -2086,9 +2087,9 @@ __global__ void isph_solve_iteration(
     }
     off_diag *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
-      pressure = max(
-          (1 - omega) * last_pressure + omega / denom * (b - dt2 * off_diag),
-          static_cast<TF>(0));
+      pressure = max((1 - jacobi_weight) * last_pressure +
+                         jacobi_weight / denom * (b - dt2 * off_diag),
+                     static_cast<TF>(0));
     }
     particle_density_err(p_i) =
         pressure == 0 ? 0 : (denom * pressure + off_diag * dt2 - b);
