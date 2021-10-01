@@ -1510,7 +1510,6 @@ __global__ void compute_viscosity(
     Variable<2, TQ> particle_boundary, Variable<1, TF3> rigid_x,
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF d = 10;
     TF3 v_i = particle_v(p_i);
     TF3 x_i = particle_x(p_i);
     TF3 da{0};
@@ -1520,7 +1519,7 @@ __global__ void compute_viscosity(
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      da += d * cn<TF>().viscosity * cn<TF>().particle_mass /
+      da += cn<TF>().viscosity * cn<TF>().particle_mass /
             particle_density(p_j) *
             dot(xixj, displacement_cubic_kernel_grad(xixj)) /
             (length_sqr(xixj) +
@@ -1567,19 +1566,19 @@ __global__ void compute_viscosity(
         TF3 v4 = cross(r_omega, x4 - r_x) + r_v;
 
         // compute forces for both sample point
-        TF3 a1 = d * cn<TF>().boundary_viscosity * vol * dot(xix1, gradW1) /
+        TF3 a1 = cn<TF>().boundary_viscosity * vol * dot(xix1, gradW1) /
                  (length_sqr(xix1) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v1);
-        TF3 a2 = d * cn<TF>().boundary_viscosity * vol * dot(xix2, gradW2) /
+        TF3 a2 = cn<TF>().boundary_viscosity * vol * dot(xix2, gradW2) /
                  (length_sqr(xix2) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v2);
-        TF3 a3 = d * cn<TF>().boundary_viscosity * vol * dot(xix3, gradW3) /
+        TF3 a3 = cn<TF>().boundary_viscosity * vol * dot(xix3, gradW3) /
                  (length_sqr(xix3) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v3);
-        TF3 a4 = d * cn<TF>().boundary_viscosity * vol * dot(xix4, gradW4) /
+        TF3 a4 = cn<TF>().boundary_viscosity * vol * dot(xix4, gradW4) /
                  (length_sqr(xix4) +
                   static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                  (v_i - v4);
