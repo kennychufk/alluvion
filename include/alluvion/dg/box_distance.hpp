@@ -8,10 +8,12 @@ namespace dg {
 template <typename TF3, typename TF>
 class BoxDistance : public Distance<TF3, TF> {
  public:
-  BoxDistance(TF3 widths)
+  BoxDistance(TF3 widths, TF outset_arg = 0)
       : half_widths(widths * TF{0.5}),
-        Distance<TF3, TF>(widths * TF{-0.5}, widths * TF{0.5}, length(widths)) {
-  }
+        outset(outset_arg),
+        Distance<TF3, TF>(widths * TF{-0.5} - outset_arg,
+                          widths * TF{0.5} + outset_arg,
+                          length(widths) + outset_arg) {}
   TF signedDistance(dg::Vector3r<TF> const& x) const override {
     TF3 diff = TF3{abs(x(0)), abs(x(1)), abs(x(2))} - half_widths;
     TF3 clipped_diff =
@@ -21,7 +23,8 @@ class BoxDistance : public Distance<TF3, TF> {
   __device__ TF signed_distance(TF3 const& x) const {
     TF3 diff = fabs(x) - half_widths;
     TF3 clipped_diff = fmax(diff, TF3{0});
-    return length(clipped_diff) + min(max(diff.x, max(diff.y, diff.z)), TF{0});
+    return length(clipped_diff) + min(max(diff.x, max(diff.y, diff.z)), TF{0}) -
+           outset;
   }
   // finite difference gives more stable results
   __device__ TF3 gradient(TF3 const& x, TF scale) const {
@@ -35,6 +38,7 @@ class BoxDistance : public Distance<TF3, TF> {
                    signed_distance(x - TF3{0, 0, step})};
   }
   TF3 half_widths;
+  TF outset;
 };
 }  // namespace dg
 }  // namespace alluvion

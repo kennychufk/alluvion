@@ -260,17 +260,9 @@ void declare_distance(py::module& m, const char* name) {
   using TDistance = dg::Distance<TF3, TF>;
   std::string class_name = std::string("Distance") + name;
   py::class_<TDistance, dg::PyDistance<TF3, TF>>(m, class_name.c_str())
-      .def("get_aabb_min",
-           [](TDistance const& distance) -> std::array<TF, 3> {
-             TF3 aabb_min = distance.get_aabb_min();
-             return {aabb_min.x, aabb_min.y, aabb_min.z};
-           })
-      .def("get_aabb_max",
-           [](TDistance const& distance) -> std::array<TF, 3> {
-             TF3 aabb_max = distance.get_aabb_max();
-             return {aabb_max.x, aabb_max.y, aabb_max.z};
-           })
-      .def("get_max_distance", &TDistance::get_max_distance);
+      .def_readonly("aabb_min", &TDistance::aabb_min_)
+      .def_readonly("aabb_max", &TDistance::aabb_max_)
+      .def_readonly("max_distance", &TDistance::max_distance_);
 }
 
 template <typename TF3, typename TF>
@@ -289,10 +281,16 @@ void declare_box_distance(py::module& m, const char* name) {
   using TBoxDistance = dg::BoxDistance<TF3, TF>;
   std::string class_name = std::string("BoxDistance") + name;
   py::class_<TBoxDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TF3>())
+      .def(py::init<TF3, TF>(), py::arg("widths"), py::arg("outset") = 0)
+      .def_readonly("half_widths", &TBoxDistance::half_widths)
+      .def_readonly("outset", &TBoxDistance::outset)
       .def_static(
-          "create", [](TF3 widths) { return new TBoxDistance(widths); },
-          py::return_value_policy::reference);
+          "create",
+          [](TF3 widths, TF outset) {
+            return new TBoxDistance(widths, outset);
+          },
+          py::return_value_policy::reference, py::arg("widths"),
+          py::arg("outset") = 0);
 }
 
 template <typename TF3, typename TF>
