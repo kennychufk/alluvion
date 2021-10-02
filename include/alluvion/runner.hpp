@@ -129,7 +129,7 @@ inline __device__ TQ quaternion_conjugate(TQ q) {
 }
 
 template <typename TQ, typename TF3>
-inline __device__ TF3 rotate_using_quaternion(TF3 v, TQ q) {
+inline __device__ __host__ TF3 rotate_using_quaternion(TF3 v, TQ q) {
   TF3 rotated;
   rotated.x = (1 - 2 * (q.y * q.y + q.z * q.z)) * v.x +
               2 * (q.x * q.y - q.z * q.w) * v.y +

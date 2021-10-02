@@ -281,6 +281,12 @@ void Mesh::translate(float3 dx) {
   }
 }
 
+void Mesh::rotate(float4 q) {
+  for (float3& vertex : vertices) {
+    vertex = rotate_using_quaternion(vertex, q);
+  }
+}
+
 void Mesh::scale(float s) {
   for (float3& vertex : vertices) {
     vertex *= s;
@@ -500,6 +506,11 @@ float Mesh::calculate_mass_properties(float3& com, float3& inertia_diag,
                                 com.x * com.x + com.y * com.y};
   inertia_off_diag +=
       mass * float3{com.x * com.y, com.y * com.z, com.z * com.x};
+
+  // TODO: temporary fix. Change off_diag ordering for runner.hpp as well?
+  float tmp = inertia_off_diag.y;
+  inertia_off_diag.y = inertia_off_diag.z;
+  inertia_off_diag.z = tmp;
 
   return mass;
 }

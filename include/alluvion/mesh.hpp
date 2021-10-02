@@ -23,6 +23,7 @@ struct Mesh {
   void export_obj(const char* filename);
   void calculate_normals();
   void translate(float3 dx);
+  void rotate(float4 q);
   void scale(float s);
   void clear();
   float calculate_mass_properties(float3& com, float3& inertia_diag,
