@@ -924,7 +924,16 @@ PYBIND11_MODULE(_alluvion, m) {
       .def("translate", &Mesh::translate)
       .def("scale", &Mesh::scale)
       .def("clear", &Mesh::clear)
-      .def("export_obj", &Mesh::export_obj);
+      .def("export_obj", &Mesh::export_obj)
+      .def(
+          "calculate_mass_properties",
+          [](Mesh const& mesh, float density) {
+            float3 com, inertia_diag, inertia_off_diag;
+            float mass = mesh.calculate_mass_properties(
+                com, inertia_diag, inertia_off_diag, density);
+            return std::make_tuple(mass, com, inertia_diag, inertia_off_diag);
+          },
+          py::arg("density") = 1);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 

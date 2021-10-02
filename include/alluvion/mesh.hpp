@@ -25,6 +25,15 @@ struct Mesh {
   void translate(float3 dx);
   void scale(float s);
   void clear();
+  float calculate_mass_properties(float3& com, float3& inertia_diag,
+                                  float3& inertia_off_diag,
+                                  float density = 1) const;
+  static void face_integrals(float3 const* face_vertices[3],
+                             float const& weight, float3 const& face_normal,
+                             int a, int b, int c, float& Fa, float& Fb,
+                             float& Fc, float& Faa, float& Fbb, float& Fcc,
+                             float& Faaa, float& Fbbb, float& Fccc, float& Faab,
+                             float& Fbbc, float& Fcca);
 };
 }  // namespace alluvion
 

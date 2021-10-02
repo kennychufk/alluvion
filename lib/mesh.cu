@@ -419,4 +419,207 @@ void Mesh::clear() {
   texcoords.clear();
   faces.clear();
 }
+float Mesh::calculate_mass_properties(float3& com, float3& inertia_diag,
+                                      float3& inertia_off_diag,
+                                      float density) const {
+  // volume_integrals();
+  float nx, ny, nz;
+  int a, b, c;
+  float Fa, Fb, Fc, Faa, Fbb, Fcc, Faaa, Fbbb, Fccc, Faab, Fbbc, Fcca;
+  float volume = 0;
+  float3 T1{0};
+  float3 T2{0};
+  float3 TP{0};
+
+  for (U i = 0; i < faces.size(); ++i) {
+    U3 const& face = faces[i];
+    float3 const* face_vertices[3] = {&vertices[face.x], &vertices[face.y],
+                                      &vertices[face.z]};
+    float3 face_normal = cross(*face_vertices[1] - *face_vertices[0],
+                               *face_vertices[2] - *face_vertices[0]);
+    float nl2 = length_sqr(face_normal);
+    if (nl2 < static_cast<float>(1e-10)) {
+      face_normal = float3{0};
+    } else {
+      face_normal *= rsqrt(nl2);
+    }
+
+    float weight = -dot(face_normal, *face_vertices[0]);
+    nx = fabs(face_normal.x);
+    ny = fabs(face_normal.y);
+    nz = fabs(face_normal.z);
+    if (nx > ny && nx > nz)
+      c = 0;
+    else
+      c = (ny > nz) ? 1 : 2;
+    a = (c + 1) % 3;
+    b = (a + 1) % 3;
+
+    face_integrals(face_vertices, weight, face_normal, a, b, c, Fa, Fb, Fc, Faa,
+                   Fbb, Fcc, Faaa, Fbbb, Fccc, Faab, Fbbc, Fcca);
+
+    volume += face_normal.x * ((a == 0) ? Fa : ((b == 0) ? Fb : Fc));
+
+    *(reinterpret_cast<float*>(&T1) + a) +=
+        *(reinterpret_cast<float const*>(&face_normal) + a) * Faa;
+    *(reinterpret_cast<float*>(&T1) + b) +=
+        *(reinterpret_cast<float const*>(&face_normal) + b) * Fbb;
+    *(reinterpret_cast<float*>(&T1) + c) +=
+        *(reinterpret_cast<float const*>(&face_normal) + c) * Fcc;
+    *(reinterpret_cast<float*>(&T2) + a) +=
+        *(reinterpret_cast<float const*>(&face_normal) + a) * Faaa;
+    *(reinterpret_cast<float*>(&T2) + b) +=
+        *(reinterpret_cast<float const*>(&face_normal) + b) * Fbbb;
+    *(reinterpret_cast<float*>(&T2) + c) +=
+        *(reinterpret_cast<float const*>(&face_normal) + c) * Fccc;
+    *(reinterpret_cast<float*>(&TP) + a) +=
+        *(reinterpret_cast<float const*>(&face_normal) + a) * Faab;
+    *(reinterpret_cast<float*>(&TP) + b) +=
+        *(reinterpret_cast<float const*>(&face_normal) + b) * Fbbc;
+    *(reinterpret_cast<float*>(&TP) + c) +=
+        *(reinterpret_cast<float const*>(&face_normal) + c) * Fcca;
+  }
+
+  T1 /= 2;
+  T2 /= 3;
+  TP /= 2;
+  // end of volume_integrals()
+
+  float mass = density * volume;
+
+  /* compute center of mass */
+  com = T1 / volume;
+
+  /* compute inertia tensor */
+  inertia_diag = density * float3{T2.y + T2.z, T2.z + T2.x, T2.x + T2.y};
+  inertia_off_diag = -density * TP;
+
+  /* translate inertia tensor to center of mass */
+  inertia_diag -= mass * float3{com.y * com.y + com.z * com.z,
+                                com.z * com.z + com.x * com.x,
+                                com.x * com.x + com.y * com.y};
+  inertia_off_diag +=
+      mass * float3{com.x * com.y, com.y * com.z, com.z * com.x};
+
+  return mass;
+}
+
+void Mesh::face_integrals(float3 const* face_vertices[3], float const& weight,
+                          float3 const& face_normal, int a, int b, int c,
+                          float& Fa, float& Fb, float& Fc, float& Faa,
+                          float& Fbb, float& Fcc, float& Faaa, float& Fbbb,
+                          float& Fccc, float& Faab, float& Fbbc, float& Fcca)
+
+{
+  float k1, k2, k3, k4;
+
+  // projection_integrals(f);
+  float a0, a1, da;
+  float b0, b1, db;
+  float a0_2, a0_3, a0_4, b0_2, b0_3, b0_4;
+  float a1_2, a1_3, b1_2, b1_3;
+  float C1, Ca, Caa, Caaa, Cb, Cbb, Cbbb;
+  float Cab, Kab, Caab, Kaab, Cabb, Kabb;
+
+  float P1 = 0;
+  float Pa = 0;
+  float Pb = 0;
+  float Paa = 0;
+  float Pab = 0;
+  float Pbb = 0;
+  float Paaa = 0;
+  float Paab = 0;
+  float Pabb = 0;
+  float Pbbb = 0;
+
+  for (int i = 0; i < 3; i++) {
+    float3 const* v0 = face_vertices[i];
+    float3 const* v1 = face_vertices[(i + 1) % 3];
+    a0 = *(reinterpret_cast<float const*>(v0) + a);
+    b0 = *(reinterpret_cast<float const*>(v0) + b);
+    a1 = *(reinterpret_cast<float const*>(v1) + a);
+    b1 = *(reinterpret_cast<float const*>(v1) + b);
+
+    da = a1 - a0;
+    db = b1 - b0;
+    a0_2 = a0 * a0;
+    a0_3 = a0_2 * a0;
+    a0_4 = a0_3 * a0;
+    b0_2 = b0 * b0;
+    b0_3 = b0_2 * b0;
+    b0_4 = b0_3 * b0;
+    a1_2 = a1 * a1;
+    a1_3 = a1_2 * a1;
+    b1_2 = b1 * b1;
+    b1_3 = b1_2 * b1;
+
+    C1 = a1 + a0;
+    Ca = a1 * C1 + a0_2;
+    Caa = a1 * Ca + a0_3;
+    Caaa = a1 * Caa + a0_4;
+    Cb = b1 * (b1 + b0) + b0_2;
+    Cbb = b1 * Cb + b0_3;
+    Cbbb = b1 * Cbb + b0_4;
+    Cab = 3 * a1_2 + 2 * a1 * a0 + a0_2;
+    Kab = a1_2 + 2 * a1 * a0 + 3 * a0_2;
+    Caab = a0 * Cab + 4 * a1_3;
+    Kaab = a1 * Kab + 4 * a0_3;
+    Cabb = 4 * b1_3 + 3 * b1_2 * b0 + 2 * b1 * b0_2 + b0_3;
+    Kabb = b1_3 + 2 * b1_2 * b0 + 3 * b1 * b0_2 + 4 * b0_3;
+
+    P1 += db * C1;
+    Pa += db * Ca;
+    Paa += db * Caa;
+    Paaa += db * Caaa;
+    Pb += da * Cb;
+    Pbb += da * Cbb;
+    Pbbb += da * Cbbb;
+    Pab += db * (b1 * Cab + b0 * Kab);
+    Paab += db * (b1 * Caab + b0 * Kaab);
+    Pabb += da * (a1 * Cabb + a0 * Kabb);
+  }
+
+  P1 /= 2.0;
+  Pa /= 6.0;
+  Paa /= 12.0;
+  Paaa /= 20.0;
+  Pb /= -6.0;
+  Pbb /= -12.0;
+  Pbbb /= -20.0;
+  Pab /= 24.0;
+  Paab /= 60.0;
+  Pabb /= -60.0;
+  // end of projection_integrals(f);
+
+  float const& na = *(reinterpret_cast<float const*>(&face_normal) + a);
+  float const& nb = *(reinterpret_cast<float const*>(&face_normal) + b);
+  float const& nc = *(reinterpret_cast<float const*>(&face_normal) + c);
+  k1 = (nc == 0) ? 0 : 1 / nc;
+  k2 = k1 * k1;
+  k3 = k2 * k1;
+  k4 = k3 * k1;
+
+  Fa = k1 * Pa;
+  Fb = k1 * Pb;
+  Fc = -k2 * (na * Pa + nb * Pb + weight * P1);
+
+  Faa = k1 * Paa;
+  Fbb = k1 * Pbb;
+  Fcc = k3 * (na * na * Paa + 2 * na * nb * Pab + nb * nb * Pbb +
+              weight * (2 * (na * Pa + nb * Pb) + weight * P1));
+
+  Faaa = k1 * Paaa;
+  Fbbb = k1 * Pbbb;
+  Fccc =
+      -k4 * (na * na * na * Paaa + 3 * na * na * nb * Paab +
+             3 * na * nb * nb * Pabb + nb * nb * nb * Pbbb +
+             3 * weight * (na * na * Paa + 2 * na * nb * Pab + nb * nb * Pbb) +
+             weight * weight * (3 * (na * Pa + nb * Pb) + weight * P1));
+
+  Faab = k1 * Paab;
+  Fbbc = -k2 * (na * Pabb + nb * Pbbb + weight * Pbb);
+  Fcca = k3 * (na * na * Paaa + 2 * na * nb * Paab + nb * nb * Pabb +
+               weight * (2 * (na * Paa + nb * Pab) + weight * Pa));
+}
+
 }  // namespace alluvion
