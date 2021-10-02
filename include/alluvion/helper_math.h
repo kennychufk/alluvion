@@ -672,6 +672,9 @@ inline __host__ __device__ void operator-=(uint3 &a, uint b) {
 inline __host__ __device__ float4 operator-(float4 a, float4 b) {
   return make_float4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
 }
+inline __host__ __device__ float4 operator-(float b, float4 a) {
+  return make_float4(b - a.x, b - a.y, b - a.z, b - a.w);
+}
 inline __host__ __device__ void operator-=(float4 &a, float4 b) {
   a.x -= b.x;
   a.y -= b.y;
@@ -690,6 +693,9 @@ inline __host__ __device__ void operator-=(float4 &a, float b) {
 
 inline __host__ __device__ double4 operator-(double4 a, double4 b) {
   return make_double4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
+}
+inline __host__ __device__ double4 operator-(double b, double4 a) {
+  return make_double4(b - a.x, b - a.y, b - a.z, b - a.w);
 }
 inline __host__ __device__ void operator-=(double4 &a, double4 b) {
   a.x -= b.x;

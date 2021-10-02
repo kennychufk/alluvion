@@ -47,33 +47,77 @@ class PyDistance : public Distance<TF3, TF> {
 }  // namespace dg
 }  // namespace alluvion
 
-template <typename TF3, typename TF>
-void declare_vector3(py::module& m, const char* name) {
-  py::class_<TF3>(m, name)
-      .def(py::init<TF, TF, TF>())
-      .def_readwrite("x", &TF3::x)
-      .def_readwrite("y", &TF3::y)
-      .def_readwrite("z", &TF3::z)
-      .def("__repr__", [](TF3 const& v) {
-        std::stringstream stream;
-        stream << "(" << v.x << ", " << v.y << ", " << v.z << ")";
-        return stream.str();
+template <typename TVector, typename TPrimitive>
+void declare_vector_operator(py::class_<TVector>& vector_class) {
+  vector_class
+      .def("__add__",
+           [](TVector const& v, const TPrimitive s) { return v + s; })
+      .def("__radd__",
+           [](TVector const& v, const TPrimitive s) { return s + v; })
+      .def("__sub__",
+           [](TVector const& v, const TPrimitive s) { return v - s; })
+      .def("__rsub__",
+           [](TVector const& v, const TPrimitive s) { return s - v; })
+      .def("__mul__",
+           [](TVector const& v, const TPrimitive s) { return v * s; })
+      .def("__rmul__",
+           [](TVector const& v, const TPrimitive s) { return s * v; })
+      .def("__add__",
+           [](TVector const& v, TVector const& v_other) { return v + v_other; })
+      .def("__sub__",
+           [](TVector const& v, TVector const& v_other) { return v - v_other; })
+      .def("__mul__", [](TVector const& v, TVector const& v_other) {
+        return v * v_other;
       });
+
+  if constexpr (std::is_same_v<TPrimitive, float> ||
+                std::is_same_v<TPrimitive, double>) {
+    vector_class
+        .def("__truediv__",
+             [](TVector const& v, const TPrimitive s) { return v / s; })
+        .def("__rtruediv__",
+             [](TVector const& v, const TPrimitive s) { return s / v; })
+        .def("__truediv__", [](TVector const& v, TVector const& v_other) {
+          return v / v_other;
+        });
+  }
+  if constexpr (!std::is_same_v<TPrimitive, uint>) {
+    vector_class.def("__neg__", [](TVector const& v) { return -v; });
+  }
 }
 
-template <typename TF4, typename TF>
+template <typename TVector3, typename TPrimitive>
+void declare_vector3(py::module& m, const char* name) {
+  py::class_<TVector3> vector_class =
+      py::class_<TVector3>(m, name)
+          .def(py::init<TPrimitive, TPrimitive, TPrimitive>())
+          .def_readwrite("x", &TVector3::x)
+          .def_readwrite("y", &TVector3::y)
+          .def_readwrite("z", &TVector3::z)
+          .def("__repr__", [](TVector3 const& v) {
+            std::stringstream stream;
+            stream << "(" << v.x << ", " << v.y << ", " << v.z << ")";
+            return stream.str();
+          });
+  declare_vector_operator<TVector3, TPrimitive>(vector_class);
+}
+
+template <typename TVector4, typename TPrimitive>
 void declare_vector4(py::module& m, const char* name) {
-  py::class_<TF4>(m, name)
-      .def(py::init<TF, TF, TF, TF>())
-      .def_readwrite("x", &TF4::x)
-      .def_readwrite("y", &TF4::y)
-      .def_readwrite("z", &TF4::z)
-      .def("__repr__", [](TF4 const& v) {
-        std::stringstream stream;
-        stream << "(" << v.x << ", " << v.y << ", " << v.z << ", " << v.w
-               << ")";
-        return stream.str();
-      });
+  py::class_<TVector4> vector_class =
+      py::class_<TVector4>(m, name)
+          .def(py::init<TPrimitive, TPrimitive, TPrimitive, TPrimitive>())
+          .def_readwrite("x", &TVector4::x)
+          .def_readwrite("y", &TVector4::y)
+          .def_readwrite("z", &TVector4::z)
+          .def_readwrite("w", &TVector4::w)
+          .def("__repr__", [](TVector4 const& v) {
+            std::stringstream stream;
+            stream << "(" << v.x << ", " << v.y << ", " << v.z << ", " << v.w
+                   << ")";
+            return stream.str();
+          });
+  declare_vector_operator<TVector4, TPrimitive>(vector_class);
 }
 
 template <unsigned int D, typename M>
