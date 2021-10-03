@@ -66,6 +66,8 @@ class TriangleMesh {
   using FaceSet =
       std::unordered_set<Halfedge<unsigned int>, HalfedgeHasher<unsigned int>,
                          HalfedgeEqualTo<unsigned int>>;
+  TriangleMesh() {}
+
   TriangleMesh(std::vector<dg::Vector3r<TF>> const& vertices,
                std::vector<std::array<unsigned int, 3>> const& faces)
       : m_faces(faces),
@@ -205,7 +207,6 @@ class TriangleMesh {
     return (x1 - x0).cross(x2 - x0).normalized();
   }
 
- private:
   void construct() {
     m_e2e.resize(3 * m_faces.size());
     m_v2e.resize(m_vertices.size());
@@ -253,7 +254,6 @@ class TriangleMesh {
     }
   }
 
- private:
   std::vector<dg::Vector3r<TF>> m_vertices;
   std::vector<std::array<unsigned int, 3>> m_faces;
   std::vector<std::array<Halfedge<unsigned int>, 3>> m_e2e;

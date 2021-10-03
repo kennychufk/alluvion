@@ -401,6 +401,7 @@ void declare_triangle_mesh(py::module& m, const char* name) {
   using TTriangleMesh = dg::TriangleMesh<TF>;
   std::string class_name = std::string("TriangleMesh") + name;
   py::class_<TTriangleMesh>(m, class_name.c_str())
+      .def(py::init<>())
       .def(py::init<std::vector<dg::Vector3r<TF>> const&,
                     std::vector<std::array<unsigned int, 3>> const&>(),
            py::arg("vertices"), py::arg("faces"))
@@ -934,7 +935,9 @@ PYBIND11_MODULE(_alluvion, m) {
                 com, inertia_diag, inertia_off_diag, density);
             return std::make_tuple(mass, com, inertia_diag, inertia_off_diag);
           },
-          py::arg("density") = 1);
+          py::arg("density") = 1)
+      .def("copy_to", &Mesh::copy_to<float>)
+      .def("copy_to", &Mesh::copy_to<double>);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 
