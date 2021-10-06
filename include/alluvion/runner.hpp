@@ -2807,16 +2807,16 @@ __global__ void drive_linear(Variable<1, TF3> particle_x,
   forThreadMappedToElement(num_particles, [&](U p_i) {
     const TF3 x_i = particle_x(p_i);
     const TF3 v_i = particle_v(p_i);
-    TF3 force{0};
+    TF3 da{0};
     for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
       TF3 c_x = usher_x(usher_id);
       TF3 c_v = usher_v(usher_id);
       TF c_kernel = drive_kernel_radius(usher_id);
       TF c_strength = drive_strength(usher_id);
-      force += c_strength * displacement_cubic_kernel(x_i - c_x, c_kernel) *
-               (c_v - v_i);
+      da += c_strength * c_kernel * c_kernel * c_kernel * 8 * 0.1 *
+            displacement_cubic_kernel(x_i - c_x, c_kernel) * (c_v - v_i);
     }
-    particle_a(p_i) += force;
+    particle_a(p_i) += da;
   });
 }
 
@@ -2853,7 +2853,7 @@ __global__ void sample_fluid(
     Variable<2, TQ> sample_neighbors, Variable<1, U> sample_num_neighbors,
     Variable<1, TQuantity> sample_quantity, U num_samples) {
   forThreadMappedToElement(num_samples, [&](U p_i) {
-    TQuantity result{};
+    TQuantity result{0};
     TF3 x_i = sample_x(p_i);
     for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
          ++neighbor_id) {
@@ -2864,6 +2864,38 @@ __global__ void sample_fluid(
                 displacement_cubic_kernel(xixj) * particle_quantity(p_j);
     }
     sample_quantity(p_i) = result;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void sample_velocity(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
+    Variable<1, TF> particle_density, Variable<1, TF3> particle_v,
+    Variable<2, TQ> sample_neighbors, Variable<1, U> sample_num_neighbors,
+    Variable<1, TF3> sample_v, Variable<2, TQ> sample_boundary,
+    Variable<2, TQ> sample_boundary_kernel, Variable<1, TF3> rigid_x,
+    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 result{0};
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_neighbors(p_i, neighbor_id), xixj, p_j);
+      result += cn<TF>().particle_mass / particle_density(p_j) *
+                displacement_cubic_kernel(xixj) * particle_v(p_j);
+    }
+    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
+      TQ boundary = sample_boundary(boundary_id, p_i);
+      TQ boundary_kernel = sample_boundary_kernel(boundary_id, p_i);
+      TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
+
+      TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
+                 rigid_v(boundary_id);
+      result += velj * boundary_kernel.w;
+    }
+    sample_v(p_i) = result;
   });
 }
 
@@ -3255,6 +3287,24 @@ class Runner {
               num_samples);
         },
         "sample_fluid", sample_fluid<TQ, TF3, TF, TQuantity>);
+  }
+  void launch_sample_velocity(
+      Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
+      Variable<1, TF>& particle_density, Variable<1, TF3>& particle_v,
+      Variable<2, TQ>& sample_neighbors, Variable<1, U>& sample_num_neighbors,
+      Variable<1, TF3>& sample_v, Variable<2, TQ>& sample_boundary,
+      Variable<2, TQ>& sample_boundary_kernel, Variable<1, TF3> rigid_x,
+      Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          sample_velocity<<<grid_size, block_size>>>(
+              sample_x, particle_x, particle_density, particle_v,
+              sample_neighbors, sample_num_neighbors, sample_v, sample_boundary,
+              sample_boundary_kernel, rigid_x, rigid_v, rigid_omega,
+              num_samples);
+        },
+        "sample_velocity", sample_velocity<TQ, TF3, TF>);
   }
   void launch_sample_density(Variable<1, TF3>& sample_x,
                              Variable<2, TQ>& sample_neighbors,

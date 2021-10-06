@@ -255,6 +255,13 @@ void declare_pile(py::module& m, const char* name) {
             }
             return result;
           })
+      .def_property_readonly(
+          "x_device", [](TPile const& pile) { return pile.x_device_.get(); })
+      .def_property_readonly(
+          "v_device", [](TPile const& pile) { return pile.v_device_.get(); })
+      .def_property_readonly(
+          "omega_device",
+          [](TPile const& pile) { return pile.omega_device_.get(); })
       .def_static(
           "read",
           [](const char* filename, U num_rigids, py::array_t<unsigned char> x,
@@ -525,6 +532,8 @@ void declare_solver(py::module& m, const char* name) {
                              [](TSolver const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
+      .def_property_readonly("pile",
+                             [](TSolver const& solver) { return &solver.pile; })
       .def("normalize",
            py::overload_cast<Variable<1, TF3> const*, Variable<1, TF>*, TF, TF>(
                &TSolver::normalize))
@@ -805,6 +814,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def("launch_sample_velocity", &TRunner::launch_sample_velocity)
       .def("launch_sample_density", &TRunner::launch_sample_density)
       .def("launch_copy_kinematics_if_within",
            &TRunner::launch_copy_kinematics_if_within)
