@@ -573,8 +573,8 @@ __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
   forThreadMappedToElement(num_particles, [&](U tid) {
     U p_i = tid + offset;
     TF3 start = box_min + make_vector<TF3>(cn<TF>().particle_radius * 2);
-    I j = p_i / (steps.y * steps.z);
-    I k = (p_i % (steps.y * steps.z)) / steps.z;
+    I j = (p_i % (steps.x * steps.z)) / steps.z;
+    I k = p_i / (steps.x * steps.z);
     I l = p_i % steps.z;
     TF3 currPos = TF3{xshift * j, yshift * k, diameter * l} + start;
     TF3 shift_vec{0};
