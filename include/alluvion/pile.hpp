@@ -350,13 +350,17 @@ class Pile {
     v_device_->set_bytes(v_.ptr_);
     omega_device_->set_bytes(omega_.ptr_);
   }
-  void write_file(const char* filename) const {
+  void write_file(const char* filename, TF x_scale = 1, TF v_scale = 1,
+                  TF omega_scale = 1) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
     for (U i = 0; i < get_size(); ++i) {
-      stream.write(reinterpret_cast<const char*>(&x_(i)), sizeof(TF3));
-      stream.write(reinterpret_cast<const char*>(&v_(i)), sizeof(TF3));
+      TF3 x_scaled = x_(i) * x_scale;
+      TF3 v_scaled = v_(i) * v_scale;
+      TF3 omega_scaled = omega_(i) * omega_scale;
+      stream.write(reinterpret_cast<const char*>(&x_scaled), sizeof(TF3));
+      stream.write(reinterpret_cast<const char*>(&v_scaled), sizeof(TF3));
       stream.write(reinterpret_cast<const char*>(&q_(i)), sizeof(TQ));
-      stream.write(reinterpret_cast<const char*>(&omega_(i)), sizeof(TF3));
+      stream.write(reinterpret_cast<const char*>(&omega_scale), sizeof(TF3));
     }
   }
   // TODO: rename to load

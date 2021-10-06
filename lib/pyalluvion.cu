@@ -293,7 +293,9 @@ void declare_pile(py::module& m, const char* name) {
            &TPile::reallocate_kinematics_on_device)
       .def("reallocate_kinematics_on_pinned",
            &TPile::reallocate_kinematics_on_pinned)
-      .def("write_file", &TPile::write_file)
+      .def("write_file", &TPile::write_file, py::arg("filename"),
+           py::arg("x_scale") = 1, py::arg("v_scale") = 1,
+           py::arg("omega_scale") = 1)
       .def("read_file", &TPile::read_file, py::arg("filename"),
            py::arg("num_rigids") = -1, py::arg("offset") = 0)
       .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
