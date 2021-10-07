@@ -113,14 +113,22 @@ class Variable {
     Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes, value);
   }
   void set_same(int value) { set_same(value, get_linear_shape()); }
-  void scale(M multiplier, U num_elements, U offset = 0) {
+  template <typename TMultiplier>
+  void scale(TMultiplier multiplier, U num_elements, U offset = 0) {
     using namespace thrust::placeholders;
     thrust::transform(
-        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
-        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset, multiplier * _1);
+        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
+            offset,
+        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
+            offset,
+        multiplier * _1);
   }
-  void scale(M multiplier) { scale(multiplier, get_linear_shape()); }
+  template <typename TMultiplier>
+  void scale(TMultiplier multiplier) {
+    scale(multiplier, get_linear_shape());
+  }
 
   void write_file(const char* filename, U shape_outermost = 0) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);

@@ -91,6 +91,10 @@ void declare_vector3(py::module& m, const char* name) {
   py::class_<TVector3> vector_class =
       py::class_<TVector3>(m, name)
           .def(py::init<TPrimitive, TPrimitive, TPrimitive>())
+          .def_static("from_scalar",
+                      [](const TPrimitive s) {
+                        return TVector3{s, s, s};
+                      })
           .def_readwrite("x", &TVector3::x)
           .def_readwrite("y", &TVector3::y)
           .def_readwrite("z", &TVector3::z)
@@ -107,6 +111,10 @@ void declare_vector4(py::module& m, const char* name) {
   py::class_<TVector4> vector_class =
       py::class_<TVector4>(m, name)
           .def(py::init<TPrimitive, TPrimitive, TPrimitive, TPrimitive>())
+          .def_static("from_scalar",
+                      [](const TPrimitive s) {
+                        return TVector4{s, s, s, s};
+                      })
           .def_readwrite("x", &TVector4::x)
           .def_readwrite("y", &TVector4::y)
           .def_readwrite("z", &TVector4::z)
@@ -120,7 +128,7 @@ void declare_vector4(py::module& m, const char* name) {
   declare_vector_operator<TVector4, TPrimitive>(vector_class);
 }
 
-template <unsigned int D, typename M>
+template <unsigned int D, typename M, typename PrimitiveType>
 void declare_variable(py::module& m, py::class_<Store>& store_class,
                       py::class_<Runner<float>>* runner_float_class,
                       py::class_<Runner<double>>* runner_double_class,
@@ -153,48 +161,64 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
                                     py::arg("offset") = 0);
 
   std::string variable_name = std::string("Variable") + name;
-  py::class_<VariableClass>(m, variable_name.c_str())
-      .def(py::init<const VariableClass&>())
-      .def_readonly("ptr", &VariableClass::ptr_)
-      .def(
-          "get_bytes",
-          [](VariableClass& variable, py::array_t<unsigned char> bytes,
-             U offset) {
-            variable.get_bytes(bytes.mutable_data(), bytes.size(), offset);
-          },
-          py::arg("bytes"), py::arg("offset") = 0)
-      .def(
-          "set_bytes",
-          [](VariableClass& variable, py::array_t<unsigned char> bytes,
-             U offset) {
-            variable.set_bytes(bytes.data(), bytes.size(), offset);
-          },
-          py::arg("bytes"), py::arg("offset") = 0)
-      .def("set_from",
-           py::overload_cast<VariableClass const&, U, U>(
-               &VariableClass::set_from),
-           py::arg("src"), py::arg("num_elements") = -1, py::arg("offset") = 0)
-      .def("set_from",
-           py::overload_cast<VariableClass const&>(&VariableClass::set_from),
-           py::arg("src"))
-      .def("set_zero", &VariableClass::set_zero)
-      .def("set_same", py::overload_cast<int, U, U>(&VariableClass::set_same),
-           py::arg("value"), py::arg("num_elements") = -1,
-           py::arg("offset") = 0)
-      .def("set_same", py::overload_cast<int>(&VariableClass::set_same),
-           py::arg("value"))
-      .def("scale", py::overload_cast<M>(&VariableClass::scale))
-      .def("scale", py::overload_cast<M, U, U>(&VariableClass::scale),
-           py::arg("multiplier"), py::arg("num_elements"),
-           py::arg("offset") = 0)
-      .def("get_type", &VariableClass::get_type)
-      .def("get_num_primitives_per_element",
-           &VariableClass::get_num_primitives_per_element)
-      .def("get_linear_shape", &VariableClass::get_linear_shape)
-      .def("get_num_primitives", &VariableClass::get_num_primitives)
-      .def("read_file", &VariableClass::read_file)
-      .def("write_file", &VariableClass::write_file)
-      .def("get_shape", &VariableClass::get_shape);
+  py::class_<VariableClass> variable_class =
+      py::class_<VariableClass>(m, variable_name.c_str())
+          .def(py::init<const VariableClass&>())
+          .def_readonly("ptr", &VariableClass::ptr_)
+          .def(
+              "get_bytes",
+              [](VariableClass& variable, py::array_t<unsigned char> bytes,
+                 U offset) {
+                variable.get_bytes(bytes.mutable_data(), bytes.size(), offset);
+              },
+              py::arg("bytes"), py::arg("offset") = 0)
+          .def(
+              "set_bytes",
+              [](VariableClass& variable, py::array_t<unsigned char> bytes,
+                 U offset) {
+                variable.set_bytes(bytes.data(), bytes.size(), offset);
+              },
+              py::arg("bytes"), py::arg("offset") = 0)
+          .def("set_from",
+               py::overload_cast<VariableClass const&, U, U>(
+                   &VariableClass::set_from),
+               py::arg("src"), py::arg("num_elements") = -1,
+               py::arg("offset") = 0)
+          .def(
+              "set_from",
+              py::overload_cast<VariableClass const&>(&VariableClass::set_from),
+              py::arg("src"))
+          .def("set_zero", &VariableClass::set_zero)
+          .def("set_same",
+               py::overload_cast<int, U, U>(&VariableClass::set_same),
+               py::arg("value"), py::arg("num_elements") = -1,
+               py::arg("offset") = 0)
+          .def("set_same", py::overload_cast<int>(&VariableClass::set_same),
+               py::arg("value"))
+          .def("scale", py::overload_cast<M>(&VariableClass::template scale<M>))
+          .def("scale",
+               py::overload_cast<M, U, U>(&VariableClass::template scale<M>),
+               py::arg("multiplier"), py::arg("num_elements"),
+               py::arg("offset") = 0)
+          .def("get_type", &VariableClass::get_type)
+          .def("get_num_primitives_per_element",
+               &VariableClass::get_num_primitives_per_element)
+          .def("get_linear_shape", &VariableClass::get_linear_shape)
+          .def("get_num_primitives", &VariableClass::get_num_primitives)
+          .def("read_file", &VariableClass::read_file)
+          .def("write_file", &VariableClass::write_file)
+          .def("get_shape", &VariableClass::get_shape);
+
+  if (typeid(PrimitiveType) != typeid(bool)) {
+    variable_class
+        .def("scale", py::overload_cast<PrimitiveType>(
+                          &VariableClass::template scale<PrimitiveType>))
+        .def("scale",
+             py::overload_cast<PrimitiveType, U, U>(
+                 &VariableClass::template scale<PrimitiveType>),
+             py::arg("multiplier"), py::arg("num_elements"),
+             py::arg("offset") = 0);
+  }
 
   std::string graphical_variable_name = std::string("GraphicalVariable") + name;
   py::class_<GraphicalVariableClass, VariableClass>(
@@ -873,34 +897,36 @@ PYBIND11_MODULE(_alluvion, m) {
   py::class_<Runner<double>> runner_double =
       declare_runner<double>(m, "double");
 
-  declare_variable<1, float>(m, store_class, &runner_float, nullptr, "1Dfloat");
-  declare_variable<1, float3>(m, store_class, &runner_float, nullptr,
-                              "1Dfloat3");
-  declare_variable<2, float>(m, store_class, &runner_float, nullptr, "2Dfloat");
-  declare_variable<2, float3>(m, store_class, &runner_float, nullptr,
-                              "2Dfloat3");
-  declare_variable<2, float4>(m, store_class, &runner_float, nullptr,
-                              "2Dfloat4");
-  declare_variable<4, float4>(m, store_class, &runner_float, nullptr,
-                              "4Dfloat4");
+  declare_variable<1, float, bool>(m, store_class, &runner_float, nullptr,
+                                   "1Dfloat");
+  declare_variable<1, float3, float>(m, store_class, &runner_float, nullptr,
+                                     "1Dfloat3");
+  declare_variable<2, float, bool>(m, store_class, &runner_float, nullptr,
+                                   "2Dfloat");
+  declare_variable<2, float3, float>(m, store_class, &runner_float, nullptr,
+                                     "2Dfloat3");
+  declare_variable<2, float4, float>(m, store_class, &runner_float, nullptr,
+                                     "2Dfloat4");
+  declare_variable<4, float4, float>(m, store_class, &runner_float, nullptr,
+                                     "4Dfloat4");
 
-  declare_variable<1, double>(m, store_class, nullptr, &runner_double,
-                              "1Ddouble");
-  declare_variable<2, double>(m, store_class, nullptr, &runner_double,
-                              "2Ddouble");
-  declare_variable<1, double3>(m, store_class, nullptr, &runner_double,
-                               "1Ddouble3");
-  declare_variable<2, double3>(m, store_class, nullptr, &runner_double,
-                               "2Ddouble3");
-  declare_variable<2, double4>(m, store_class, nullptr, &runner_double,
-                               "2Ddouble4");
-  declare_variable<4, double4>(m, store_class, nullptr, &runner_double,
-                               "4Ddouble4");
+  declare_variable<1, double, bool>(m, store_class, nullptr, &runner_double,
+                                    "1Ddouble");
+  declare_variable<2, double, bool>(m, store_class, nullptr, &runner_double,
+                                    "2Ddouble");
+  declare_variable<1, double3, double>(m, store_class, nullptr, &runner_double,
+                                       "1Ddouble3");
+  declare_variable<2, double3, double>(m, store_class, nullptr, &runner_double,
+                                       "2Ddouble3");
+  declare_variable<2, double4, double>(m, store_class, nullptr, &runner_double,
+                                       "2Ddouble4");
+  declare_variable<4, double4, double>(m, store_class, nullptr, &runner_double,
+                                       "4Ddouble4");
 
-  declare_variable<1, uint>(m, store_class, &runner_float, &runner_double,
-                            "1Duint");
-  declare_variable<3, uint>(m, store_class, &runner_float, &runner_double,
-                            "3Duint");
+  declare_variable<1, uint, bool>(m, store_class, &runner_float, &runner_double,
+                                  "1Duint");
+  declare_variable<3, uint, bool>(m, store_class, &runner_float, &runner_double,
+                                  "3Duint");
 
   declare_pinned_variable<1, float3>(m, "1Dfloat3");
   declare_pinned_variable<1, double3>(m, "1Ddouble3");

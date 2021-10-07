@@ -59,6 +59,11 @@ class Depot(Store):
                          dtype=None):
         return self._create(True, shape, n, dtype)
 
+    def create_graphical_like(self, var):
+        return self.create_graphical(var.get_shape(),
+                                     var.get_num_primitives_per_element(),
+                                     self.coat(var).type_enum_to_dtype())
+
     def create(self, shape: Union[int, Iterable[int]], n: int, dtype=None):
         return self._create(False, shape, n, dtype)
 
@@ -67,6 +72,11 @@ class Depot(Store):
                       n: int,
                       dtype=None):
         return self.coat(self.create(shape, n, dtype))
+
+    def create_coated_like(self, var):
+        return self.create_coated(var.get_shape(),
+                                  var.get_num_primitives_per_element(),
+                                  self.coat(var).type_enum_to_dtype())
 
     def remove(self, var):
         coated = self.coat(var)
@@ -96,7 +106,10 @@ class Depot(Store):
 
     @classmethod
     def coat(cls, var):
-        return variable_class_dict[type(var).__name__](var)
+        var_class_name = type(var).__name__
+        if var_class_name.startswith('Coated'):
+            return var
+        return variable_class_dict[var_class_name](var)
 
     def read_pile(self, filename, num_rigids):
         x = np.empty((num_rigids, 3), self.default_dtype)
