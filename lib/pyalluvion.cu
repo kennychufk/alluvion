@@ -232,11 +232,47 @@ void declare_pinned_variable(py::module& m, const char* name) {
   using PinnedVariableClass = PinnedVariable<D, M>;
   std::string class_name = std::string("PinnedVariable") + name;
   py::class_<PinnedVariableClass>(m, class_name.c_str())
+      .def(py::init<const PinnedVariableClass&>())
+      .def(
+          "get_bytes",
+          [](PinnedVariableClass& variable, py::array_t<unsigned char> bytes,
+             U offset) {
+            variable.get_bytes(bytes.mutable_data(), bytes.size(), offset);
+          },
+          py::arg("bytes"), py::arg("offset") = 0)
+      .def(
+          "set_bytes",
+          [](PinnedVariableClass& variable, py::array_t<unsigned char> bytes,
+             U offset) {
+            variable.set_bytes(bytes.data(), bytes.size(), offset);
+          },
+          py::arg("bytes"), py::arg("offset") = 0)
       .def("__getitem__",
-           [](PinnedVariableClass& variable, U key) { return variable(key); })
-      .def("__setitem__", [](PinnedVariableClass& variable, U key, M const& v) {
-        variable(key) = v;
-      });
+           [](PinnedVariableClass& variable, U key) {
+             if (key >= variable.get_linear_shape()) {
+               std::cerr << "PinnedVariable: index out of range (" << key
+                         << " >= " << variable.get_linear_shape() << ")"
+                         << std::endl;
+               abort();
+             }
+             return variable(key);
+           })
+      .def("__setitem__",
+           [](PinnedVariableClass& variable, U key, M const& v) {
+             if (key >= variable.get_linear_shape()) {
+               std::cerr << "PinnedVariable: index out of range (" << key
+                         << " >= " << variable.get_linear_shape() << ")"
+                         << std::endl;
+               abort();
+             }
+             variable(key) = v;
+           })
+      .def("get_type", &PinnedVariableClass::get_type)
+      .def("get_num_primitives_per_element",
+           &PinnedVariableClass::get_num_primitives_per_element)
+      .def("get_linear_shape", &PinnedVariableClass::get_linear_shape)
+      .def("get_num_primitives", &PinnedVariableClass::get_num_primitives)
+      .def("get_shape", &PinnedVariableClass::get_shape);
 }
 
 template <typename TF>
@@ -286,17 +322,6 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly(
           "omega_device",
           [](TPile const& pile) { return pile.omega_device_.get(); })
-      .def_static(
-          "read",
-          [](const char* filename, U num_rigids, py::array_t<unsigned char> x,
-             py::array_t<unsigned char> v, py::array_t<unsigned char> q,
-             py::array_t<unsigned char> omega) {
-            TPile::read(filename, num_rigids,
-                        reinterpret_cast<TF3*>(x.mutable_data()),
-                        reinterpret_cast<TF3*>(v.mutable_data()),
-                        reinterpret_cast<TQ*>(q.mutable_data()),
-                        reinterpret_cast<TF3*>(omega.mutable_data()));
-          })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
            py::arg("sign") = 1, py::arg("thickness") = 0,
            py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
@@ -321,7 +346,8 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("x_scale") = 1, py::arg("v_scale") = 1,
            py::arg("omega_scale") = 1)
       .def("read_file", &TPile::read_file, py::arg("filename"),
-           py::arg("num_rigids") = -1, py::arg("offset") = 0)
+           py::arg("num_rigids") = -1, py::arg("dst_offset") = 0,
+           py::arg("src_offset") = 0)
       .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
       .def("integrate_kinematics", &TPile::integrate_kinematics)
       .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
@@ -743,9 +769,11 @@ template <typename TF>
 void declare_usher(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   using TUsher = Usher<TF>;
+  using TPile = Pile<TF>;
   std::string class_name = std::string("Usher") + name;
   py::class_<TUsher>(m, class_name.c_str())
-      .def(py::init<Store&, U>(), py::arg("store"), py::arg("num_ushers"))
+      .def(py::init<Store&, TPile&, U>(), py::arg("store"), py::arg("pile"),
+           py::arg("num_ushers"))
       .def_readonly("num_ushers", &TUsher::num_ushers)
       .def_property_readonly(
           "drive_x", [](TUsher const& usher) { return usher.drive_x.get(); })

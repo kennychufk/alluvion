@@ -3,6 +3,7 @@
 
 #include <cstring>
 
+#include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"
 
@@ -12,6 +13,7 @@ struct Usher {
  private:
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  using TPile = Pile<TF>;
 
  public:
   std::unique_ptr<Variable<1, TF3>> drive_x;
@@ -25,12 +27,12 @@ struct Usher {
   std::unique_ptr<Variable<1, U>> num_neighbors;
   std::unique_ptr<Variable<1, TF3>> sample_v;
   std::unique_ptr<Variable<1, TF>> sample_density;
-  std::unique_ptr<Variable<1, TF>> container_dist;
-  std::unique_ptr<Variable<1, TF3>> container_normal;
+  std::unique_ptr<Variable<2, TQ>> boundary;
+  std::unique_ptr<Variable<2, TQ>> boundary_kernel;
   Store& store;
   U num_ushers;
 
-  Usher(Store& store_arg, U n)
+  Usher(Store& store_arg, TPile& pile_arg, U n)
       : store(store_arg),
         num_ushers(n),
         drive_x(store_arg.create<1, TF3>({n})),
@@ -43,8 +45,8 @@ struct Usher {
         sample_x(store_arg.create<1, TF3>({n})),
         sample_v(store_arg.create<1, TF3>({n})),
         sample_density(store_arg.create<1, TF>({n})),
-        container_dist(store_arg.create<1, TF>({n})),
-        container_normal(store_arg.create<1, TF3>({n})) {}
+        boundary(store_arg.create<2, TQ>({pile_arg.get_size(), n})),
+        boundary_kernel(store_arg.create<2, TQ>({pile_arg.get_size(), n})) {}
   virtual ~Usher() {
     store.remove(*drive_x);
     store.remove(*drive_v);
@@ -56,8 +58,8 @@ struct Usher {
     store.remove(*num_neighbors);
     store.remove(*sample_v);
     store.remove(*sample_density);
-    store.remove(*container_dist);
-    store.remove(*container_normal);
+    store.remove(*boundary);
+    store.remove(*boundary_kernel);
   }
 
   void set(TF3 const* x, TF3 const* v, TF const* r, TF const* strength) {

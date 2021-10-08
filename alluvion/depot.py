@@ -110,13 +110,3 @@ class Depot(Store):
         if var_class_name.startswith('Coated'):
             return var
         return variable_class_dict[var_class_name](var)
-
-    def read_pile(self, filename, num_rigids):
-        x = np.empty((num_rigids, 3), self.default_dtype)
-        v = np.empty((num_rigids, 3), self.default_dtype)
-        q = np.empty((num_rigids, 4), self.default_dtype)
-        omega = np.empty((num_rigids, 3), self.default_dtype)
-        self.Pile.read(filename, num_rigids,
-                       x.view(np.ubyte), v.view(np.ubyte), q.view(np.ubyte),
-                       omega.view(np.ubyte))
-        return x, v, q, omega

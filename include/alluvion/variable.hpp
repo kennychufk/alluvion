@@ -15,6 +15,7 @@
 #include "alluvion/allocator.hpp"
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
+#include "alluvion/pinned_variable.hpp"
 
 namespace alluvion {
 template <U D, typename M>
@@ -28,35 +29,9 @@ class Variable {
   }
   virtual ~Variable() {}
   // ==== numpy-related functions
-  constexpr NumericType get_type() const {
-    if (typeid(M) == typeid(float) || typeid(M) == typeid(float2) ||
-        typeid(M) == typeid(float3) || typeid(M) == typeid(float4))
-      return NumericType::f32;
-    if (typeid(M) == typeid(double) || typeid(M) == typeid(double2) ||
-        typeid(M) == typeid(double3) || typeid(M) == typeid(double4))
-      return NumericType::f64;
-    if (typeid(M) == typeid(I)) return NumericType::i32;
-    if (typeid(M) == typeid(U)) return NumericType::u32;
-    return NumericType::undefined;
-  }
+  constexpr NumericType get_type() const { return get_numeric_type<M>(); }
   constexpr U get_num_primitives_per_element() const {
-    if (typeid(M) == typeid(float)) return 1;
-    if (typeid(M) == typeid(double)) return 1;
-    if (typeid(M) == typeid(I)) return 1;
-    if (typeid(M) == typeid(U)) return 1;
-    if (typeid(M) == typeid(float2)) return 2;
-    if (typeid(M) == typeid(double2)) return 2;
-    if (typeid(M) == typeid(I2)) return 2;
-    if (typeid(M) == typeid(U2)) return 2;
-    if (typeid(M) == typeid(float3)) return 3;
-    if (typeid(M) == typeid(double3)) return 3;
-    if (typeid(M) == typeid(I3)) return 3;
-    if (typeid(M) == typeid(U3)) return 3;
-    if (typeid(M) == typeid(float4)) return 4;
-    if (typeid(M) == typeid(double4)) return 4;
-    if (typeid(M) == typeid(I4)) return 4;
-    if (typeid(M) == typeid(U4)) return 4;
-    return 0;
+    return get_num_primitives_for_numeric_type<M>();
   }
   U get_num_primitives() const {
     return get_linear_shape() * get_num_primitives_per_element();
