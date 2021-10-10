@@ -92,13 +92,9 @@ class Variable {
   void scale(TMultiplier multiplier, U num_elements, U offset = 0) {
     using namespace thrust::placeholders;
     thrust::transform(
-        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
-            offset,
-        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
-            (offset + num_elements),
-        thrust::device_ptr<TMultiplier>(static_cast<TMultiplier*>(ptr_)) +
-            offset,
-        multiplier * _1);
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset, multiplier * _1);
   }
   template <typename TMultiplier>
   void scale(TMultiplier multiplier) {

@@ -292,7 +292,7 @@ constexpr __device__ Const<TF> const& cn() {
 
 template <typename TF>
 constexpr __device__ TF dist_cubic_kernel(TF r) {
-  TF q = r / cn<TF>().kernel_radius;
+  TF q = fabs(r) / cn<TF>().kernel_radius;
   TF conj = 1 - q;
   TF result = 0;
   if (q <= static_cast<TF>(0.5))
