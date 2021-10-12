@@ -16,60 +16,30 @@ struct Usher {
   using TPile = Pile<TF>;
 
  public:
-  std::unique_ptr<Variable<1, TF3>> drive_x;
-  std::unique_ptr<Variable<1, TF3>> drive_v;
-  std::unique_ptr<Variable<1, TF>> drive_kernel_radius;
+  std::unique_ptr<Variable<2, TF3>> focal_x;
+  std::unique_ptr<Variable<2, TF3>> focal_v;
+  std::unique_ptr<Variable<1, TF>> focal_dist;
+  std::unique_ptr<Variable<1, TF>> usher_kernel_radius;
   std::unique_ptr<Variable<1, TF>> drive_strength;
 
-  // TODO: sample multiple points per usher
-  std::unique_ptr<Variable<1, TF3>> sample_x;
-  std::unique_ptr<Variable<2, TQ>> neighbors;
-  std::unique_ptr<Variable<1, U>> num_neighbors;
-  std::unique_ptr<Variable<1, TF3>> sample_v;
-  std::unique_ptr<Variable<1, TF>> sample_density;
-  std::unique_ptr<Variable<2, TQ>> boundary;
-  std::unique_ptr<Variable<2, TQ>> boundary_kernel;
   Store& store;
   U num_ushers;
 
-  Usher(Store& store_arg, TPile& pile_arg, U n)
+  Usher(Store& store_arg, TPile& pile_arg, U num_ushers_arg)
       : store(store_arg),
-        num_ushers(n),
-        drive_x(store_arg.create<1, TF3>({n})),
-        drive_v(store_arg.create<1, TF3>({n})),
-        drive_kernel_radius(store_arg.create<1, TF>({n})),
-        drive_strength(store_arg.create<1, TF>({n})),
-        neighbors(store_arg.create<2, TQ>(
-            {n, store_arg.get_cni().max_num_neighbors_per_particle})),
-        num_neighbors(store_arg.create<1, U>({n})),
-        sample_x(store_arg.create<1, TF3>({n})),
-        sample_v(store_arg.create<1, TF3>({n})),
-        sample_density(store_arg.create<1, TF>({n})),
-        boundary(store_arg.create<2, TQ>({pile_arg.get_size(), n})),
-        boundary_kernel(store_arg.create<2, TQ>({pile_arg.get_size(), n})) {}
+        num_ushers(num_ushers_arg),
+        focal_x(store_arg.create<2, TF3>({3, num_ushers_arg})),
+        focal_v(store_arg.create<2, TF3>({3, num_ushers_arg})),
+        focal_dist(store_arg.create<1, TF>({num_ushers_arg})),
+        usher_kernel_radius(store_arg.create<1, TF>({num_ushers_arg})),
+        drive_strength(store_arg.create<1, TF>({num_ushers_arg})) {}
   virtual ~Usher() {
-    store.remove(*drive_x);
-    store.remove(*drive_v);
-    store.remove(*drive_kernel_radius);
+    store.remove(*focal_x);
+    store.remove(*focal_v);
+    store.remove(*focal_dist);
+    store.remove(*usher_kernel_radius);
     store.remove(*drive_strength);
-
-    store.remove(*sample_x);
-    store.remove(*neighbors);
-    store.remove(*num_neighbors);
-    store.remove(*sample_v);
-    store.remove(*sample_density);
-    store.remove(*boundary);
-    store.remove(*boundary_kernel);
   }
-
-  void set(TF3 const* x, TF3 const* v, TF const* r, TF const* strength) {
-    drive_x->set_bytes(x);
-    drive_v->set_bytes(v);
-    drive_kernel_radius->set_bytes(r);
-    drive_strength->set_bytes(strength);
-  }
-
-  void set_sample_x(TF3 const* x) { sample_x->set_bytes(x); }
 };
 }  // namespace alluvion
 

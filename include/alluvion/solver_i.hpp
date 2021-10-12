@@ -20,7 +20,6 @@ struct SolverI : public Solver<TF> {
   using Base::particle_radius;
   using Base::pile;
   using Base::runner;
-  using Base::sample_usher;
   using Base::store;
   using Base::t;
   using Base::update_dt;
@@ -92,9 +91,6 @@ struct SolverI : public Solver<TF> {
     }
     compute_all_boundaries();
     Base::template update_particle_neighbors<wrap>();
-    if (usher->num_ushers > 0) {
-      sample_usher();
-    }
     if (enable_surface_tension) {
       runner.launch(
           num_particles,
@@ -128,7 +124,7 @@ struct SolverI : public Solver<TF> {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_vorticity<<<grid_size, block_size>>>(
+            compute_micropolar_vorticity<<<grid_size, block_size>>>(
                 *particle_x, *particle_v, *particle_density, *particle_omega,
                 *particle_a, *particle_angular_acceleration,
                 *particle_neighbors, *particle_num_neighbors, *particle_force,
@@ -136,7 +132,8 @@ struct SolverI : public Solver<TF> {
                 *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
                 num_particles);
           },
-          "compute_vorticity", compute_vorticity<TQ, TF3, TF>);
+          "compute_micropolar_vorticity",
+          compute_micropolar_vorticity<TQ, TF3, TF>);
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -151,12 +148,13 @@ struct SolverI : public Solver<TF> {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            drive_linear<<<grid_size, block_size>>>(
-                *particle_x, *particle_v, *particle_a, *(usher->drive_x),
-                *(usher->drive_v), *(usher->drive_kernel_radius),
-                *(usher->drive_strength), usher->num_ushers, num_particles);
+            drive_n_ellipse<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_a, *(usher->focal_x),
+                *(usher->focal_v), *(usher->focal_dist),
+                *(usher->usher_kernel_radius), *(usher->drive_strength),
+                usher->num_ushers, num_particles);
           },
-          "drive_linear", drive_linear<TF3, TF>);
+          "drive_n_ellipse", drive_n_ellipse<TF3, TF>);
     }
     update_dt();
 

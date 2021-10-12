@@ -353,6 +353,12 @@ inline __device__ TF3 displacement_cubic_kernel_grad(TF3 d) {
 }
 
 template <typename TF>
+constexpr __device__ TF dist_gaussian_kernel(TF r, TF h) {
+  return static_cast<TF>(0.179587122125166561689081983628) *
+         exp(-r * r / (h * h));
+}
+
+template <typename TF>
 inline __device__ TF distance_adhesion_kernel(TF r2) {
   TF result = 0;
   TF r = sqrt(r2);
@@ -1604,7 +1610,7 @@ __global__ void compute_viscosity(
 
 // Micropolar Model
 template <typename TQ, typename TF3, typename TF>
-__global__ void compute_vorticity(
+__global__ void compute_micropolar_vorticity(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
     Variable<1, TF> particle_density, Variable<1, TF3> particle_omega,
     Variable<1, TF3> particle_a, Variable<1, TF3> particle_angular_acceleration,
@@ -2820,6 +2826,43 @@ __global__ void drive_linear(Variable<1, TF3> particle_x,
   });
 }
 
+template <typename TF3, typename TF>
+__global__ void drive_n_ellipse(
+    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+    Variable<1, TF3> particle_a, Variable<2, TF3> focal_x,
+    Variable<2, TF3> focal_v, Variable<1, TF> focal_dist,
+    Variable<1, TF> usher_kernel_radius, Variable<1, TF> drive_strength,
+    U num_ushers, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    const TF3 x_i = particle_x(p_i);
+    const TF3 v_i = particle_v(p_i);
+    TF3 da{0};
+    for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
+      TF3 fx0 = focal_x(0, usher_id);
+      TF3 fx1 = focal_x(1, usher_id);
+      TF3 fx2 = focal_x(2, usher_id);
+      TF3 fv0 = focal_v(0, usher_id);
+      TF3 fv1 = focal_v(1, usher_id);
+      TF3 fv2 = focal_v(2, usher_id);
+      TF d0 = length(x_i - fx0);
+      TF d1 = length(x_i - fx1);
+      TF d2 = length(x_i - fx2);
+      TF d0d1 = d0 * d1;
+      TF d1d2 = d1 * d2;
+      TF d2d0 = d2 * d0;
+      TF denom = d0d1 + d1d2 + d2d0 +
+                 static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr;
+      TF3 drive_v = (d0d1 * fv2 + d1d2 * fv0 + d2d0 * fv1) / denom;
+
+      TF uh = usher_kernel_radius(usher_id);
+      da += drive_strength(usher_id) *
+            dist_gaussian_kernel(d0 + d1 + d2 - focal_dist(usher_id), uh) *
+            (drive_v - v_i);
+    }
+    particle_a(p_i) += da;
+  });
+}
+
 // statistics
 template <typename TF>
 __global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
@@ -2868,7 +2911,7 @@ __global__ void sample_fluid(
 }
 
 template <typename TQ, typename TF3, typename TF>
-__global__ void sample_velocity(
+__global__ void compute_sample_velocity(
     Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
     Variable<1, TF> particle_density, Variable<1, TF3> particle_v,
     Variable<2, TQ> sample_neighbors, Variable<1, U> sample_num_neighbors,
@@ -2896,6 +2939,42 @@ __global__ void sample_velocity(
       result += velj * boundary_kernel.w;
     }
     sample_v(p_i) = result;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_sample_vorticity(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
+    Variable<1, TF> particle_density, Variable<1, TF3> particle_v,
+    Variable<2, TQ> sample_neighbors, Variable<1, U> sample_num_neighbors,
+    Variable<1, TF3> sample_v, Variable<1, TF3> sample_vorticity,
+    Variable<2, TQ> sample_boundary, Variable<2, TQ> sample_boundary_kernel,
+    Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
+    Variable<1, TF3> rigid_omega, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 result{0};
+    TF3 x_i = sample_x(p_i);
+    TF3 v_i = sample_v(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_neighbors(p_i, neighbor_id), xixj, p_j);
+      result +=
+          cn<TF>().particle_mass / particle_density(p_j) *
+          cross(particle_v(p_j) - v_i, displacement_cubic_kernel_grad(xixj));
+    }
+    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
+      TQ boundary = sample_boundary(boundary_id, p_i);
+      TQ boundary_kernel = sample_boundary_kernel(boundary_id, p_i);
+      TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
+      TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
+
+      TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
+                 rigid_v(boundary_id);
+      result += cross(velj - v_i, grad_wvol);
+    }
+    sample_vorticity(p_i) = result;
   });
 }
 
@@ -3298,13 +3377,32 @@ class Runner {
     launch(
         num_samples,
         [&](U grid_size, U block_size) {
-          sample_velocity<<<grid_size, block_size>>>(
+          compute_sample_velocity<<<grid_size, block_size>>>(
               sample_x, particle_x, particle_density, particle_v,
               sample_neighbors, sample_num_neighbors, sample_v, sample_boundary,
               sample_boundary_kernel, rigid_x, rigid_v, rigid_omega,
               num_samples);
         },
-        "sample_velocity", sample_velocity<TQ, TF3, TF>);
+        "compute_sample_velocity", compute_sample_velocity<TQ, TF3, TF>);
+  }
+  void launch_sample_vorticity(
+      Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
+      Variable<1, TF>& particle_density, Variable<1, TF3>& particle_v,
+      Variable<2, TQ>& sample_neighbors, Variable<1, U>& sample_num_neighbors,
+      Variable<1, TF3>& sample_v, Variable<1, TF3>& sample_vorticity,
+      Variable<2, TQ>& sample_boundary, Variable<2, TQ>& sample_boundary_kernel,
+      Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
+      Variable<1, TF3> rigid_omega, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          compute_sample_vorticity<<<grid_size, block_size>>>(
+              sample_x, particle_x, particle_density, particle_v,
+              sample_neighbors, sample_num_neighbors, sample_v,
+              sample_vorticity, sample_boundary, sample_boundary_kernel,
+              rigid_x, rigid_v, rigid_omega, num_samples);
+        },
+        "compute_sample_vorticity", compute_sample_vorticity<TQ, TF3, TF>);
   }
   void launch_sample_density(Variable<1, TF3>& sample_x,
                              Variable<2, TQ>& sample_neighbors,

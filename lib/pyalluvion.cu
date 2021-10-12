@@ -612,8 +612,7 @@ void declare_solver(py::module& m, const char* name) {
       .def("update_particle_neighbors",
            &TSolver::template update_particle_neighbors<0>)
       .def("update_particle_neighbors_wrap1",
-           &TSolver::template update_particle_neighbors<1>)
-      .def("sample_usher", &TSolver::sample_usher);
+           &TSolver::template update_particle_neighbors<1>);
 }
 
 template <typename TF>
@@ -776,32 +775,17 @@ void declare_usher(py::module& m, const char* name) {
            py::arg("num_ushers"))
       .def_readonly("num_ushers", &TUsher::num_ushers)
       .def_property_readonly(
-          "drive_x", [](TUsher const& usher) { return usher.drive_x.get(); })
+          "focal_x", [](TUsher const& usher) { return usher.focal_x.get(); })
       .def_property_readonly(
-          "drive_v", [](TUsher const& usher) { return usher.drive_v.get(); })
+          "focal_v", [](TUsher const& usher) { return usher.focal_v.get(); })
       .def_property_readonly(
-          "drive_kernel_radius",
-          [](TUsher const& usher) { return usher.drive_kernel_radius.get(); })
+          "focal_dist",
+          [](TUsher const& usher) { return usher.focal_dist.get(); })
       .def_property_readonly(
-          "drive_strength",
-          [](TUsher const& usher) { return usher.drive_strength.get(); })
-      .def_property_readonly(
-          "sample_x", [](TUsher const& usher) { return usher.sample_x.get(); })
-      .def_property_readonly(
-          "sample_v", [](TUsher const& usher) { return usher.sample_v.get(); })
-      .def_property_readonly(
-          "sample_density",
-          [](TUsher const& usher) { return usher.sample_density.get(); })
-      .def("set",
-           [](TUsher& usher, const py::array_t<TF>& x, const py::array_t<TF>& v,
-              const py::array_t<TF>& drive_kernel_radius,
-              const py::array_t<TF>& drive_strength) {
-             usher.set(reinterpret_cast<const TF3*>(x.data()),
-                       reinterpret_cast<const TF3*>(v.data()),
-                       drive_kernel_radius.data(), drive_strength.data());
-           })
-      .def("set_sample_x", [](TUsher& usher, const py::array_t<TF>& x) {
-        usher.set_sample_x(reinterpret_cast<const TF3*>(x.data()));
+          "usher_kernel_radius",
+          [](TUsher const& usher) { return usher.usher_kernel_radius.get(); })
+      .def_property_readonly("drive_strength", [](TUsher const& usher) {
+        return usher.drive_strength.get();
       });
 }
 
@@ -869,6 +853,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
       .def("launch_sample_velocity", &TRunner::launch_sample_velocity)
+      .def("launch_sample_vorticity", &TRunner::launch_sample_vorticity)
       .def("launch_sample_density", &TRunner::launch_sample_density)
       .def("launch_copy_kinematics_if_within",
            &TRunner::launch_copy_kinematics_if_within)

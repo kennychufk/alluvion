@@ -235,21 +235,6 @@ struct Solver {
                                   *particle_num_neighbors, *particle_density,
                                   *particle_boundary_kernel, num_particles);
   }
-  void sample_usher() {
-    runner.template launch_make_neighbor_list<0>(
-        *usher->sample_x, *pid, *pid_length, *usher->neighbors,
-        *usher->num_neighbors, usher->num_ushers);
-    sample_all_boundaries(*usher->sample_x, *usher->boundary,
-                          *usher->boundary_kernel, usher->num_ushers);
-    runner.launch_sample_density(*usher->sample_x, *usher->neighbors,
-                                 *usher->num_neighbors, *usher->sample_density,
-                                 *usher->boundary_kernel, usher->num_ushers);
-    runner.launch_sample_velocity(
-        *usher->sample_x, *particle_x, *particle_density, *particle_v,
-        *usher->neighbors, *usher->num_neighbors, *usher->sample_v,
-        *usher->boundary, *usher->boundary_kernel, *pile.x_device_,
-        *pile.v_device_, *pile.omega_device_, usher->num_ushers);
-  }
   U max_num_particles;
   U num_particles;
   TF t;
