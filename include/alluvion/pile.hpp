@@ -360,7 +360,7 @@ class Pile {
       stream.write(reinterpret_cast<const char*>(&x_scaled), sizeof(TF3));
       stream.write(reinterpret_cast<const char*>(&v_scaled), sizeof(TF3));
       stream.write(reinterpret_cast<const char*>(&q_(i)), sizeof(TQ));
-      stream.write(reinterpret_cast<const char*>(&omega_scale), sizeof(TF3));
+      stream.write(reinterpret_cast<const char*>(&omega_scaled), sizeof(TF3));
     }
   }
   // TODO: rename to load
