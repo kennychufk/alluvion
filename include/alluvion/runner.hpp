@@ -12,6 +12,7 @@
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 #include "alluvion/constants.hpp"
 #include "alluvion/contact.hpp"
@@ -3013,8 +3014,6 @@ class Runner {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   Runner() : default_block_size_(256) {
-    Allocator::abort_if_error(cudaEventCreate(&abs_start_));
-    Allocator::abort_if_error(cudaEventRecord(abs_start_));
     if (const char* default_block_size_str =
             std::getenv("AL_DEFAULT_BLOCK_SIZE")) {
       default_block_size_ = std::stoul(default_block_size_str);
@@ -3022,7 +3021,6 @@ class Runner {
     load_optimal_block_size();
   }
   virtual ~Runner() {
-    summarize();
     std::stringstream filename_stream;
     filename_stream << ".alcache/";
     if (optimal_block_size_dict_.empty()) {
@@ -3032,7 +3030,6 @@ class Runner {
     }
     filename_stream << ".yaml";
     save_stat(filename_stream.str().c_str());
-    cudaEventDestroy(abs_start_);
   }
   template <typename T, typename BinaryFunction>
   static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
@@ -3087,8 +3084,7 @@ class Runner {
   void launch(U n, U desired_block_size, Lambda f, std::string name) {
     if (n == 0) return;
     cudaEvent_t event_start, event_stop;
-    float ellapsed;
-    float started;
+    float elapsed;
     Allocator::abort_if_error(cudaEventCreate(&event_start));
     Allocator::abort_if_error(cudaEventCreate(&event_stop));
     U block_size = std::min(n, desired_block_size);
@@ -3100,11 +3096,12 @@ class Runner {
     Allocator::abort_if_error(cudaEventRecord(event_stop));
     Allocator::abort_if_error(cudaEventSynchronize(event_stop));
     Allocator::abort_if_error(
-        cudaEventElapsedTime(&started, abs_start_, event_start));
-    Allocator::abort_if_error(
-        cudaEventElapsedTime(&ellapsed, event_start, event_stop));
-    launch_dict_[name][desired_block_size / kWarpSize - 1].emplace_back(
-        started, ellapsed);
+        cudaEventElapsedTime(&elapsed, event_start, event_stop));
+    std::pair<U, float>& count_and_mean =
+        launch_stat_dict_[name][desired_block_size / kWarpSize - 1];
+    ++count_and_mean.first;
+    count_and_mean.second +=
+        (elapsed - count_and_mean.second) / count_and_mean.first;
     Allocator::abort_if_error(cudaEventDestroy(event_start));
     Allocator::abort_if_error(cudaEventDestroy(event_stop));
   }
@@ -3132,24 +3129,6 @@ class Runner {
     launch(n, block_size, f, name);
   }
 
-  void summarize() {
-    for (std::pair<std::string, std::array<std::vector<LaunchRecord>,
-                                           kNumBlockSizeCandidates>> const&
-             item : launch_dict_) {
-      for (U i = 0; i < kNumBlockSizeCandidates; ++i) {
-        std::vector<LaunchRecord> const& launch_records = item.second[i];
-        launch_stat_dict_[item.first][i] =
-            launch_records.empty()
-                ? -1
-                : std::accumulate(launch_records.begin(), launch_records.end(),
-                                  0.f,
-                                  [](float acc, LaunchRecord const& record) {
-                                    return acc + record.second;
-                                  }) /
-                      launch_records.size();
-      }
-    }
-  }
   void save_stat(const char* filename) const {
     std::ofstream stream(filename, std::ios::trunc);
     if (!stream) {
@@ -3160,9 +3139,10 @@ class Runner {
     for (auto const& item : launch_stat_dict_) {
       stream << item.first << ": ";
       stream << "[";
-      for (auto const& mean : item.second) {
+      for (auto const& count_and_mean : item.second) {
         stream << std::setprecision(std::numeric_limits<float>::max_digits10)
-               << mean << ", ";
+               << (count_and_mean.first == 0 ? -1.0f : count_and_mean.second)
+               << ", ";
       }
       stream << "]" << std::endl;
     }
@@ -3540,13 +3520,10 @@ class Runner {
   constexpr static U kMaxBlockSize = 1024;  // compute capability >= 2
   constexpr static U kNumBlockSizeCandidates = kMaxBlockSize / kWarpSize;
   U default_block_size_;
-  std::unordered_map<std::string, std::array<std::vector<LaunchRecord>,
-                                             kNumBlockSizeCandidates>>
-      launch_dict_;
-  std::unordered_map<std::string, std::array<float, kNumBlockSizeCandidates>>
+  std::unordered_map<std::string,
+                     std::array<std::pair<U, float>, kNumBlockSizeCandidates>>
       launch_stat_dict_;
   std::unordered_map<std::string, U> optimal_block_size_dict_;
-  cudaEvent_t abs_start_;
 };
 
 }  // namespace alluvion
