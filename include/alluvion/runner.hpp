@@ -1173,7 +1173,6 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
           //   kernel(x) / kernel(0) if 0 < x < r
           //   1                     if x<= 0
           //   0                     otherwise
-          // TODO: redefine
           TF dist_in_integrand_modified = dist_in_integrand * sign;
           sum += wijk * (dist_in_integrand_modified <= 0
                              ? 1
@@ -1244,7 +1243,7 @@ __device__ TF compute_volume_and_boundary_x(
 
   *boundary_xj = x;
   *xi_bxj = TF3{0};
-  *d = 0;  // TODO: set to infinity?
+  *d = 0;
 
   resolve(domain_min, domain_max, resolution, cell_size, local_xi, &ipos,
           &inner_x);
@@ -2262,14 +2261,13 @@ __global__ void warm_start_divergence_solve_1(
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
 
       TF k_sum = (k_i + particle_kappa_v(p_j));
-      if (fabs(k_sum) > cn<TF>().dfsph_factor_epsilon) {  // TODO: new epsilon?
-
+      if (fabs(k_sum) > cn<TF>().dfsph_factor_epsilon) {
         TF3 grad_p_j =
             -cn<TF>().particle_vol * displacement_cubic_kernel_grad(xixj);
         dv -= dt * k_sum * grad_p_j;  // ki, kj already contain inverse density
       }
     }
-    if (fabs(k_i) > cn<TF>().dfsph_factor_epsilon) {  // TODO: new epsilon?
+    if (fabs(k_i) > cn<TF>().dfsph_factor_epsilon) {
       for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
         TQ boundary = particle_boundary(boundary_id, p_i);
         TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);

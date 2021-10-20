@@ -511,10 +511,10 @@ void declare_solver(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
+           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("max_num_particles", &TSolver::max_num_particles)
       .def_readonly("particle_max_v2", &TSolver::particle_max_v2)
@@ -627,10 +627,10 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
+           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_divergence_solve", &TSolverDf::num_divergence_solve)
       .def_readonly("num_density_solve", &TSolverDf::num_density_solve)
@@ -676,10 +676,10 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
+           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverIi::num_density_solve)
       .def_readonly("mean_density_error", &TSolverIi::mean_density_error)
@@ -731,10 +731,10 @@ void declare_solver_i(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverI") + name;
   py::class_<TSolverI, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U3, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("grid_res"),
-           py::arg("num_ushers") = 0, py::arg("enable_surface_tension") = false,
+           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverI::num_density_solve)
       .def_readonly("mean_density_error", &TSolverI::mean_density_error)

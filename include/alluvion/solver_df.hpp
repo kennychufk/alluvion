@@ -44,14 +44,12 @@ struct SolverDf : public Solver<TF> {
   using Base::pid;
   using Base::pid_length;
 
-  // TODO: get grid_res from store.get_cni()
   SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-           U max_num_particles_arg, U3 grid_res, U num_ushers = 0,
+           U max_num_particles_arg, U num_ushers = 0,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, grid_res,
-             num_ushers, enable_surface_tension_arg, enable_vorticity_arg,
-             graphical),
+      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
+             enable_surface_tension_arg, enable_vorticity_arg, graphical),
         particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),

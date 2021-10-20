@@ -75,8 +75,7 @@ int main(void) {
   store.get_cni().max_num_particles_per_cell = 64;
   store.get_cni().max_num_neighbors_per_particle = 64;
 
-  SolverI<F> solver(runner, pile, store, num_particles, grid_res, 0, false,
-                    false, true);
+  SolverI<F> solver(runner, pile, store, num_particles, 0, false, false, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;

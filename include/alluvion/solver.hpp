@@ -12,7 +12,7 @@ struct Solver {
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   Solver(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-         U max_num_particles_arg, U3 grid_res, U num_ushers = 0,
+         U max_num_particles_arg, U num_ushers = 0,
          bool enable_surface_tension_arg = false,
          bool enable_vorticity_arg = false, bool graphical = false)
       : max_num_particles(max_num_particles_arg),
@@ -52,10 +52,12 @@ struct Solver {
                 ? store_arg.create<1, TF3>({max_num_particles_arg})
                 : new Variable<1, TF3>()),
         pid(store_arg.create<4, TQ>(
-            {grid_res.x, grid_res.y, grid_res.z,
+            {store_arg.get_cni().grid_res.x, store_arg.get_cni().grid_res.y,
+             store_arg.get_cni().grid_res.z,
              store_arg.get_cni().max_num_particles_per_cell})),
-        pid_length(
-            store_arg.create<3, U>({grid_res.x, grid_res.y, grid_res.z})),
+        pid_length(store_arg.create<3, U>({store_arg.get_cni().grid_res.x,
+                                           store_arg.get_cni().grid_res.y,
+                                           store_arg.get_cni().grid_res.z})),
         particle_neighbors(store_arg.create<2, TQ>(
             {max_num_particles_arg,
              store_arg.get_cni().max_num_neighbors_per_particle})),
