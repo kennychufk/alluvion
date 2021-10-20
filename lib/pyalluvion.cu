@@ -1,6 +1,7 @@
 #include <pybind11/detail/common.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 
 #include <string>
@@ -219,7 +220,6 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
              py::arg("multiplier"), py::arg("num_elements"),
              py::arg("offset") = 0);
   }
-
   std::string graphical_variable_name = std::string("GraphicalVariable") + name;
   py::class_<GraphicalVariableClass, VariableClass>(
       m, graphical_variable_name.c_str())
@@ -337,6 +337,9 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh())
       .def("build_grids", &TPile::build_grids)
+      .def("compute_fluid_block_internal", &TPile::compute_fluid_block_internal,
+           py::arg("boundary_id"), py::arg("internal_encoded"),
+           py::arg("box_min"), py::arg("box_max"), py::arg("mode") = 0)
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
            &TPile::reallocate_kinematics_on_device)
@@ -831,6 +834,11 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("mode"), py::arg("box_min"), py::arg("box_max"))
+      .def("launch_create_fluid_block_internal",
+           &TRunner::launch_create_fluid_block_internal, py::arg("particle_x"),
+           py::arg("internal_encoded_sorted"), py::arg("num_particles"),
+           py::arg("offset"), py::arg("mode"), py::arg("box_min"),
+           py::arg("box_max"))
       .def("launch_create_fluid_cylinder_sunflower",
            &TRunner::launch_create_fluid_cylinder_sunflower,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("radius"),
