@@ -266,7 +266,7 @@ class Pile {
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
                   *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, 0, sign_list_[i]);
+                  cell_size, num_nodes, sign_list_[i]);
             },
             "update_volume_field(BoxDistance)",
             update_volume_field<TF3, TF, TBoxDistance>);
@@ -278,7 +278,7 @@ class Pile {
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
                   *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, 0, sign_list_[i]);
+                  cell_size, num_nodes, sign_list_[i]);
             },
             "update_volume_field(SphereDistance)",
             update_volume_field<TF3, TF, TSphereDistance>);
@@ -290,7 +290,7 @@ class Pile {
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
                   *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, 0, sign_list_[i]);
+                  cell_size, num_nodes, sign_list_[i]);
             },
             "update_volume_field(InfiniteCylinderDistance)",
             update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
@@ -308,7 +308,7 @@ class Pile {
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
                   *volume_grid, *distance_grid, domain_min, domain_max,
-                  resolution_list_[i], cell_size, num_nodes, 0, sign_list_[i],
+                  resolution_list_[i], cell_size, num_nodes, sign_list_[i],
                   thickness_list_[i]);
             },
             "update_volume_field", update_volume_field<TF3, TF>);
@@ -323,7 +323,7 @@ class Pile {
             dynamic_cast<TMeshDistance const*>(distance_list_[i].get())) {
       runner_.launch_compute_fluid_block_internal(
           internal_encoded, *distance_grids_[i], domain_min_list_[i],
-          domain_max_list_[i], resolution_list_[i], cell_size_list_[i], 0,
+          domain_max_list_[i], resolution_list_[i], cell_size_list_[i],
           sign_list_[i], internal_encoded.get_linear_shape(), particle_radius,
           mode, box_min, box_max);
     }
@@ -443,8 +443,7 @@ class Pile {
         q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j), q_(j),
         omega_(j), restitution_[i] * restitution_[j],
         friction_[i] + friction_[j], domain_min_list_[j], domain_max_list_[j],
-        resolution_list_[j], cell_size_list_[j], 0, sign_list_[j],
-        num_vertices_i);
+        resolution_list_[j], cell_size_list_[j], sign_list_[j], num_vertices_i);
   }
   void find_contacts() {
     num_contacts_->set_zero();
@@ -459,7 +458,7 @@ class Pile {
             v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j),
             q_(j), omega_(j), restitution_[i] * restitution_[j],
             friction_[i] + friction_[j], domain_min_list_[j],
-            domain_max_list_[j], resolution_list_[j], cell_size_list_[j], 0,
+            domain_max_list_[j], resolution_list_[j], cell_size_list_[j],
             sign_list_[j], num_vertices_i);
       }
     }

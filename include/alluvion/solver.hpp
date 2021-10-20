@@ -199,8 +199,8 @@ struct Solver {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, 0, sign, thickness, dt, *particle_x,
-              *particle_boundary, *particle_boundary_kernel, num_particles);
+              num_nodes, sign, thickness, dt, *particle_x, *particle_boundary,
+              *particle_boundary_kernel, num_particles);
         });
   }
   void sample_all_boundaries(Variable<1, TF3>& sample_x,
@@ -217,7 +217,7 @@ struct Solver {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, 0, sign, thickness, dt, sample_x, sample_boundary,
+              num_nodes, sign, thickness, dt, sample_x, sample_boundary,
               sample_boundary_kernel, num_samples);
         });
   }
