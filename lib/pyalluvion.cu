@@ -339,7 +339,8 @@ void declare_pile(py::module& m, const char* name) {
       .def("build_grids", &TPile::build_grids)
       .def("compute_fluid_block_internal", &TPile::compute_fluid_block_internal,
            py::arg("boundary_id"), py::arg("internal_encoded"),
-           py::arg("box_min"), py::arg("box_max"), py::arg("mode") = 0)
+           py::arg("box_min"), py::arg("box_max"), py::arg("particle_radius"),
+           py::arg("mode") = 0)
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
            &TPile::reallocate_kinematics_on_device)
@@ -833,12 +834,13 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def_readonly("launch_stat_dict", &TRunner::launch_stat_dict_)
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
-           py::arg("mode"), py::arg("box_min"), py::arg("box_max"))
+           py::arg("particle_radius"), py::arg("mode"), py::arg("box_min"),
+           py::arg("box_max"))
       .def("launch_create_fluid_block_internal",
            &TRunner::launch_create_fluid_block_internal, py::arg("particle_x"),
            py::arg("internal_encoded_sorted"), py::arg("num_particles"),
-           py::arg("offset"), py::arg("mode"), py::arg("box_min"),
-           py::arg("box_max"))
+           py::arg("offset"), py::arg("particle_radius"), py::arg("mode"),
+           py::arg("box_min"), py::arg("box_max"))
       .def("launch_create_fluid_cylinder_sunflower",
            &TRunner::launch_create_fluid_cylinder_sunflower,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("radius"),
@@ -847,7 +849,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_create_fluid_cylinder",
            &TRunner::launch_create_fluid_cylinder, py::arg("particle_x"),
            py::arg("num_particles"), py::arg("offset"), py::arg("radius"),
-           py::arg("y_min"), py::arg("y_max"))
+           py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
            &TRunner::launch_compute_particle_boundary)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)

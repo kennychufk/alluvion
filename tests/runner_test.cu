@@ -16,11 +16,13 @@ SCENARIO("testing the runner") {
     std::unique_ptr<Variable<1, F3>> var(store.create<1, F3>({num_particles}));
     REQUIRE(var->get_num_primitives() == num_particles * 3);
     WHEN("creating fluid block") {
-      store.get_cn<F>().set_particle_attr(0.025, 0.0, 0.0);
+      F particle_radius = 0.025;
+      store.get_cn<F>().set_particle_attr(particle_radius, 0.0, 0.0);
       store.copy_cn<F>();
       Runner<F>::launch(num_particles, 256, [&](U grid_size, U block_size) {
         create_fluid_block<F3, F><<<grid_size, block_size>>>(
-            *var, num_particles, 0, 1, F3{-0.5, 0.0, -0.5}, F3{0.5, 1.0, 0.5});
+            *var, num_particles, 0, particle_radius, 1, F3{-0.5, 0.0, -0.5},
+            F3{0.5, 1.0, 0.5});
       });
       THEN("initializes particle x") {
         std::vector<F> copied(num_particles * 3);

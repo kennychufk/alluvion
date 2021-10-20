@@ -481,13 +481,13 @@ __device__ __host__ inline void get_fluid_cylinder_attr(
 template <typename TF3, typename TF>
 __global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
                                       U num_particles, U offset, TF radius,
-                                      TF y_min, TF y_max) {
+                                      TF particle_radius, TF y_min, TF y_max) {
   U sqrt_n;
   U n;
   U steps_y;
   TF diameter;
-  get_fluid_cylinder_attr(radius, y_min, y_max, cn<TF>().particle_radius,
-                          sqrt_n, n, steps_y, diameter);
+  get_fluid_cylinder_attr(radius, y_min, y_max, particle_radius, sqrt_n, n,
+                          steps_y, diameter);
   forThreadMappedToElement(num_particles, [&](U i) {
     U p_i = i + offset;
 
@@ -546,8 +546,8 @@ __global__ void emit_if_density_lower_than_last(
 template <typename TF3, typename TF>
 __device__ __host__ inline void get_fluid_block_attr(
     int mode, TF3 const& box_min, TF3 const& box_max, TF particle_radius,
-    I3& steps, TF& diameter, TF3& diff, TF& xshift, TF& yshift) {
-  diameter = particle_radius * 2;
+    I3& steps, TF3& diff, TF& xshift, TF& yshift) {
+  TF diameter = particle_radius * 2;
   TF eps = static_cast<TF>(1e-9);
   xshift = diameter;
   yshift = diameter;
@@ -572,27 +572,27 @@ __device__ __host__ inline void get_fluid_block_attr(
 
 template <typename TF3, typename TF>
 constexpr __device__ TF3 index_to_position_in_fluid_block(
-    U p_i, int mode, TF3 const& box_min, I3 const& steps, TF diameter,
+    U p_i, int mode, TF3 const& box_min, I3 const& steps, TF particle_radius,
     TF xshift, TF yshift) {
-  TF3 start = box_min + make_vector<TF3>(cn<TF>().particle_radius * 2);
+  TF3 start = box_min + make_vector<TF3>(particle_radius * 2);
   I j = (p_i % (steps.x * steps.z)) / steps.z;
   I k = p_i / (steps.x * steps.z);
   I l = p_i % steps.z;
-  TF3 currPos = TF3{xshift * j, yshift * k, diameter * l} + start;
+  TF3 currPos = TF3{xshift * j, yshift * k, particle_radius * 2 * l} + start;
   TF3 shift_vec{0};
   if (mode == 1) {
     if (k % 2 == 0) {
-      currPos.z += cn<TF>().particle_radius;
+      currPos.z += particle_radius;
     } else {
-      currPos.x += cn<TF>().particle_radius;
+      currPos.x += particle_radius;
     }
   } else if (mode == 2) {
-    currPos.z += cn<TF>().particle_radius;
+    currPos.z += particle_radius;
     if (j % 2 == 1) {
       if (k % 2 == 0) {
-        shift_vec.z = diameter * static_cast<TF>(0.5);
+        shift_vec.z = particle_radius;
       } else {
-        shift_vec.z = -diameter * static_cast<TF>(0.5);
+        shift_vec.z = -particle_radius;
       }
     }
     if (k % 2 == 0) {
@@ -604,34 +604,33 @@ constexpr __device__ TF3 index_to_position_in_fluid_block(
 
 template <typename TF3, typename TF>
 __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
-                                   U offset, int mode, TF3 box_min,
-                                   TF3 box_max) {
+                                   U offset, TF particle_radius, int mode,
+                                   TF3 box_min, TF3 box_max) {
   I3 steps;
-  TF diameter;
   TF3 diff;
   TF xshift, yshift;
-  get_fluid_block_attr(mode, box_min, box_max, cn<TF>().particle_radius, steps,
-                       diameter, diff, xshift, yshift);
+  get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps, diff,
+                       xshift, yshift);
   forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_x(offset + p_i) = index_to_position_in_fluid_block(
-        p_i, mode, box_min, steps, diameter, xshift, yshift);
+        p_i, mode, box_min, steps, particle_radius, xshift, yshift);
   });
 }
 
 template <typename TF3, typename TF>
 __global__ void create_fluid_block_internal(
     Variable<1, TF3> particle_x, Variable<1, U> internal_encoded_sorted,
-    U num_particles, U offset, int mode, TF3 box_min, TF3 box_max) {
+    U num_particles, U offset, TF particle_radius, int mode, TF3 box_min,
+    TF3 box_max) {
   I3 steps;
-  TF diameter;
   TF3 diff;
   TF xshift, yshift;
-  get_fluid_block_attr(mode, box_min, box_max, cn<TF>().particle_radius, steps,
-                       diameter, diff, xshift, yshift);
+  get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps, diff,
+                       xshift, yshift);
   forThreadMappedToElement(num_particles, [&](U p_i) {
     particle_x(p_i) = index_to_position_in_fluid_block(
-        internal_encoded_sorted(p_i), mode, box_min, steps, diameter, xshift,
-        yshift);
+        internal_encoded_sorted(p_i), mode, box_min, steps, particle_radius,
+        xshift, yshift);
   });
 }
 
@@ -642,16 +641,16 @@ template <typename TF3, typename TF>
 __global__ void compute_fluid_block_internal(
     Variable<1, U> internal_encoded, Variable<1, TF> distance_nodes,
     TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, U node_offset,
-    TF sign, U num_positions, int mode, TF3 box_min, TF3 box_max) {
+    TF sign, U num_positions, TF particle_radius, int mode, TF3 box_min,
+    TF3 box_max) {
   I3 steps;
-  TF diameter;
   TF3 diff;
   TF xshift, yshift;
-  get_fluid_block_attr(mode, box_min, box_max, cn<TF>().particle_radius, steps,
-                       diameter, diff, xshift, yshift);
+  get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps, diff,
+                       xshift, yshift);
   forThreadMappedToElement(num_positions, [&](U p_i) {
     TF3 x = index_to_position_in_fluid_block(p_i, mode, box_min, steps,
-                                             diameter, xshift, yshift);
+                                             particle_radius, xshift, yshift);
 
     TF distance = interpolate_distance_without_intermediates(
                       &distance_nodes, domain_min, domain_max, resolution,
@@ -3234,52 +3233,52 @@ class Runner {
     }
   };
   void launch_create_fluid_block(Variable<1, TF3>& particle_x, U num_particles,
-                                 U offset, int mode, TF3 const& box_min,
-                                 TF3 const& box_max) {
+                                 U offset, TF particle_radius, int mode,
+                                 TF3 const& box_min, TF3 const& box_max) {
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_block<TF3, TF><<<grid_size, block_size>>>(
-              particle_x, num_particles, offset, mode, box_min, box_max);
+              particle_x, num_particles, offset, particle_radius, mode, box_min,
+              box_max);
         },
         "create_fluid_block", create_fluid_block<TF3, TF>);
   }
   void launch_create_fluid_block_internal(
       Variable<1, TF3>& particle_x, Variable<1, U>& internal_encoded_sorted,
-      U num_particles, U offset, int mode, TF3 const& box_min,
-      TF3 const& box_max) {
+      U num_particles, U offset, TF particle_radius, int mode,
+      TF3 const& box_min, TF3 const& box_max) {
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_block_internal<TF3, TF><<<grid_size, block_size>>>(
-              particle_x, internal_encoded_sorted, num_particles, offset, mode,
-              box_min, box_max);
+              particle_x, internal_encoded_sorted, num_particles, offset,
+              particle_radius, mode, box_min, box_max);
         },
         "create_fluid_block_internal", create_fluid_block_internal<TF3, TF>);
   }
   void launch_compute_fluid_block_internal(
       Variable<1, U>& internal_encoded, Variable<1, TF>& distance_nodes,
       TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
-      TF3 const& cell_size, U node_offset, TF sign, U num_positions, int mode,
-      TF3 const& box_min, TF3 const& box_max) {
+      TF3 const& cell_size, U node_offset, TF sign, U num_positions,
+      TF particle_radius, int mode, TF3 const& box_min, TF3 const& box_max) {
     launch(
         num_positions,
         [&](U grid_size, U block_size) {
           compute_fluid_block_internal<TF3, TF><<<grid_size, block_size>>>(
               internal_encoded, distance_nodes, domain_min, domain_max,
-              resolution, cell_size, node_offset, sign, num_positions, mode,
-              box_min, box_max);
+              resolution, cell_size, node_offset, sign, num_positions,
+              particle_radius, mode, box_min, box_max);
         },
         "compute_fluid_block_internal", compute_fluid_block_internal<TF3, TF>);
   }
   static U get_fluid_block_num_particles(int mode, TF3 box_min, TF3 box_max,
                                          TF particle_radius) {
     I3 steps;
-    TF diameter;
     TF3 diff;
     TF xshift, yshift;
-    get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps,
-                         diameter, diff, xshift, yshift);
+    get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps, diff,
+                         xshift, yshift);
     return steps.x * steps.y * steps.z;
   }
   static U get_fluid_cylinder_num_particles(TF radius, TF y_min, TF y_max,
@@ -3309,12 +3308,13 @@ class Runner {
 
   void launch_create_fluid_cylinder(Variable<1, TF3>& particle_x,
                                     U num_particles, U offset, TF radius,
-                                    TF y_min, TF y_max) {
+                                    TF particle_radius, TF y_min, TF y_max) {
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           create_fluid_cylinder<TF3, TF><<<grid_size, block_size>>>(
-              particle_x, num_particles, offset, radius, y_min, y_max);
+              particle_x, num_particles, offset, radius, particle_radius, y_min,
+              y_max);
         },
         "create_fluid_cylinder", create_fluid_cylinder<TF3, TF>);
   }

@@ -317,15 +317,15 @@ class Pile {
   }
   U compute_fluid_block_internal(U i, Variable<1, U>& internal_encoded,
                                  TF3 const& box_min, TF3 const& box_max,
-                                 int mode) {
+                                 TF particle_radius, int mode) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     if (TMeshDistance const* distance =
             dynamic_cast<TMeshDistance const*>(distance_list_[i].get())) {
       runner_.launch_compute_fluid_block_internal(
           internal_encoded, *distance_grids_[i], domain_min_list_[i],
           domain_max_list_[i], resolution_list_[i], cell_size_list_[i], 0,
-          sign_list_[i], internal_encoded.get_linear_shape(), mode, box_min,
-          box_max);
+          sign_list_[i], internal_encoded.get_linear_shape(), particle_radius,
+          mode, box_min, box_max);
     }
 
     TRunner::sort(internal_encoded, internal_encoded.get_linear_shape());
