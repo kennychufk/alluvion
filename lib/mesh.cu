@@ -305,6 +305,7 @@ void Mesh::set_obj(const char* filename) {
   std::array<std::string, 4> tokens;
   std::stringstream face_entry_stream;
   std::array<std::string, 3> face_entry_tokens;
+  bool tex_exists = false;
   U3 face, tex_face, normal_face;
   int num_tokens;
   int face_token_id;
@@ -340,7 +341,9 @@ void Mesh::set_obj(const char* filename) {
               face.y = from_string<U>(face_entry_tokens[face_token_id]);
             if (face_entry_id == 3)
               face.z = from_string<U>(face_entry_tokens[face_token_id]);
-          } else if (face_token_id == 1) {
+          } else if (face_token_id == 1 &&
+                     face_entry_tokens[face_token_id].length() > 0) {
+            tex_exists = true;
             if (face_entry_id == 1)
               tex_face.x = from_string<U>(face_entry_tokens[face_token_id]);
             if (face_entry_id == 2)
@@ -359,7 +362,7 @@ void Mesh::set_obj(const char* filename) {
         }
       }
       faces.push_back(face - 1);  // OBJ vertex: one-based indexing
-      if (face_token_id >= 2) {
+      if (face_token_id >= 2 && tex_exists) {
         tex_faces.push_back(tex_face - 1);
       }
       if (face_token_id >= 3) {
