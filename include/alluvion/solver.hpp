@@ -194,12 +194,11 @@ struct Solver {
             Variable<1, TF> const& distance_grid,
             Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
             TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
-            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign,
-            TF thickness) {
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, sign, thickness, dt, *particle_x, *particle_boundary,
+              num_nodes, sign, dt, *particle_x, *particle_boundary,
               *particle_boundary_kernel, num_particles);
         });
   }
@@ -212,12 +211,11 @@ struct Solver {
             Variable<1, TF> const& distance_grid,
             Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
             TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
-            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign,
-            TF thickness) {
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, sign, thickness, dt, sample_x, sample_boundary,
+              num_nodes, sign, dt, sample_x, sample_boundary,
               sample_boundary_kernel, num_samples);
         });
   }

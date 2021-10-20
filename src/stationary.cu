@@ -48,7 +48,7 @@ int main(void) {
   F sphere_radius = 0.1_F;
   sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
   pile.add(new BoxDistance<F3, F>(scale_factor * F3{40, 30, 15}),
-           U3{80, 60, 30}, -1._F, 0, cube_mesh, 0._F, 1, 0, F3{1, 1, 1},
+           U3{80, 60, 30}, -1._F, cube_mesh, 0._F, 1, 0, F3{1, 1, 1},
            F3{0, 15 * scale_factor, 0}, Q{0, 0, 0, 1}, Mesh());
   // SphereDistance<F3, F> sphere_distance(sphere_radius);
   // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,

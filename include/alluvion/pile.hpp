@@ -50,7 +50,7 @@ class Pile {
   }
   static std::vector<TF> construct_distance_grid(
       dg::Distance<TF3, TF> const& distance, U3 const& resolution, TF margin,
-      TF sign, TF thickness, TF3 const& domain_min, TF3 const& domain_max) {
+      TF sign, TF3 const& domain_min, TF3 const& domain_max) {
     dg::CubicLagrangeDiscreteGrid grid_host(
         dg::AlignedBox3r<TF>(
             dg::Vector3r<TF>(domain_min.x, domain_min.y, domain_min.z),
@@ -85,7 +85,6 @@ class Pile {
   std::vector<std::unique_ptr<dg::Distance<TF3, TF>>> distance_list_;
   std::vector<U3> resolution_list_;
   std::vector<TF> sign_list_;
-  std::vector<TF> thickness_list_;
   std::vector<std::unique_ptr<Variable<1, TF>>> distance_grids_;
   std::vector<std::unique_ptr<Variable<1, TF>>> volume_grids_;
   std::vector<TF3> domain_min_list_;
@@ -146,8 +145,8 @@ class Pile {
     store_.remove(*num_contacts_);
   }
   U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
-        TF thickness, Mesh const& collision_mesh, TF mass, TF restitution,
-        TF friction, TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
+        Mesh const& collision_mesh, TF mass, TF restitution, TF friction,
+        TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
         Mesh const& display_mesh) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
@@ -164,7 +163,6 @@ class Pile {
 
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
-    thickness_list_.push_back(thickness);
 
     // placeholders
     distance_grids_.emplace_back(store_.create<1, TF>({0}));
@@ -193,9 +191,9 @@ class Pile {
     return get_size() - 1;
   }
   void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
-               TF sign, TF thickness, Mesh const& collision_mesh, TF mass,
-               TF restitution, TF friction, TF3 const& inertia_tensor,
-               TF3 const& x, TQ const& q, Mesh const& display_mesh) {
+               TF sign, Mesh const& collision_mesh, TF mass, TF restitution,
+               TF friction, TF3 const& inertia_tensor, TF3 const& x,
+               TQ const& q, Mesh const& display_mesh) {
     mass_[i] = mass;
     restitution_[i] = restitution;
     friction_[i] = friction;
@@ -210,7 +208,6 @@ class Pile {
 
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;
-    thickness_list_[i] = thickness;
 
     // placeholders
     store_.remove(*distance_grids_[i]);
@@ -301,15 +298,14 @@ class Pile {
 
         std::vector<TF> nodes_host = construct_distance_grid(
             *distance_list_[i], resolution_list_[i], margin, sign_list_[i],
-            thickness_list_[i], domain_min, domain_max);
+            domain_min, domain_max);
         distance_grid->set_bytes(nodes_host.data());
         runner_.launch(
             num_nodes,
             [&](U grid_size, U block_size) {
               update_volume_field<<<grid_size, block_size>>>(
                   *volume_grid, *distance_grid, domain_min, domain_max,
-                  resolution_list_[i], cell_size, num_nodes, sign_list_[i],
-                  thickness_list_[i]);
+                  resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
             },
             "update_volume_field", update_volume_field<TF3, TF>);
       }
@@ -589,8 +585,7 @@ class Pile {
     for (U i = 0; i < get_size(); ++i) {
       f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i], x_(i),
         q_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
-        cell_size_list_[i], grid_size_list_[i], sign_list_[i],
-        thickness_list_[i]);
+        cell_size_list_[i], grid_size_list_[i], sign_list_[i]);
     }
   }
 };

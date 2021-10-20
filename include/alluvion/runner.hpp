@@ -634,8 +634,6 @@ __global__ void create_fluid_block_internal(
   });
 }
 
-// TODO: remove thickness
-
 // NOTE: does not support shifted/rotated boundary
 template <typename TF3, typename TF>
 __global__ void compute_fluid_block_internal(
@@ -1149,7 +1147,7 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
                                     Variable<1, TF> distance_nodes,
                                     TF3 domain_min, TF3 domain_max,
                                     U3 resolution, TF3 cell_size, U num_nodes,
-                                    TF sign, TF thickness) {
+                                    TF sign) {
   forThreadMappedToElement(num_nodes, [&](U l) {
     TF3 x = index_to_node_position(domain_min, resolution, cell_size, l);
     TF dist = distance_nodes(l);
@@ -1229,8 +1227,8 @@ template <typename TQ, typename TF3, typename TF>
 __device__ TF compute_volume_and_boundary_x(
     Variable<1, TF>* volume_nodes, Variable<1, TF>* distance_nodes,
     TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes,
-    TF sign, TF thickness, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt,
-    TF3* boundary_xj, TF3* xi_bxj, TF* d) {
+    TF sign, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
+    TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1255,8 +1253,7 @@ __device__ TF compute_volume_and_boundary_x(
     get_cells(resolution, ipos, cells);
     *d = interpolate_and_derive(distance_nodes, &cell_size, cells, N, dN0, dN1,
                                 dN2, &normal) *
-             sign +
-         thickness;
+         sign;
     normal = rotate_using_quaternion(normal * sign, rigid_q);
     TF nl2 = length_sqr(normal);
     normal *= (nl2 > 0 ? rsqrt(nl2) : 0);
@@ -1270,9 +1267,8 @@ __device__ TF compute_volume_and_boundary_x(
 template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
-    TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, TF sign,
-    TF thickness, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
-    TF3* xi_bxj, TF* d) {
+    TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, TF sign, TF3& x,
+    TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1287,7 +1283,7 @@ __device__ TF compute_volume_and_boundary_x_analytic(
   TF N[32];
   U cells[32];
 
-  *d = distance.signed_distance(local_xi) * sign + thickness;
+  *d = distance.signed_distance(local_xi) * sign;
   normal = rotate_using_quaternion(
       distance.gradient(local_xi, cn<TF>().kernel_radius) * sign, rigid_q);
   nl2 = length_sqr(normal);
@@ -1468,16 +1464,16 @@ template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void compute_particle_boundary_analytic(
     Variable<1, TF> volume_nodes, const TDistance distance, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, U num_nodes, TF sign, TF thickness, TF dt,
-    Variable<1, TF3> particle_x, Variable<2, TQ> particle_boundary,
-    Variable<2, TQ> particle_boundary_kernel, U num_particles) {
+    TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x_analytic<wrap>(
         &volume_nodes, distance, domain_min, domain_max, resolution, cell_size,
-        num_nodes, sign, thickness, particle_x(p_i), rigid_x, rigid_q, dt,
-        &boundary_xj, &xi_bxj, &d);
+        num_nodes, sign, particle_x(p_i), rigid_x, rigid_q, dt, &boundary_xj,
+        &xi_bxj, &d);
     TF3 kernel_grad = displacement_cubic_kernel_grad(xi_bxj);
     particle_boundary(boundary_id, p_i) =
         TQ{boundary_xj.x, boundary_xj.y, boundary_xj.z, boundary_volume};
@@ -1491,16 +1487,16 @@ template <typename TQ, typename TF3, typename TF>
 __global__ void compute_particle_boundary(
     Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, U num_nodes, TF sign, TF thickness, TF dt,
-    Variable<1, TF3> particle_x, Variable<2, TQ> particle_boundary,
-    Variable<2, TQ> particle_boundary_kernel, U num_particles) {
+    TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x(
         &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
-        cell_size, num_nodes, sign, thickness, particle_x(p_i), rigid_x,
-        rigid_q, dt, &boundary_xj, &xi_bxj, &d);
+        cell_size, num_nodes, sign, particle_x(p_i), rigid_x, rigid_q, dt,
+        &boundary_xj, &xi_bxj, &d);
     TF3 kernel_grad = displacement_cubic_kernel_grad(xi_bxj);
     particle_boundary(boundary_id, p_i) =
         TQ{boundary_xj.x, boundary_xj.y, boundary_xj.z, boundary_volume};
@@ -3321,7 +3317,7 @@ class Runner {
       Variable<1, TF> const& distance_nodes, TF3 const& rigid_x,
       TQ const& rigid_q, U boundary_id, TF3 const& domain_min,
       TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
-      U num_nodes, TF sign, TF thickness, TF dt, Variable<1, TF3>& particle_x,
+      U num_nodes, TF sign, TF dt, Variable<1, TF3>& particle_x,
       Variable<2, TQ>& particle_boundary,
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
@@ -3335,8 +3331,8 @@ class Runner {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                thickness, dt, particle_x, particle_boundary,
-                particle_boundary_kernel, num_particles);
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
           },
           "compute_particle_boundary_analytic(BoxDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
@@ -3348,8 +3344,8 @@ class Runner {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                thickness, dt, particle_x, particle_boundary,
-                particle_boundary_kernel, num_particles);
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
           },
           "compute_particle_boundary_analytic(SphereDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
@@ -3362,8 +3358,8 @@ class Runner {
             compute_particle_boundary_analytic<1><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                thickness, dt, particle_x, particle_boundary,
-                particle_boundary_kernel, num_particles);
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
           },
           "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
           compute_particle_boundary_analytic<1, TQ, TF3, TF,
@@ -3375,8 +3371,8 @@ class Runner {
             compute_particle_boundary<<<grid_size, block_size>>>(
                 volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                thickness, dt, particle_x, particle_boundary,
-                particle_boundary_kernel, num_particles);
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
           },
           "compute_particle_boundary", compute_particle_boundary<TQ, TF3, TF>);
     }

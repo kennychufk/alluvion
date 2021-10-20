@@ -298,7 +298,6 @@ void declare_pile(py::module& m, const char* name) {
       .def_readonly("cell_size_list", &TPile::cell_size_list_)
       .def_readonly("sign_list", &TPile::sign_list_)
       .def_readonly("grid_size_list", &TPile::grid_size_list_)
-      .def_readonly("thickness_list", &TPile::thickness_list_)
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
@@ -323,14 +322,13 @@ void declare_pile(py::module& m, const char* name) {
           "omega_device",
           [](TPile const& pile) { return pile.omega_device_.get(); })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
-           py::arg("sign") = 1, py::arg("thickness") = 0,
-           py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
-           py::arg("restitution") = 1, py::arg("friction") = 0,
-           py::arg("inertia_tensor") = TF3{1, 1, 1},
+           py::arg("sign") = 1, py::arg("collision_mesh") = Mesh(),
+           py::arg("mass") = 0, py::arg("restitution") = 1,
+           py::arg("friction") = 0, py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh())
       .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
-           py::arg("resolution"), py::arg("sign") = 1, py::arg("thickness") = 0,
+           py::arg("resolution"), py::arg("sign") = 1,
            py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
            py::arg("restitution") = 1, py::arg("friction") = 0,
            py::arg("inertia_tensor") = TF3{1, 1, 1},

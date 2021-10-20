@@ -16,22 +16,20 @@ using namespace alluvion::dg;
 SCENARIO("testing volume field generation") {
   GIVEN("a host implementation") {
     std::array<unsigned int, 3> resolution_array{11, 11, 11};
-    F map_thickness = 0.1;
     F particle_radius = 0.25;
     F sign = 1.0;
     F r = 1.25;
-    F margin = 4 * r + map_thickness;
+    F margin = 4 * r;
     Vector3r<F> domain_min(-30 - margin, -20 - margin, -40 - margin);
     Vector3r<F> domain_max(30 + margin, 20 + margin, 40 + margin);
     AlignedBox3r<F> domain(domain_min, domain_max);
     CubicLagrangeDiscreteGrid<F> grid(domain, resolution_array);
-    grid.addFunction(
-        [sign, map_thickness, particle_radius](Vector3r<F> const &xi) {
-          F signed_distance_from_ellipsoid = xi(0) * xi(0) / (25 * 25) +
-                                             xi(1) * xi(1) / (15 * 15) +
-                                             xi(2) * xi(2) / (35 * 35) - 1.0;
-          return sign * signed_distance_from_ellipsoid;
-        });
+    grid.addFunction([sign, particle_radius](Vector3r<F> const &xi) {
+      F signed_distance_from_ellipsoid = xi(0) * xi(0) / (25 * 25) +
+                                         xi(1) * xi(1) / (15 * 15) +
+                                         xi(2) * xi(2) / (35 * 35) - 1.0;
+      return sign * signed_distance_from_ellipsoid;
+    });
     CubicKernel<F> cubic_kernel;
     cubic_kernel.setRadius(r);
     grid.addFunction(
@@ -86,7 +84,7 @@ SCENARIO("testing volume field generation") {
           [&](U grid_size, U block_size) {
             update_volume_field<<<grid_size, block_size>>>(
                 *volume_nodes, *distance_nodes, domain_min, domain_max,
-                resolution, cell_size, num_nodes, sign, map_thickness);
+                resolution, cell_size, num_nodes, sign);
           },
           "update_volume_field", update_volume_field<F3, F>);
 
