@@ -76,7 +76,6 @@ SCENARIO("testing volume field generation") {
       // set constants
       store.get_cn<F>().set_particle_attr(particle_radius, 0.2, 1.0);
       store.get_cn<F>().set_kernel_radius(r);
-      store.get_cn<F>().set_cubic_discretization_constants();
       store.copy_cn<F>();
 
       runner.launch(

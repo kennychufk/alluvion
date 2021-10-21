@@ -335,6 +335,7 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh())
       .def("build_grids", &TPile::build_grids)
+      .def("build_grid", &TPile::build_grid)
       .def("compute_sort_fluid_block_internal_all",
            &TPile::compute_sort_fluid_block_internal_all,
            py::arg("internal_encoded"), py::arg("box_min"), py::arg("box_max"),
@@ -474,8 +475,6 @@ void declare_const(py::module& m, const char* name) {
   using TConst = Const<TF>;
   std::string class_name = std::string("Const") + name;
   py::class_<TConst>(m, class_name.c_str())
-      .def("set_cubic_discretization_constants",
-           &TConst::set_cubic_discretization_constants)
       .def("set_kernel_radius", &TConst::set_kernel_radius)
       .def("set_particle_attr", &TConst::set_particle_attr)
       .def("set_wrap_length", &TConst::set_wrap_length)

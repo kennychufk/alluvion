@@ -32,7 +32,6 @@ int main(void) {
   F particle_mass = 0.1;
   F dt = 2e-3;
   F3 gravity = {0._F, -98.1_F * scale_factor, 0._F};
-  store.get_cn<F>().set_cubic_discretization_constants();
   store.get_cn<F>().set_kernel_radius(kernel_radius);
   store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
   store.get_cn<F>().gravity = gravity;
@@ -54,8 +53,6 @@ int main(void) {
   // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
   // 0.4,
   //          0, F3{1, 1, 1}, F3{0, 0.4, -0}, Q{0, 0, 0, 1}, sphere_mesh);
-  pile.build_grids(4 * kernel_radius);
-  // pile.build_grids(0.1_F);
   pile.reallocate_kinematics_on_device();
   pile.set_gravity(gravity);
   store.get_cn<F>().contact_tolerance = particle_radius;

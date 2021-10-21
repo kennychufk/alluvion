@@ -73,7 +73,6 @@ class Pile {
   std::vector<TF3> inertia_tensor_;
 
   PinnedVariable<1, TF3> x_;
-  std::vector<TF3> oldx_;
   PinnedVariable<1, TF3> v_;
   std::vector<TF3> a_;
   std::vector<TF3> force_;
@@ -107,6 +106,7 @@ class Pile {
   Store& store_;
   TRunner& runner_;
 
+  // NOTE: require defined kernel_radius in store's host-side Const<TF>
   Pile(Store& store, TRunner& runner, U max_num_contacts)
       : store_(store),
         runner_(runner),
@@ -122,6 +122,8 @@ class Pile {
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
         num_contacts_pinned_(store.create_pinned<1, U>({1})) {
     store.get_cni().max_num_contacts = max_num_contacts;
+    store.get_cn<TF>().set_cubic_discretization_constants();
+    store.copy_cn<TF>();
   }
 
   virtual ~Pile() {
@@ -153,7 +155,6 @@ class Pile {
     friction_.push_back(friction);
     inertia_tensor_.push_back(inertia_tensor);
 
-    oldx_.push_back(x);
     a_.push_back(TF3{0, 0, 0});
     force_.push_back(TF3{0, 0, 0});
 
@@ -184,11 +185,14 @@ class Pile {
     cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
     reallocate_kinematics_on_pinned();
-    v_(get_size() - 1) = TF3{0, 0, 0};
-    x_(get_size() - 1) = x;
-    q_(get_size() - 1) = q;
-    omega_(get_size() - 1) = TF3{0, 0, 0};
-    return get_size() - 1;
+    U boundary_id = get_size() - 1;
+    v_(boundary_id) = TF3{0, 0, 0};
+    x_(boundary_id) = x;
+    q_(boundary_id) = q;
+    omega_(boundary_id) = TF3{0, 0, 0};
+
+    build_grid(boundary_id);
+    return boundary_id;
   }
   void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
                TF sign, Mesh const& collision_mesh, TF mass, TF restitution,
@@ -199,7 +203,6 @@ class Pile {
     friction_[i] = friction;
     inertia_tensor_[i] = inertia_tensor;
 
-    oldx_[i] = x;
     a_[i] = TF3{0, 0, 0};
     force_[i] = TF3{0, 0, 0};
     torque_[i] = TF3{0, 0, 0};
@@ -232,113 +235,120 @@ class Pile {
     collision_vertex_list_[i].reset(collision_vertices_var);
     cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
-    v_(get_size() - 1) = TF3{0, 0, 0};
-    x_(get_size() - 1) = x;
-    q_(get_size() - 1) = q;
-    omega_(get_size() - 1) = TF3{0, 0, 0};
+    v_(i) = TF3{0, 0, 0};
+    x_(i) = x;
+    q_(i) = q;
+    omega_(i) = TF3{0, 0, 0};
+
+    build_grid(i);
   }
-  void build_grids(TF margin) {
-    store_.copy_cn<TF>();
+  void build_grid(U i) {
+    U& num_nodes = grid_size_list_[i];
+    TF3& cell_size = cell_size_list_[i];
+    TF3& domain_min = domain_min_list_[i];
+    TF3& domain_max = domain_max_list_[i];
+    TF& sign = sign_list_[i];
+    TF margin = sign < 0 ? store_.get_cn<TF>().kernel_radius
+                         : store_.get_cn<TF>().kernel_radius * 2;
+
+    dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
+    calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
+                              domain_min, domain_max, num_nodes, cell_size);
+
+    store_.remove(*volume_grids_[i]);
+    Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
+    volume_grids_[i].reset(volume_grid);
+
+    volume_grid->set_zero();
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      store_.remove(*distance_grids_[i]);
+      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+      distance_grids_[i].reset(distance_grid);
+
+      std::vector<TF> nodes_host =
+          construct_distance_grid(virtual_dist, resolution_list_[i], margin,
+                                  sign_list_[i], domain_min, domain_max);
+      distance_grid->set_bytes(nodes_host.data());
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance_grid, domain_min, domain_max,
+                resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field", update_volume_field<TF3, TF>);
+    }
+    if (TBoxDistance const* distance =
+            dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(BoxDistance)",
+          update_volume_field<TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(SphereDistance)",
+          update_volume_field<TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(CylinderDistance)",
+          update_volume_field<TF3, TF, TCylinderDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(InfiniteCylinderDistance)",
+          update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(CapsuleDistance)",
+          update_volume_field<TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[update_volume_field] Distance type not supported."
+                << std::endl;
+    }
+  }
+  void build_grids() {
     for (U i = 0; i < get_size(); ++i) {
-      U& num_nodes = grid_size_list_[i];
-      TF3& cell_size = cell_size_list_[i];
-      TF3& domain_min = domain_min_list_[i];
-      TF3& domain_max = domain_max_list_[i];
-
-      dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
-      calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
-                                domain_min, domain_max, num_nodes, cell_size);
-
-      store_.remove(*volume_grids_[i]);
-      Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
-      volume_grids_[i].reset(volume_grid);
-
-      volume_grid->set_zero();
-      using TMeshDistance = dg::MeshDistance<TF3, TF>;
-      using TBoxDistance = dg::BoxDistance<TF3, TF>;
-      using TSphereDistance = dg::SphereDistance<TF3, TF>;
-      using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
-      using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
-      using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
-      if (TMeshDistance const* distance =
-              dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
-        store_.remove(*distance_grids_[i]);
-        Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
-        distance_grids_[i].reset(distance_grid);
-
-        std::vector<TF> nodes_host =
-            construct_distance_grid(virtual_dist, resolution_list_[i], margin,
-                                    sign_list_[i], domain_min, domain_max);
-        distance_grid->set_bytes(nodes_host.data());
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance_grid, domain_min, domain_max,
-                  resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field", update_volume_field<TF3, TF>);
-      }
-      if (TBoxDistance const* distance =
-              dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field(BoxDistance)",
-            update_volume_field<TF3, TF, TBoxDistance>);
-      } else if (TSphereDistance const* distance =
-                     dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field(SphereDistance)",
-            update_volume_field<TF3, TF, TSphereDistance>);
-      } else if (TCylinderDistance const* distance =
-                     dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field(CylinderDistance)",
-            update_volume_field<TF3, TF, TCylinderDistance>);
-      } else if (TInfiniteCylinderDistance const* distance =
-                     dynamic_cast<TInfiniteCylinderDistance const*>(
-                         &virtual_dist)) {
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field(InfiniteCylinderDistance)",
-            update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
-      } else if (TCapsuleDistance const* distance =
-                     dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
-        runner_.launch(
-            num_nodes,
-            [&](U grid_size, U block_size) {
-              update_volume_field<<<grid_size, block_size>>>(
-                  *volume_grid, *distance, domain_min, resolution_list_[i],
-                  cell_size, num_nodes, sign_list_[i]);
-            },
-            "update_volume_field(CapsuleDistance)",
-            update_volume_field<TF3, TF, TCapsuleDistance>);
-      } else {
-        std::cerr << "[update_volume_field] Distance type not supported."
-                  << std::endl;
-      }
+      build_grid(i);
     }
   }
   void compute_fluid_block_internal(U i, Variable<1, U>& internal_encoded,
