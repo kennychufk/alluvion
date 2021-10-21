@@ -21,7 +21,10 @@
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 #include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/capsule_distance.hpp"
+#include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
+#include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/helper_math.h"
 #include "alluvion/variable.hpp"
@@ -634,12 +637,38 @@ __global__ void create_fluid_block_internal(
   });
 }
 
-// NOTE: does not support shifted/rotated boundary
-template <typename TF3, typename TF>
+template <typename TQ, typename TF3, typename TF, typename TDistance>
+__global__ void compute_fluid_block_internal(Variable<1, U> internal_encoded,
+                                             const TDistance distance, TF sign,
+                                             TF3 rigid_x, TQ rigid_q,
+                                             U num_positions,
+                                             TF particle_radius, int mode,
+                                             TF3 box_min, TF3 box_max) {
+  I3 steps;
+  TF3 diff;
+  TF xshift, yshift;
+  get_fluid_block_attr(mode, box_min, box_max, particle_radius, steps, diff,
+                       xshift, yshift);
+  forThreadMappedToElement(num_positions, [&](U p_i) {
+    TF3 x = index_to_position_in_fluid_block(p_i, mode, box_min, steps,
+                                             particle_radius, xshift, yshift);
+
+    TF d = distance.signed_distance(rotate_using_quaternion(
+               x - rigid_x, quaternion_conjugate(rigid_q))) *
+           sign;
+    internal_encoded(p_i) =
+        (d < cn<TF>().kernel_radius or internal_encoded(p_i) == UINT_MAX)
+            ? UINT_MAX
+            : p_i;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
 __global__ void compute_fluid_block_internal(
     Variable<1, U> internal_encoded, Variable<1, TF> distance_nodes,
     TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, TF sign,
-    U num_positions, TF particle_radius, int mode, TF3 box_min, TF3 box_max) {
+    TF3 rigid_x, TQ rigid_q, U num_positions, TF particle_radius, int mode,
+    TF3 box_min, TF3 box_max) {
   I3 steps;
   TF3 diff;
   TF xshift, yshift;
@@ -651,9 +680,14 @@ __global__ void compute_fluid_block_internal(
 
     TF distance =
         interpolate_distance_without_intermediates(
-            &distance_nodes, domain_min, domain_max, resolution, cell_size, x) *
+            &distance_nodes, domain_min, domain_max, resolution, cell_size,
+            rotate_using_quaternion(x - rigid_x,
+                                    quaternion_conjugate(rigid_q))) *
         sign;
-    internal_encoded(p_i) = distance < cn<TF>().kernel_radius ? UINT_MAX : p_i;
+    internal_encoded(p_i) =
+        (distance < cn<TF>().kernel_radius or internal_encoded(p_i) == UINT_MAX)
+            ? UINT_MAX
+            : p_i;
   });
 }
 
@@ -3249,19 +3283,90 @@ class Runner {
         "create_fluid_block_internal", create_fluid_block_internal<TF3, TF>);
   }
   void launch_compute_fluid_block_internal(
-      Variable<1, U>& internal_encoded, Variable<1, TF>& distance_nodes,
-      TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
-      TF3 const& cell_size, TF sign, U num_positions, TF particle_radius,
-      int mode, TF3 const& box_min, TF3 const& box_max) {
-    launch(
-        num_positions,
-        [&](U grid_size, U block_size) {
-          compute_fluid_block_internal<TF3, TF><<<grid_size, block_size>>>(
-              internal_encoded, distance_nodes, domain_min, domain_max,
-              resolution, cell_size, sign, num_positions, particle_radius, mode,
-              box_min, box_max);
-        },
-        "compute_fluid_block_internal", compute_fluid_block_internal<TF3, TF>);
+      Variable<1, U>& internal_encoded,
+      dg::Distance<TF3, TF> const& virtual_dist,
+      Variable<1, TF>& distance_nodes, TF3 const& domain_min,
+      TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
+      TF sign, TF3 const& rigid_x, TQ const& rigid_q, U num_positions,
+      TF particle_radius, int mode, TF3 const& box_min, TF3 const& box_max) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, distance_nodes, domain_min, domain_max,
+                resolution, cell_size, sign, rigid_x, rigid_q, num_positions,
+                particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal",
+          compute_fluid_block_internal<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(BoxDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(SphereDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(CylinderDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TCylinderDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(InfiniteCylinderDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TInfiniteCylinderDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(CapsuleDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[compute_fluid_block_internal] Distance type not supported."
+                << std::endl;
+    }
   }
   static U get_fluid_block_num_particles(int mode, TF3 box_min, TF3 box_max,
                                          TF particle_radius) {
@@ -3318,11 +3423,26 @@ class Runner {
       U num_nodes, TF sign, TF dt, Variable<1, TF3>& particle_x,
       Variable<2, TQ>& particle_boundary,
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
-    if (TBoxDistance const* distance =
-            dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_particle_boundary<<<grid_size, block_size>>>(
+                volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
+                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
+          },
+          "compute_particle_boundary", compute_particle_boundary<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
       launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -3347,6 +3467,20 @@ class Runner {
           },
           "compute_particle_boundary_analytic(SphereDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
+                volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
+                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
+                dt, particle_x, particle_boundary, particle_boundary_kernel,
+                num_particles);
+          },
+          "compute_particle_boundary_analytic(CylinderDistance)",
+          compute_particle_boundary_analytic<0, TQ, TF3, TF,
+                                             TCylinderDistance>);
     } else if (TInfiniteCylinderDistance const* distance =
                    dynamic_cast<TInfiniteCylinderDistance const*>(
                        &virtual_dist)) {
@@ -3362,17 +3496,22 @@ class Runner {
           "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
           compute_particle_boundary_analytic<1, TQ, TF3, TF,
                                              TInfiniteCylinderDistance>);
-    } else {
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
       launch(
           num_particles,
           [&](U grid_size, U block_size) {
-            compute_particle_boundary<<<grid_size, block_size>>>(
-                volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
+            compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
+                volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
                 num_particles);
           },
-          "compute_particle_boundary", compute_particle_boundary<TQ, TF3, TF>);
+          "compute_particle_boundary_analytic(CapsuleDistance)",
+          compute_particle_boundary_analytic<0, TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[compute_particle_boundary] Distance type not supported."
+                << std::endl;
     }
   }
   void launch_update_particle_grid(Variable<1, TF3>& particle_x,
@@ -3547,11 +3686,27 @@ class Runner {
       TF3 const& cell_size, TF sign,
 
       U num_vertices_i) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
-    if (TBoxDistance const* distance =
-            dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                distance_nodes, domain_min, domain_max, resolution, cell_size,
+                sign, num_vertices_i);
+          },
+          "collision_test", collision_test<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
       launch(
           num_vertices_i,
           [&](U grid_size, U block_size) {
@@ -3576,6 +3731,19 @@ class Runner {
           },
           "collision_test(SphereDistance)",
           collision_test<TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_vertices_i,
+          [&](U grid_size, U block_size) {
+            collision_test<<<grid_size, block_size>>>(
+                i, j, vertices_i, num_contacts, contacts, mass_i,
+                inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
+                inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
+                *distance, sign, num_vertices_i);
+          },
+          "collision_test(CylinderDistance)",
+          collision_test<TQ, TF3, TF, TCylinderDistance>);
     } else if (TInfiniteCylinderDistance const* distance =
                    dynamic_cast<TInfiniteCylinderDistance const*>(
                        &virtual_dist)) {
@@ -3590,7 +3758,8 @@ class Runner {
           },
           "collision_test(InfiniteCylinderDistance)",
           collision_test<TQ, TF3, TF, TInfiniteCylinderDistance>);
-    } else {
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
       launch(
           num_vertices_i,
           [&](U grid_size, U block_size) {
@@ -3598,10 +3767,12 @@ class Runner {
                 i, j, vertices_i, num_contacts, contacts, mass_i,
                 inertia_tensor_i, x_i, v_i, q_i, omega_i, mass_j,
                 inertia_tensor_j, x_j, v_j, q_j, omega_j, restitution, friction,
-                distance_nodes, domain_min, domain_max, resolution, cell_size,
-                sign, num_vertices_i);
+                *distance, sign, num_vertices_i);
           },
-          "collision_test", collision_test<TQ, TF3, TF>);
+          "collision_test(CapsuleDistance)",
+          collision_test<TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[collision_test] Distance type not supported." << std::endl;
     }
   }
 

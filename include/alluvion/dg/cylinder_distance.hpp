@@ -26,6 +26,24 @@ class CylinderDistance : public Distance<TF3, TF> {
     return min(max(d0, d1), TF{0}) +
            sqrt(d0_clipped * d0_clipped + d1_clipped * d1_clipped);
   }
+  __device__ TF signed_distance(TF3 const& x) const {
+    TF d0 = sqrt(x.x * x.x + x.z * x.z) - radius_;
+    TF d1 = abs(x.y + com_y_) - half_height_;
+    TF d0_clipped = max(d0, TF{0});
+    TF d1_clipped = max(d1, TF{0});
+    return min(max(d0, d1), TF{0}) +
+           sqrt(d0_clipped * d0_clipped + d1_clipped * d1_clipped);
+  }
+  __device__ TF3 gradient(TF3 const& x, TF scale) const {
+    constexpr TF kEps = 0.00390625;
+    TF step = scale * kEps;
+    return TF3{signed_distance(x + TF3{step, 0, 0}) -
+                   signed_distance(x - TF3{step, 0, 0}),
+               signed_distance(x + TF3{0, step, 0}) -
+                   signed_distance(x - TF3{0, step, 0}),
+               signed_distance(x + TF3{0, 0, step}) -
+                   signed_distance(x - TF3{0, 0, step})};
+  }
 
   TF radius_;
   TF half_height_;

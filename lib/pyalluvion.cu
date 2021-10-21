@@ -335,10 +335,10 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh())
       .def("build_grids", &TPile::build_grids)
-      .def("compute_fluid_block_internal", &TPile::compute_fluid_block_internal,
-           py::arg("boundary_id"), py::arg("internal_encoded"),
-           py::arg("box_min"), py::arg("box_max"), py::arg("particle_radius"),
-           py::arg("mode") = 0)
+      .def("compute_sort_fluid_block_internal_all",
+           &TPile::compute_sort_fluid_block_internal_all,
+           py::arg("internal_encoded"), py::arg("box_min"), py::arg("box_max"),
+           py::arg("particle_radius"), py::arg("mode") = 0)
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
            &TPile::reallocate_kinematics_on_device)
