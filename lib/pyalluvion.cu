@@ -302,7 +302,7 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
           "num_contacts",
-          [](TPile const& pile) { return pile.num_contacts_.get(); })
+          [](TPile const& pile) { return pile.num_contacts_pinned_(0); })
       .def_property_readonly(
           "collision_vertex_list",
           [](TPile const& pile) {
@@ -355,6 +355,7 @@ void declare_pile(py::module& m, const char* name) {
       .def("integrate_kinematics", &TPile::integrate_kinematics)
       .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
       .def("find_contacts", py::overload_cast<U, U>(&TPile::find_contacts))
+      .def("find_contacts", py::overload_cast<U>(&TPile::find_contacts))
       .def("find_contacts", py::overload_cast<>(&TPile::find_contacts))
       .def("solve_contacts", &TPile::solve_contacts)
       .def("get_size", &TPile::get_size)

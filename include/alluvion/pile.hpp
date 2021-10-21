@@ -284,9 +284,8 @@ class Pile {
                 resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
           },
           "update_volume_field", update_volume_field<TF3, TF>);
-    }
-    if (TBoxDistance const* distance =
-            dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
       runner_.launch(
           num_nodes,
           [&](U grid_size, U block_size) {
@@ -475,7 +474,7 @@ class Pile {
     }
     return max_v2;
   }
-  void find_contacts(U i, U j) {
+  U find_contacts(U i, U j) {
     num_contacts_->set_zero();
     Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
     U num_vertices_i = vertices_i.get_linear_shape();
@@ -486,8 +485,28 @@ class Pile {
         omega_(j), restitution_[i] * restitution_[j],
         friction_[i] + friction_[j], domain_min_list_[j], domain_max_list_[j],
         resolution_list_[j], cell_size_list_[j], sign_list_[j], num_vertices_i);
+    num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
+    return num_contacts_pinned_(0);
   }
-  void find_contacts() {
+  U find_contacts(U i) {
+    num_contacts_->set_zero();
+    Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
+    U num_vertices_i = vertices_i.get_linear_shape();
+    for (U j = 0; j < get_size(); ++j) {
+      if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
+      runner_.launch_collision_test(
+          *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
+          *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
+          v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j),
+          q_(j), omega_(j), restitution_[i] * restitution_[j],
+          friction_[i] + friction_[j], domain_min_list_[j], domain_max_list_[j],
+          resolution_list_[j], cell_size_list_[j], sign_list_[j],
+          num_vertices_i);
+    }
+    num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
+    return num_contacts_pinned_(0);
+  }
+  U find_contacts() {
     num_contacts_->set_zero();
     for (U i = 0; i < get_size(); ++i) {
       Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
@@ -504,9 +523,10 @@ class Pile {
             sign_list_[j], num_vertices_i);
       }
     }
+    num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
+    return num_contacts_pinned_(0);
   }
   void solve_contacts() {
-    num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
     U num_contacts = num_contacts_pinned_(0);
     contacts_->get_bytes(contacts_pinned_.ptr_,
                          num_contacts * sizeof(TContact));
