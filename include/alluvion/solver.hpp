@@ -63,7 +63,9 @@ struct Solver {
              store_arg.get_cni().max_num_neighbors_per_particle})),
         particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
         enable_surface_tension(enable_surface_tension_arg),
-        enable_vorticity(enable_vorticity_arg) {}
+        enable_vorticity(enable_vorticity_arg) {
+    store.copy_cn<TF>();
+  }
   virtual ~Solver() {
     if (GraphicalVariable<1, TF3>* graphical_particle_x =
             dynamic_cast<GraphicalVariable<1, TF3>*>(particle_x.get())) {

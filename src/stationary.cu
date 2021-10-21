@@ -84,7 +84,6 @@ int main(void) {
   solver.max_density_solve = 20;
   solver.particle_radius = particle_radius;
 
-  store.copy_cn<F>();
   store.map_graphical_pointers();
   runner.launch_create_fluid_block(*solver.particle_x, num_particles, 0,
                                    particle_radius, block_mode, block_min,
