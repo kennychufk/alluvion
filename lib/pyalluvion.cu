@@ -818,7 +818,14 @@ void declare_display_proxy(py::module& m, const char* name) {
       .def("run", &TDisplayProxy::run)
       .def("draw", &TDisplayProxy::draw)
       .def("set_camera", &TDisplayProxy::set_camera)
-      .def("set_clip_planes", &TDisplayProxy::set_clip_planes);
+      .def("set_clip_planes", &TDisplayProxy::set_clip_planes)
+      .def("create_framebuffer", &TDisplayProxy::create_framebuffer,
+           py::return_value_policy::reference)
+      .def("bind_framebuffer", &TDisplayProxy::bind_framebuffer)
+      .def("add_bind_framebuffer_step",
+           &TDisplayProxy::add_bind_framebuffer_step)
+      .def("add_show_framebuffer_shader",
+           &TDisplayProxy::add_show_framebuffer_shader);
 }
 
 template <typename TF>
@@ -995,6 +1002,11 @@ PYBIND11_MODULE(_alluvion, m) {
           py::arg("density") = 1)
       .def("copy_to", &Mesh::copy_to<float>)
       .def("copy_to", &Mesh::copy_to<double>);
+
+  py::class_<CompleteFramebuffer>(m, "CompleteFramebuffer")
+      .def_readonly("width", &CompleteFramebuffer::width_)
+      .def_readonly("height", &CompleteFramebuffer::height_)
+      .def("write", &CompleteFramebuffer::write);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 

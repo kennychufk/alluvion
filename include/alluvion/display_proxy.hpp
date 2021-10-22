@@ -328,7 +328,42 @@ class DisplayProxy {
     display_->camera_.setClipPlanes(near, far);
     display_->update_trackball_camera();
   }
+  CompleteFramebuffer* create_framebuffer() {
+    GLuint fbo = display_->create_framebuffer();
+    return &(display_->get_framebuffer(fbo));
+  }
+  void bind_framebuffer(CompleteFramebuffer& buffer) {
+    glBindFramebuffer(GL_FRAMEBUFFER, buffer.fbo_);
+  }
+  void add_bind_framebuffer_step(CompleteFramebuffer& buffer) {
+    display_->add_shading_program(new ShadingProgram(
+        nullptr, nullptr, {}, {},
+        [&buffer](ShadingProgram& program, Display& display) {
+          glBindFramebuffer(GL_FRAMEBUFFER, buffer.fbo_);
+        }));
+  }
+  void add_show_framebuffer_shader(CompleteFramebuffer const& buffer) {
+    constexpr float kScreenQuadXYTex[] = {
+        // positions   // texCoords
+        -1.0f, 1.0f,  0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+        1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  0.0f, 1.0f,
+        1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,  1.0f,  1.0f, 1.0f};
+    GLuint screen_quad =
+        display_->create_dynamic_array_buffer<float4>(6, kScreenQuadXYTex);
+#include "alluvion/glsl/screen.frag"
+#include "alluvion/glsl/screen.vert"
+    display_->add_shading_program(new ShadingProgram(
+        kScreenVertexShaderStr.c_str(), kScreenFragmentShaderStr.c_str(), {},
+        {std::make_tuple(screen_quad, 4, GL_FLOAT, 0)},
+        [&](ShadingProgram& program, Display& display) {
+          glBindFramebuffer(GL_FRAMEBUFFER, 0);
+          glDisable(GL_DEPTH_TEST);
+          glClear(GL_COLOR_BUFFER_BIT);
 
+          glBindTexture(GL_TEXTURE_2D, buffer.color_tex_);
+          glDrawArrays(GL_TRIANGLES, 0, 6);
+        }));
+  }
   Display* display_;
 };
 }  // namespace alluvion
