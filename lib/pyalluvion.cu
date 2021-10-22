@@ -301,8 +301,11 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
-          "num_contacts",
+          "num_contacts_pinned",
           [](TPile const& pile) { return pile.num_contacts_pinned_(0); })
+      .def_property_readonly(
+          "num_contacts",
+          [](TPile const& pile) { return pile.num_contacts_.get(); })
       .def_property_readonly(
           "collision_vertex_list",
           [](TPile const& pile) {

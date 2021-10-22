@@ -1359,7 +1359,9 @@ __device__ TF collision_find_dist_normal(Variable<1, TF>* distance_nodes,
                                          TF3 domain_min, TF3 domain_max,
                                          U3 resolution, TF3 cell_size, TF sign,
                                          TF tolerance, TF3 x, TF3* normal) {
-  TF dist = 0;
+  TF dist = sign;  // in extreme condition when the vertex is outside the whole
+                   // distance map, finding the correct distance is impossible.
+                   // Only report the existence of collision.
   I3 ipos;
   TF3 inner_x;
   TF N[32];
@@ -1367,19 +1369,16 @@ __device__ TF collision_find_dist_normal(Variable<1, TF>* distance_nodes,
   TF dN1[32];
   TF dN2[32];
   U cells[32];
-  TF d = kFMax<TF>;
-  TF3 normal_tmp{0};
+  TF3 normal_tmp{0, 1, 0};
   *normal = TF3{0};
 
   resolve(domain_min, domain_max, resolution, cell_size, x, &ipos, &inner_x);
   if (ipos.x >= 0) {
     get_shape_function_and_gradient(inner_x, N, dN0, dN1, dN2);
     get_cells(resolution, ipos, cells);
-    d = interpolate_and_derive(distance_nodes, &cell_size, cells, N, dN0, dN1,
-                               dN2, &normal_tmp);
-  }
-  if (d != kFMax<TF>) {
-    dist = sign * d - tolerance;
+    dist = sign * interpolate_and_derive(distance_nodes, &cell_size, cells, N,
+                                         dN0, dN1, dN2, &normal_tmp) -
+           tolerance;
     normal_tmp *= sign;
   }
   if (dist < 0) {
@@ -2730,9 +2729,6 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
 
     if (dist < 0) {
       U contact_insert_index = atomicAdd(&num_contacts(0), 1);
-      if (contact_insert_index == cni.max_num_contacts) {
-        printf("Reached the max. no. of contacts\n");
-      }
       contact.i = i;
       contact.j = j;
       contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
@@ -2785,7 +2781,9 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
 
       contact.goalu = goal_u_rel_n;
       contact.impulse_sum = 0;
-      contacts(contact_insert_index) = contact;
+      if (contact_insert_index < cni.max_num_contacts) {
+        contacts(contact_insert_index) = contact;
+      }
     }
   });
 }
@@ -2819,9 +2817,6 @@ __global__ void collision_test(
 
     if (dist < 0) {
       U contact_insert_index = atomicAdd(&num_contacts(0), 1);
-      if (contact_insert_index == cni.max_num_contacts) {
-        printf("Reached the max. no. of contacts\n");
-      }
       contact.i = i;
       contact.j = j;
       contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
@@ -2874,7 +2869,9 @@ __global__ void collision_test(
 
       contact.goalu = goal_u_rel_n;
       contact.impulse_sum = 0;
-      contacts(contact_insert_index) = contact;
+      if (contact_insert_index < cni.max_num_contacts) {
+        contacts(contact_insert_index) = contact;
+      }
     }
   });
 }

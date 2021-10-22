@@ -528,6 +528,11 @@ class Pile {
   }
   void solve_contacts() {
     U num_contacts = num_contacts_pinned_(0);
+    if (num_contacts > store_.get_cni().max_num_contacts) {
+      std::cerr << "No. of contacts exceeds "
+                << store_.get_cni().max_num_contacts << "." << std::endl;
+      num_contacts = store_.get_cni().max_num_contacts;
+    }
     contacts_->get_bytes(contacts_pinned_.ptr_,
                          num_contacts * sizeof(TContact));
     for (U solve_iter = 0; solve_iter < 5; ++solve_iter) {
