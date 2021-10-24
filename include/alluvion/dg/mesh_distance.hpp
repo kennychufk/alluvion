@@ -66,9 +66,11 @@ class MeshDistance : public Distance<TF3, TF> {
 
  public:
   using super = Distance<TF3, TF>;
-  MeshDistance(TriangleMesh<TF> const& mesh, bool precompute_normals = true)
+  MeshDistance(TriangleMesh<TF> const& mesh, TF offset_arg,
+               bool precompute_normals = true)
       : m_bsh(mesh.vertex_data(), mesh.face_data()),
         m_mesh(mesh),
+        offset(offset_arg),
         m_precomputed_normals(precompute_normals) {
     auto max_threads = omp_get_max_threads();
     m_queues.resize(max_threads);
@@ -117,7 +119,9 @@ class MeshDistance : public Distance<TF3, TF> {
       TF distance2 = vertex.dot(vertex);
       if (distance2 > max_distance2) max_distance2 = distance2;
     }
-    super::max_distance_ = sqrt(max_distance2);
+    super::aabb_max_ += offset;
+    super::aabb_min_ -= offset;
+    super::max_distance_ = sqrt(max_distance2) + offset;
   }
 
   // Returns the shortest unsigned distance from a given point x to
@@ -215,7 +219,7 @@ class MeshDistance : public Distance<TF3, TF> {
 
     if ((x - np).dot(n) < 0.0) dist *= -1.0;
 
-    return dist;
+    return dist - offset;
   }
 
   TF unsignedDistance(dg::Vector3r<TF> const& x) const { return distance(x); }
@@ -319,6 +323,7 @@ class MeshDistance : public Distance<TF3, TF> {
  private:
   TriangleMesh<TF> m_mesh;
   TriangleMeshBSH<TF> m_bsh;
+  TF offset;
 
   using FunctionValueCache = LRUCache<dg::Vector3r<TF>, TF>;
   mutable std::vector<typename TriangleMeshBSH<TF>::TraversalQueue> m_queues;

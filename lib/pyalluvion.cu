@@ -329,14 +329,18 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("mass") = 0, py::arg("restitution") = 1,
            py::arg("friction") = 0, py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
-           py::arg("display_mesh") = Mesh())
+           py::arg("display_mesh") = Mesh(),
+           py::arg("distance_grid_filename") = nullptr,
+           py::arg("volume_grid_filename") = nullptr)
       .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
            py::arg("resolution"), py::arg("sign") = 1,
            py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
            py::arg("restitution") = 1, py::arg("friction") = 0,
            py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
-           py::arg("display_mesh") = Mesh())
+           py::arg("display_mesh") = Mesh(),
+           py::arg("distance_grid_filename") = nullptr,
+           py::arg("volume_grid_filename") = nullptr)
       .def("build_grids", &TPile::build_grids)
       .def("build_grid", &TPile::build_grid)
       .def("compute_sort_fluid_block_internal_all",
@@ -451,15 +455,15 @@ void declare_mesh_distance(py::module& m, const char* name) {
   using TMeshDistance = dg::MeshDistance<TF3, TF>;
   std::string class_name = std::string("MeshDistance") + name;
   py::class_<TMeshDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
-      .def(py::init<TriangleMesh<TF> const&, bool>(), py::arg("mesh"),
-           py::arg("precompute_normals") = true)
+      .def(py::init<TriangleMesh<TF> const&, TF, bool>(), py::arg("mesh"),
+           py::arg("offset"), py::arg("precompute_normals") = true)
       .def_static(
           "create",
-          [](TriangleMesh<TF> const& mesh, bool precompute_normals) {
-            return new TMeshDistance(mesh, precompute_normals);
+          [](TriangleMesh<TF> const& mesh, TF offset, bool precompute_normals) {
+            return new TMeshDistance(mesh, offset, precompute_normals);
           },
           py::return_value_policy::reference, py::arg("mesh"),
-          py::arg("precompute_normals") = true);
+          py::arg("offset"), py::arg("precompute_normals") = true);
 }
 
 template <typename TF>

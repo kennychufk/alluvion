@@ -149,7 +149,8 @@ class Pile {
   U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
         Mesh const& collision_mesh, TF mass, TF restitution, TF friction,
         TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-        Mesh const& display_mesh) {
+        Mesh const& display_mesh, const char* distance_grid_filename = nullptr,
+        const char* volume_grid_filename = nullptr) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
     friction_.push_back(friction);
@@ -191,13 +192,15 @@ class Pile {
     q_(boundary_id) = q;
     omega_(boundary_id) = TF3{0, 0, 0};
 
-    build_grid(boundary_id);
+    build_grid(boundary_id, distance_grid_filename, volume_grid_filename);
     return boundary_id;
   }
   void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
                TF sign, Mesh const& collision_mesh, TF mass, TF restitution,
                TF friction, TF3 const& inertia_tensor, TF3 const& x,
-               TQ const& q, Mesh const& display_mesh) {
+               TQ const& q, Mesh const& display_mesh,
+               const char* distance_grid_filename = nullptr,
+               const char* volume_grid_filename = nullptr) {
     mass_[i] = mass;
     restitution_[i] = restitution;
     friction_[i] = friction;
@@ -240,9 +243,10 @@ class Pile {
     q_(i) = q;
     omega_(i) = TF3{0, 0, 0};
 
-    build_grid(i);
+    build_grid(i, distance_grid_filename, volume_grid_filename);
   }
-  void build_grid(U i) {
+  void build_grid(U i, const char* distance_grid_filename = nullptr,
+                  const char* volume_grid_filename = nullptr) {
     U& num_nodes = grid_size_list_[i];
     TF3& cell_size = cell_size_list_[i];
     TF3& domain_min = domain_min_list_[i];
@@ -255,10 +259,19 @@ class Pile {
     calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
                               domain_min, domain_max, num_nodes, cell_size);
 
+    if (distance_grid_filename != nullptr) {
+      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+      distance_grids_[i].reset(distance_grid);
+      distance_grid->read_file(distance_grid_filename);
+    }
+
     store_.remove(*volume_grids_[i]);
     Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
     volume_grids_[i].reset(volume_grid);
-
+    if (volume_grid_filename != nullptr) {
+      volume_grid->read_file(volume_grid_filename);
+      return;
+    }
     volume_grid->set_zero();
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
@@ -268,19 +281,20 @@ class Pile {
     using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
     if (TMeshDistance const* distance =
             dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
-      store_.remove(*distance_grids_[i]);
-      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
-      distance_grids_[i].reset(distance_grid);
-
-      std::vector<TF> nodes_host =
-          construct_distance_grid(virtual_dist, resolution_list_[i], margin,
-                                  sign_list_[i], domain_min, domain_max);
-      distance_grid->set_bytes(nodes_host.data());
+      if (distance_grid_filename == nullptr) {
+        store_.remove(*distance_grids_[i]);
+        Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+        distance_grids_[i].reset(distance_grid);
+        std::vector<TF> nodes_host =
+            construct_distance_grid(virtual_dist, resolution_list_[i], margin,
+                                    sign_list_[i], domain_min, domain_max);
+        distance_grid->set_bytes(nodes_host.data());
+      }
       runner_.launch(
           num_nodes,
           [&](U grid_size, U block_size) {
             update_volume_field<<<grid_size, block_size>>>(
-                *volume_grid, *distance_grid, domain_min, domain_max,
+                *volume_grid, *distance_grids_[i], domain_min, domain_max,
                 resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
           },
           "update_volume_field", update_volume_field<TF3, TF>);
