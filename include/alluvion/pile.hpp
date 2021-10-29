@@ -456,6 +456,10 @@ class Pile {
       if (stream.peek() == std::ifstream::traits_type::eof()) break;
     }
   }
+  static U get_size_from_file(const char* filename) {
+    std::ifstream stream(filename, std::ifstream::ate | std::ifstream::binary);
+    return stream.tellg() / (sizeof(TF3) * 3 + sizeof(TQ));
+  }
   void integrate_kinematics(TF dt) {
     for (U i = 0; i < get_size(); ++i) {
       if (mass_[i] == 0) {

@@ -358,6 +358,8 @@ void declare_pile(py::module& m, const char* name) {
       .def("read_file", &TPile::read_file, py::arg("filename"),
            py::arg("num_rigids") = -1, py::arg("dst_offset") = 0,
            py::arg("src_offset") = 0)
+      .def_static("get_size_from_file", &TPile::get_size_from_file,
+                  py::arg("filename"))
       .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
       .def("integrate_kinematics", &TPile::integrate_kinematics)
       .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
@@ -782,7 +784,7 @@ void declare_usher(py::module& m, const char* name) {
   py::class_<TUsher>(m, class_name.c_str())
       .def(py::init<Store&, TPile&, U>(), py::arg("store"), py::arg("pile"),
            py::arg("num_ushers"))
-      .def_readonly("num_ushers", &TUsher::num_ushers)
+      .def_readwrite("num_ushers", &TUsher::num_ushers)
       .def_property_readonly(
           "focal_x", [](TUsher const& usher) { return usher.focal_x.get(); })
       .def_property_readonly(
