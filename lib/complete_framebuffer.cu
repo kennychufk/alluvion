@@ -63,6 +63,13 @@ GLsizei CompleteFramebuffer::get_read_stride() const {
 }
 
 void CompleteFramebuffer::write(const char* filename) {
+  read();
+  std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
+  stream.write(reinterpret_cast<const char*>(tight_buffer_.data()),
+               tight_buffer_.size() * sizeof(unsigned char));
+}
+
+void CompleteFramebuffer::read() {
   resize_host_buffers();
   const GLsizei tight_stride = kNumChannels * width_;
   const GLsizei read_stride = get_read_stride();
@@ -72,9 +79,11 @@ void CompleteFramebuffer::write(const char* filename) {
     std::memcpy(tight_buffer_.data() + (tight_stride * (height_ - row - 1)),
                 read_buffer_.data() + (read_stride * row), tight_stride);
   }
-  std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
-  stream.write(reinterpret_cast<const char*>(tight_buffer_.data()),
-               tight_buffer_.size() * sizeof(unsigned char));
+}
+
+std::vector<unsigned char> CompleteFramebuffer::get() {
+  read();
+  return tight_buffer_;
 }
 
 void CompleteFramebuffer::resize_host_buffers() {

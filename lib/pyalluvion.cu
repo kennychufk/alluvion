@@ -832,7 +832,8 @@ void declare_display_proxy(py::module& m, const char* name) {
       .def("add_bind_framebuffer_step",
            &TDisplayProxy::add_bind_framebuffer_step)
       .def("add_show_framebuffer_shader",
-           &TDisplayProxy::add_show_framebuffer_shader);
+           &TDisplayProxy::add_show_framebuffer_shader)
+      .def("resize", &TDisplayProxy::resize);
 }
 
 template <typename TF>
@@ -1013,7 +1014,9 @@ PYBIND11_MODULE(_alluvion, m) {
   py::class_<CompleteFramebuffer>(m, "CompleteFramebuffer")
       .def_readonly("width", &CompleteFramebuffer::width_)
       .def_readonly("height", &CompleteFramebuffer::height_)
-      .def("write", &CompleteFramebuffer::write);
+      .def("write", &CompleteFramebuffer::write)
+      .def("get", &CompleteFramebuffer::get)
+      .def("read", &CompleteFramebuffer::read);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 

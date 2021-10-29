@@ -15,6 +15,8 @@ class CompleteFramebuffer {
   void resize(GLsizei width, GLsizei height);
   GLsizei get_read_stride() const;
   void write(const char*);
+  std::vector<unsigned char> get();
+  void read();
 
   static constexpr GLsizei kNumChannels = 3;
   GLuint fbo_;

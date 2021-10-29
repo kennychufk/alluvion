@@ -364,6 +364,9 @@ class DisplayProxy {
           glDrawArrays(GL_TRIANGLES, 0, 6);
         }));
   }
+  void resize(int width, int height) {
+    display_->resize_callback(display_->window_, width, height);
+  }
   Display* display_;
 };
 }  // namespace alluvion
