@@ -227,6 +227,19 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
       .def_readonly("vbo", &GraphicalVariableClass::vbo_);
 }
 
+template <unsigned int D, typename M, typename TPrimitive>
+void declare_metrics(py::module& m,
+                     py::class_<Runner<TPrimitive>>* runner_class) {
+  runner_class->def_static(
+      "calculate_mse",
+      &Runner<TPrimitive>::template calculate_mse<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
+      "calculate_mean_squared",
+      &Runner<TPrimitive>::template calculate_mean_squared<D, M, TPrimitive>,
+      py::arg("var"), py::arg("n"), py::arg("offset") = 0);
+}
+
 template <unsigned int D, typename M>
 void declare_pinned_variable(py::module& m, const char* name) {
   using PinnedVariableClass = PinnedVariable<D, M>;
@@ -963,6 +976,9 @@ PYBIND11_MODULE(_alluvion, m) {
                                   "1Duint");
   declare_variable<3, uint, bool>(m, store_class, &runner_float, &runner_double,
                                   "3Duint");
+
+  declare_metrics<1, float3>(m, &runner_float);
+  declare_metrics<1, double3>(m, &runner_double);
 
   declare_pinned_variable<1, float3>(m, "1Dfloat3");
   declare_pinned_variable<1, double3>(m, "1Ddouble3");

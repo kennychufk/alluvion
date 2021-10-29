@@ -429,6 +429,19 @@ inline __device__ TF3 wrap_y(TF3 v) {
   return v;
 }
 
+template <typename M, typename TPrimitive>
+struct SquaredDifference {
+  __device__ TPrimitive operator()(thrust::tuple<M, M> const& vector_pair) {
+    M diff = thrust::get<0>(vector_pair) - thrust::get<1>(vector_pair);
+    return length_sqr(diff);
+  }
+};
+
+template <typename M, typename TPrimitive>
+struct SquaredNorm {
+  __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
+};
+
 template <typename TF3, typename TF>
 __global__ void create_fluid_cylinder_sunflower(Variable<1, TF3> particle_x,
                                                 U num_particles, TF radius,
@@ -3151,6 +3164,35 @@ class Runner {
         thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
             (offset + num_elements),
         value);
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse(Variable<D, M> v0, Variable<D, M> v1,
+                                  U num_elements, U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(
+               begin, end, SquaredDifference<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           num_elements;
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mean_squared(Variable<D, M> var, U num_elements,
+                                           U offset = 0) {
+    return thrust::transform_reduce(
+               thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
+               thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
+                   (offset + num_elements),
+               SquaredNorm<M, TPrimitive>(), static_cast<TPrimitive>(0),
+               thrust::plus<TPrimitive>()) /
+           num_elements;
   }
 
   template <class Lambda>
