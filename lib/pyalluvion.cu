@@ -556,6 +556,9 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
       .def_readwrite("next_emission_t", &TSolver::next_emission_t)
       .def_property_readonly(
+          "runner", [](TSolver const& solver) { return solver.runner; },
+          py::return_value_policy::reference)
+      .def_property_readonly(
           "usher", [](TSolver const& solver) { return solver.usher.get(); })
       .def_property_readonly(
           "particle_x",
