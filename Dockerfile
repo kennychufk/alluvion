@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.4.1-devel-ubuntu20.04 AS build
+FROM nvidia/cuda:11.4.2-devel-ubuntu20.04 AS build
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -23,18 +23,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work
 
 COPY requirements.txt /work
-RUN pip3 install -r requirements.txt
+RUN pip3 install -r requirements.txt -f https://download.pytorch.org/whl/cu113/torch_stable.html
 
 COPY . /work
 
 RUN python3 setup.py install
 
-FROM nvidia/cuda:11.4.1-base-ubuntu20.04 AS runtime
+FROM nvidia/cuda:11.4.2-cudnn8-runtime-ubuntu20.04 AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgomp1 \
       python3 \
+      python3-pkg-resources \
       libglfw3 \
       libfreetype6 && \
     rm -rf /var/lib/apt/lists/*
+## copy all python packages
 COPY --from=build /usr/local/lib/python3.8/dist-packages/ /usr/local/lib/python3.8/dist-packages/
-# RUN python3 -c 'import alluvion as al; import numpy as np; dp=al.Depot(); x=dp.create_coated(8, 1); x.set(np.arange(8)); print(x.get());'

@@ -670,12 +670,32 @@ class Pile {
   };
 
   template <class Lambda>
+  void for_rigid(U i, Lambda f) {
+    f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i], x_(i),
+      q_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
+      cell_size_list_[i], grid_size_list_[i], sign_list_[i]);
+  }
+  template <class Lambda>
   void for_each_rigid(Lambda f) {
     for (U i = 0; i < get_size(); ++i) {
-      f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i], x_(i),
-        q_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
-        cell_size_list_[i], grid_size_list_[i], sign_list_[i]);
+      for_rigid(i, f);
     }
+  }
+
+  void compute_mask(U i, TF distance_threshold,
+                    Variable<1, TF3> const& sample_x, Variable<1, U>& mask,
+                    U num_samples) {
+    for_rigid(i, [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+                     Variable<1, TF> const& distance_grid,
+                     Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+                     TQ const& rigid_q, TF3 const& domain_min,
+                     TF3 const& domain_max, U3 const& resolution,
+                     TF3 const& cell_size, U num_nodes, TF sign) {
+      runner_.launch_compute_boundary_mask(
+          distance, distance_grid, rigid_x, rigid_q, domain_min, domain_max,
+          resolution, cell_size, num_nodes, sign, sample_x, distance_threshold,
+          mask, num_samples);
+    });
   }
 };
 }  // namespace alluvion

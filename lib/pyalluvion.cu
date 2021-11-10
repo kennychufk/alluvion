@@ -235,6 +235,11 @@ void declare_metrics(py::module& m,
       &Runner<TPrimitive>::template calculate_mse<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_mse_masked",
+      &Runner<TPrimitive>::template calculate_mse_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mean_squared",
       &Runner<TPrimitive>::template calculate_mean_squared<D, M, TPrimitive>,
       py::arg("var"), py::arg("n"), py::arg("offset") = 0);
@@ -381,7 +386,8 @@ void declare_pile(py::module& m, const char* name) {
       .def("find_contacts", py::overload_cast<>(&TPile::find_contacts))
       .def("solve_contacts", &TPile::solve_contacts)
       .def("get_size", &TPile::get_size)
-      .def("get_matrix", &TPile::get_matrix);
+      .def("get_matrix", &TPile::get_matrix)
+      .def("compute_mask", &TPile::compute_mask);
 }
 
 template <typename TF3, typename TF>
@@ -883,6 +889,9 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
            &TRunner::launch_compute_particle_boundary)
+      .def("launch_compute_density_mask", &TRunner::launch_compute_density_mask)
+      .def("launch_compute_boundary_mask",
+           &TRunner::launch_compute_boundary_mask)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
       .def("launch_make_neighbor_list",
            &TRunner::template launch_make_neighbor_list<0>)

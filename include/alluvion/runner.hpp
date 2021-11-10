@@ -438,6 +438,14 @@ struct SquaredDifference {
 };
 
 template <typename M, typename TPrimitive>
+struct SquaredDifferenceMasked {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
+    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
+    return length_sqr(diff) * thrust::get<2>(vvm);
+  }
+};
+
+template <typename M, typename TPrimitive>
 struct SquaredNorm {
   __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
 };
@@ -1310,6 +1318,7 @@ __device__ TF compute_volume_and_boundary_x(
   return boundary_volume;
 }
 
+// TODO: remove dt
 template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
@@ -3066,6 +3075,46 @@ __global__ void compute_sample_vorticity(
   });
 }
 
+template <typename TF>
+__global__ void compute_density_mask(Variable<1, TF> sample_density,
+                                     Variable<1, U> mask, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    mask(p_i) = static_cast<U>(sample_density(p_i) > static_cast<TF>(0));
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_boundary_mask(Variable<1, TF> distance_nodes,
+                                      TF3 rigid_x, TQ rigid_q, TF3 domain_min,
+                                      TF3 domain_max, U3 resolution,
+                                      TF3 cell_size, U num_nodes, TF sign,
+                                      Variable<1, TF3> sample_x,
+                                      TF distance_threshold,
+                                      Variable<1, U> mask, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF d = interpolate_distance_without_intermediates(
+               &distance_nodes, domain_min, domain_max, resolution, cell_size,
+               rotate_using_quaternion(sample_x(p_i) - rigid_x,
+                                       quaternion_conjugate(rigid_q))) *
+           sign;
+    mask(p_i) *= (d >= distance_threshold);
+  });
+}
+
+template <typename TQ, typename TF3, typename TF, typename TDistance>
+__global__ void compute_boundary_mask(const TDistance distance, TF3 rigid_x,
+                                      TQ rigid_q, TF sign,
+                                      Variable<1, TF3> sample_x,
+                                      TF distance_threshold,
+                                      Variable<1, U> mask, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF d = distance.signed_distance(rotate_using_quaternion(
+               sample_x(p_i) - rigid_x, quaternion_conjugate(rigid_q))) *
+           sign;
+    mask(p_i) *= (d >= distance_threshold);
+  });
+}
+
 // Graphical post-processing
 template <typename TFDest, typename TF3Dest, typename TF3Source>
 __global__ void convert_fp3(Variable<1, TF3Dest> dest,
@@ -3164,6 +3213,27 @@ class Runner {
         thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
             (offset + num_elements),
         value);
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                         Variable<D, U> mask, U num_elements,
+                                         U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
+        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(
+               begin, end, SquaredDifferenceMasked<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           sum(mask, num_elements);
   }
 
   template <U D, typename M, typename TPrimitive>
@@ -3548,6 +3618,91 @@ class Runner {
           },
           "compute_particle_boundary_analytic(CapsuleDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[compute_particle_boundary] Distance type not supported."
+                << std::endl;
+    }
+  }
+  void launch_compute_density_mask(Variable<1, TF> const& sample_density,
+                                   Variable<1, U>& mask, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          compute_density_mask<<<grid_size, block_size>>>(sample_density, mask,
+                                                          num_samples);
+        },
+        "compute_density_mask", compute_density_mask<TF>);
+  }
+  void launch_compute_boundary_mask(dg::Distance<TF3, TF> const& virtual_dist,
+                                    Variable<1, TF> const& distance_nodes,
+                                    TF3 const& rigid_x, TQ const& rigid_q,
+                                    TF3 const& domain_min,
+                                    TF3 const& domain_max, U3 const& resolution,
+                                    TF3 const& cell_size, U num_nodes, TF sign,
+                                    Variable<1, TF3> const& sample_x,
+                                    TF distance_threshold, Variable<1, U>& mask,
+                                    U num_samples) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_samples,
+          [&](U grid_size, U block_size) {
+            compute_boundary_mask<<<grid_size, block_size>>>(
+                distance_nodes, rigid_x, rigid_q, domain_min, domain_max,
+                resolution, cell_size, num_nodes, sign, sample_x,
+                distance_threshold, mask, num_samples);
+          },
+          "compute_boundary_mask", compute_boundary_mask<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      launch(
+          num_samples,
+          [&](U grid_size, U block_size) {
+            compute_boundary_mask<<<grid_size, block_size>>>(
+                *distance, rigid_x, rigid_q, sign, sample_x, distance_threshold,
+                mask, num_samples);
+          },
+          "compute_boundary_mask(BoxDistance)",
+          compute_boundary_mask<TQ, TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      launch(
+          num_samples,
+          [&](U grid_size, U block_size) {
+            compute_boundary_mask<<<grid_size, block_size>>>(
+                *distance, rigid_x, rigid_q, sign, sample_x, distance_threshold,
+                mask, num_samples);
+          },
+          "compute_boundary_mask(SphereDistance)",
+          compute_boundary_mask<TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_samples,
+          [&](U grid_size, U block_size) {
+            compute_boundary_mask<<<grid_size, block_size>>>(
+                *distance, rigid_x, rigid_q, sign, sample_x, distance_threshold,
+                mask, num_samples);
+          },
+          "compute_boundary_mask(CylinderDistance)",
+          compute_boundary_mask<TQ, TF3, TF, TCylinderDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      launch(
+          num_samples,
+          [&](U grid_size, U block_size) {
+            compute_boundary_mask<<<grid_size, block_size>>>(
+                *distance, rigid_x, rigid_q, sign, sample_x, distance_threshold,
+                mask, num_samples);
+          },
+          "compute_boundary_mask(CapsuleDistance)",
+          compute_boundary_mask<TQ, TF3, TF, TCapsuleDistance>);
     } else {
       std::cerr << "[compute_particle_boundary] Distance type not supported."
                 << std::endl;
