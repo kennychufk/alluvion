@@ -235,8 +235,22 @@ void declare_metrics(py::module& m,
       &Runner<TPrimitive>::template calculate_mse<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_mse_yz",
+      &Runner<TPrimitive>::template calculate_mse_yz<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
+      "calculate_mae_masked",
+      &Runner<TPrimitive>::template calculate_mae_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mse_masked",
       &Runner<TPrimitive>::template calculate_mse_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
+      "calculate_mse_yz_masked",
+      &Runner<TPrimitive>::template calculate_mse_yz_masked<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
@@ -518,6 +532,8 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("viscosity", &TConst::viscosity)
       .def_readwrite("boundary_viscosity", &TConst::boundary_viscosity)
       .def_readwrite("vorticity_coeff", &TConst::vorticity_coeff)
+      .def_readwrite("boundary_vorticity_coeff",
+                     &TConst::boundary_vorticity_coeff)
       .def_readwrite("inertia_inverse", &TConst::inertia_inverse)
       .def_readwrite("viscosity_omega", &TConst::viscosity_omega)
       .def_readwrite("surface_tension_coeff", &TConst::surface_tension_coeff)

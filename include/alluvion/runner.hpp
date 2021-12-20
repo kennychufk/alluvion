@@ -438,10 +438,34 @@ struct SquaredDifference {
 };
 
 template <typename M, typename TPrimitive>
+struct SquaredDifferenceYz {
+  __device__ TPrimitive operator()(thrust::tuple<M, M> const& vector_pair) {
+    M diff = thrust::get<0>(vector_pair) - thrust::get<1>(vector_pair);
+    return diff.y * diff.y + diff.z * diff.z;
+  }
+};
+
+template <typename M, typename TPrimitive>
 struct SquaredDifferenceMasked {
   __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
     M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
     return length_sqr(diff) * thrust::get<2>(vvm);
+  }
+};
+
+template <typename M, typename TPrimitive>
+struct NormDifferenceMasked {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
+    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
+    return length(diff) * thrust::get<2>(vvm);
+  }
+};
+
+template <typename M, typename TPrimitive>
+struct SquaredDifferenceYzMasked {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
+    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
+    return (diff.y * diff.y + diff.z * diff.z) * thrust::get<2>(vvm);
   }
 };
 
@@ -1719,33 +1743,46 @@ __global__ void compute_micropolar_vorticity(
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
     Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
     Variable<1, TF3> rigid_omega, TF dt, U num_particles) {
+  // TODO: remove dt
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v_i = particle_v(p_i);
-    TF3 omegai = particle_omega(p_i);
+    TF3 omega_i = particle_omega(p_i);
     TF density_i = particle_density(p_i);
 
     TF3 da{0};
-    TF3 dangular_acc =
-        -2 * cn<TF>().inertia_inverse * cn<TF>().vorticity_coeff * omegai;
+    TF3 dangular_acc = -2 * cn<TF>().vorticity_coeff * omega_i;
 
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 omegaij = omegai - particle_omega(p_j);
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
-      dangular_acc -= cn<TF>().inertia_inverse * cn<TF>().viscosity_omega / dt *
-                      cn<TF>().particle_mass / particle_density(p_j) * omegaij *
-                      displacement_cubic_kernel(xixj);
-      da += cn<TF>().vorticity_coeff / density_i * cn<TF>().particle_mass *
-            cross(omegaij, grad_w);
-      dangular_acc +=
-          cn<TF>().vorticity_coeff / density_i * cn<TF>().inertia_inverse *
-          cross(cn<TF>().particle_mass * (v_i - particle_v(p_j)), grad_w);
+      TF density_j = particle_density(p_j);
+      TF3 omega_j = particle_omega(p_j);
+      TF3 omega_ij = omega_i - omega_j;
+
+      dangular_acc +=  // laplacian omega (why negative sign in SPlisHSPlasH?)
+          -cn<TF>().viscosity_omega * cn<TF>().particle_mass / density_j *
+              dot(xixj, grad_w) /
+              (length_sqr(xixj) +
+               static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+              omega_ij +
+          // curl of velocity (symmetric formula)
+          density_i * cn<TF>().vorticity_coeff * cn<TF>().particle_mass *
+              cross(v_i / (density_i * density_i) +
+                        particle_v(p_j) / (density_j * density_j),
+                    grad_w);
+      // curl of microrotation field (symmetric formula)
+      da += cross(
+          omega_i / (density_i * density_i) + omega_j / (density_j * density_j),
+          grad_w);
+      // // curl of microrotation field (difference formula)
+      // da += cross(omega_ij, grad_w)/ density_j;
     }
+    da *= density_i * cn<TF>().vorticity_coeff * cn<TF>().particle_mass;
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TQ boundary = particle_boundary(boundary_id, p_i);
       TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
@@ -1753,13 +1790,19 @@ __global__ void compute_micropolar_vorticity(
       TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
       TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
                  rigid_v(boundary_id);
-      TF3 omegaij = omegai;  // TODO: omegaj not implemented in SPlisHSPlasH
-      TF3 a = cn<TF>().vorticity_coeff / density_i * cn<TF>().density0 *
-              cross(omegaij, grad_wvol);
+      TF3 x_ib = x_i - bx_j;
+      TF3 omega_ij = omega_i;  // TODO: omegaj not implemented in SPlisHSPlasH
+      // curl of microrotation_field (difference formula)
+      TF3 a = cn<TF>().boundary_vorticity_coeff * cross(omega_ij, grad_wvol);
       da += a;
-      dangular_acc += cn<TF>().vorticity_coeff / density_i *
-                      cn<TF>().inertia_inverse * cn<TF>().density0 *
-                      cross(v_i - velj, grad_wvol);
+      dangular_acc +=
+          // laplacian omega
+          cn<TF>().viscosity_omega * dot(x_ib, grad_wvol) /
+              (length_sqr(x_ib) +
+               static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
+              omega_ij +
+          // curl of velocity (difference formula)
+          cn<TF>().boundary_vorticity_coeff * cross(v_i - velj, grad_wvol);
       TF3 force = -cn<TF>().particle_mass * a;
       particle_force(boundary_id, p_i) += force;
       particle_torque(boundary_id, p_i) +=
@@ -1767,7 +1810,8 @@ __global__ void compute_micropolar_vorticity(
     }
 
     particle_a(p_i) += da;
-    particle_angular_acceleration(p_i) = dangular_acc;
+    particle_angular_acceleration(p_i) =
+        dangular_acc * cn<TF>().inertia_inverse;
   });
 }
 template <typename TF3, typename TF>
@@ -3237,6 +3281,49 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mae_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                         Variable<D, U> mask, U num_elements,
+                                         U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
+        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(
+               begin, end, NormDifferenceMasked<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           sum(mask, num_elements);
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse_yz_masked(Variable<D, M> v0,
+                                            Variable<D, M> v1,
+                                            Variable<D, U> mask, U num_elements,
+                                            U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
+        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(
+               begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           num_elements;
+  }
+
+  template <U D, typename M, typename TPrimitive>
   static TPrimitive calculate_mse(Variable<D, M> v0, Variable<D, M> v1,
                                   U num_elements, U offset = 0) {
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
@@ -3249,6 +3336,23 @@ class Runner {
                                (offset + num_elements)));
     return thrust::transform_reduce(
                begin, end, SquaredDifference<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           num_elements;
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse_yz(Variable<D, M> v0, Variable<D, M> v1,
+                                     U num_elements, U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(
+               begin, end, SquaredDifferenceYz<M, TPrimitive>(),
                static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
            num_elements;
   }

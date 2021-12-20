@@ -53,6 +53,7 @@ struct Const {
   TF viscosity;
   TF boundary_viscosity;
   TF vorticity_coeff;
+  TF boundary_vorticity_coeff;
   TF inertia_inverse;
   TF viscosity_omega;
   TF surface_tension_coeff;
