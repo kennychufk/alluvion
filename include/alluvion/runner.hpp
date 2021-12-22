@@ -329,24 +329,6 @@ constexpr __device__
   return d2_cubic_kernel(length_sqr(d));
 }
 
-template <typename TF>
-constexpr __device__ TF d2_cubic_kernel(TF r2, TF h) {
-  TF q2 = r2 / (h * h);
-  TF q = sqrt(r2) / h;
-  TF conj = 1 - q;
-  TF result = 0;
-  if (q <= static_cast<TF>(0.5))
-    result = (6 * q - 6) * q2 + 1;
-  else if (q <= 1)
-    result = 2 * conj * conj * conj;
-  return result * 8 / (kPi<TF> * h * h * h);
-}
-
-template <typename TF3, typename TF>
-constexpr __device__ TF displacement_cubic_kernel(TF3 d, TF h) {
-  return d2_cubic_kernel(length_sqr(d), h);
-}
-
 template <typename TF3>
 inline __device__ TF3 displacement_cubic_kernel_grad(TF3 d) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
