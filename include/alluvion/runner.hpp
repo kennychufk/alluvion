@@ -2066,7 +2066,7 @@ __global__ void compute_pressure_accels(
       TF densityj = particle_density(p_j);
       TF densityj2 = densityj * densityj;
       TF dpj = particle_pressure(p_j) / densityj2;
-      ai -= cn<TF>().particle_vol * (dpi + dpj) *
+      ai -= cn<TF>().particle_mass * (dpi + dpj) *
             displacement_cubic_kernel_grad(xixj);
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
@@ -2074,16 +2074,17 @@ __global__ void compute_pressure_accels(
       TQ boundary_kernel = particle_boundary_kernel(boundary_id, p_i);
       TF3 const& bx_j = reinterpret_cast<TF3 const&>(boundary);
       TF3 const& grad_wvol = reinterpret_cast<TF3 const&>(boundary_kernel);
-      TF3 a = dpi * grad_wvol;
+      TF3 a = cn<TF>().density0 * dpi * grad_wvol;
       TF3 force = cn<TF>().particle_mass * a;
       ai -= a;
       particle_force(boundary_id, p_i) += force;
       particle_torque(boundary_id, p_i) +=
           cross(bx_j - rigid_x(boundary_id), force);
     }
-    particle_pressure_accel(p_i) = cn<TF>().density0 * cn<TF>().density0 * ai;
+    particle_pressure_accel(p_i) = cn<TF>().density0 * ai;
   });
 }
+
 template <U wrap, typename TF3, typename TF>
 __global__ void kinematic_integration(Variable<1, TF3> particle_x,
                                       Variable<1, TF3> particle_v,
