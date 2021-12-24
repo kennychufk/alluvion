@@ -1627,6 +1627,61 @@ inline __host__ __device__ double3 cross(double3 a, double3 b) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// matrix
+////////////////////////////////////////////////////////////////////////////////
+
+inline __host__ __device__ float3 matmul(float3 m0, float3 m1, float3 m2,
+                                         float3 v) {
+  return make_float3(dot(m0, v), dot(m1, v), dot(m2, v));
+}
+
+inline __host__ __device__ double3 matmul(double3 m0, double3 m1, double3 m2,
+                                          double3 v) {
+  return make_double3(dot(m0, v), dot(m1, v), dot(m2, v));
+}
+
+inline __host__ __device__ float det(float3 m0, float3 m1, float3 m2) {
+  return m0.x * (m1.y * m2.z - m2.y * m1.z) -
+         m0.y * (m1.x * m2.z - m1.z * m2.x) +
+         m0.z * (m1.x * m2.y - m1.y * m2.x);
+}
+
+inline __host__ __device__ void inv(float3 m0, float3 m1, float3 m2, float det,
+                                    float3 &inv0, float3 &inv1, float3 &inv2) {
+  float inv_det = 1 / det;
+  inv0 = float3{m1.y * m2.z - m2.y * m1.z, m0.z * m2.y - m0.y * m2.z,
+                m0.y * m1.z - m0.z * m1.y} *
+         inv_det;
+  inv1 = float3{m1.z * m2.x - m1.x * m2.z, m0.x * m2.z - m0.z * m2.x,
+                m1.x * m0.z - m0.x * m1.z} *
+         inv_det;
+  inv2 = float3{m1.x * m2.y - m2.x * m1.y, m2.x * m0.y - m0.x * m2.y,
+                m0.x * m1.y - m1.x * m0.y} *
+         inv_det;
+}
+
+inline __host__ __device__ double det(double3 m0, double3 m1, double3 m2) {
+  return m0.x * (m1.y * m2.z - m2.y * m1.z) -
+         m0.y * (m1.x * m2.z - m1.z * m2.x) +
+         m0.z * (m1.x * m2.y - m1.y * m2.x);
+}
+
+inline __host__ __device__ void inv(double3 m0, double3 m1, double3 m2,
+                                    double det, double3 &inv0, double3 &inv1,
+                                    double3 &inv2) {
+  double inv_det = 1 / det;
+  inv0 = double3{m1.y * m2.z - m2.y * m1.z, m0.z * m2.y - m0.y * m2.z,
+                 m0.y * m1.z - m0.z * m1.y} *
+         inv_det;
+  inv1 = double3{m1.z * m2.x - m1.x * m2.z, m0.x * m2.z - m0.z * m2.x,
+                 m1.x * m0.z - m0.x * m1.z} *
+         inv_det;
+  inv2 = double3{m1.x * m2.y - m2.x * m1.y, m2.x * m0.y - m0.x * m2.y,
+                 m0.x * m1.y - m1.x * m0.y} *
+         inv_det;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // smoothstep
 // - returns 0 if x < a
 // - returns 1 if x > b
