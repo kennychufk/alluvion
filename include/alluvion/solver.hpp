@@ -51,6 +51,9 @@ struct Solver {
             enable_vorticity_arg
                 ? store_arg.create<1, TF3>({max_num_particles_arg})
                 : new Variable<1, TF3>()),
+        particle_corr0(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_corr1(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_corr2(store_arg.create<1, TF3>({max_num_particles_arg})),
         pid(store_arg.create<4, TQ>(
             {store_arg.get_cni().grid_res.x, store_arg.get_cni().grid_res.y,
              store_arg.get_cni().grid_res.z,
@@ -84,6 +87,9 @@ struct Solver {
     store.remove(*particle_normal);
     store.remove(*particle_omega);
     store.remove(*particle_angular_acceleration);
+    store.remove(*particle_corr0);
+    store.remove(*particle_corr1);
+    store.remove(*particle_corr2);
     store.remove(*pid);
     store.remove(*pid_length);
     store.remove(*particle_neighbors);
@@ -274,6 +280,9 @@ struct Solver {
   std::unique_ptr<Variable<1, TF3>> particle_normal;
   std::unique_ptr<Variable<1, TF3>> particle_omega;
   std::unique_ptr<Variable<1, TF3>> particle_angular_acceleration;
+  std::unique_ptr<Variable<1, TF3>> particle_corr0;
+  std::unique_ptr<Variable<1, TF3>> particle_corr1;
+  std::unique_ptr<Variable<1, TF3>> particle_corr2;
 
   std::unique_ptr<Variable<4, TQ>> pid;
   std::unique_ptr<Variable<3, U>> pid_length;
