@@ -37,22 +37,13 @@ class DisplayProxy {
                              store.unmap_graphical_pointers();
                            }));
   }
-  void add_step(SolverDf<TF>& solver, U num_steps) {
-    display_->add_shading_program(new ShadingProgram(
-        nullptr, nullptr, {}, {},
-        [&solver, num_steps](ShadingProgram& program, Display& display) {
-          for (U i = 0; i < num_steps; ++i) {
-            solver.template step<0, 0>();
-          }
-        }));
-  }
   template <typename TSolver>
   void add_step(TSolver& solver, U num_steps) {
     display_->add_shading_program(new ShadingProgram(
         nullptr, nullptr, {}, {},
         [&solver, num_steps](ShadingProgram& program, Display& display) {
           for (U i = 0; i < num_steps; ++i) {
-            solver.template step<0, 0>();
+            solver.template step<0>();
           }
         }));
   }

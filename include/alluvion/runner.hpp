@@ -270,13 +270,6 @@ constexpr __device__ __host__ void calculate_congruent_k(TF3 r, TF mass,
   }
 }
 
-template <typename TF3>
-constexpr __device__ __host__ bool within_box(TF3 const& v, TF3 const& box_min,
-                                              TF3 const& box_max) {
-  return box_min.x < v.x && v.x < box_max.x && box_min.y < v.y &&
-         v.y < box_max.y && box_min.z < v.z && v.z < box_max.z;
-}
-
 template <typename TQ, typename TF3>
 constexpr __device__ void extract_pid(TQ const& pid_entry, TF3& x_j, U& p_j) {
   x_j = reinterpret_cast<TF3 const&>(pid_entry);
@@ -456,41 +449,6 @@ struct SquaredNorm {
   __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
 };
 
-template <typename TF3, typename TF>
-__global__ void create_fluid_cylinder_sunflower(Variable<1, TF3> particle_x,
-                                                U num_particles, TF radius,
-                                                U num_particles_per_slice,
-                                                TF slice_distance, TF y_min) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    U slice_i = p_i / num_particles_per_slice;
-    U id_in_rotation_pattern = slice_i / 4;
-    U id_in_slice = p_i % num_particles_per_slice;
-    TF real_in_slice = static_cast<TF>(id_in_slice) +
-                       (id_in_rotation_pattern * static_cast<TF>(0.25));
-    TF point_r = sqrt(real_in_slice / num_particles_per_slice) * radius;
-    TF angle = kPi<TF> * (1 + sqrt(static_cast<TF>(5))) * (real_in_slice);
-    particle_x(p_i) =
-        TF3{point_r * cos(angle), slice_distance * slice_i + y_min,
-            point_r * sin(angle)};
-  });
-}
-
-template <typename TF3, typename TF>
-__global__ void emit_cylinder_sunflower(Variable<1, TF3> particle_x,
-                                        Variable<1, TF3> particle_v,
-                                        U num_emission, U offset, TF radius,
-                                        TF3 center, TF3 v) {
-  forThreadMappedToElement(num_emission, [&](U i) {
-    TF real_in_slice = static_cast<TF>(i) + static_cast<TF>(0.5);
-    TF point_r = sqrt(real_in_slice / num_emission) * radius;
-    TF angle = kPi<TF> * (1 + sqrt(static_cast<TF>(5))) * (real_in_slice);
-    U p_i = i + offset;
-    particle_x(p_i) =
-        center + TF3{point_r * cos(angle), 0, point_r * sin(angle)};
-    particle_v(p_i) = v;
-  });
-}
-
 template <typename TF>
 __device__ __host__ inline void get_fluid_cylinder_attr(
     TF& radius, TF y_min, TF y_max, TF particle_radius, U& sqrt_n, U& n,
@@ -540,36 +498,6 @@ __global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
     }
     particle_x(p_i) =
         TF3{r * cos(theta), y_min + (l + 1) * diameter, r * sin(theta)};
-  });
-}
-
-template <typename TF3>
-__global__ void emit_line(Variable<1, TF3> particle_x,
-                          Variable<1, TF3> particle_v, U num_emission, U offset,
-                          TF3 p0, TF3 p1, TF3 v) {
-  forThreadMappedToElement(num_emission, [&](U i) {
-    U p_i = i + offset;
-    TF3 step = (p1 - p0) / num_emission;
-    particle_x(p_i) = p0 + step * i;
-    particle_v(p_i) = v;
-  });
-}
-
-template <typename TF3, typename TF>
-__global__ void emit_if_density_lower_than_last(
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF3> emission_x, Variable<1, TF> emission_sample_density,
-    Variable<1, U> num_emitted, U num_emission, U offset, TF ratio_of_last,
-    TF3 v) {
-  forThreadMappedToElement(num_emission, [&](U i) {
-    TF density_threshold =
-        emission_sample_density(num_emission) * ratio_of_last;
-    if (emission_sample_density(i) <= density_threshold) {
-      U emit_id = atomicAdd(&num_emitted(0), 1);
-      U p_i = offset + emit_id;
-      particle_x(p_i) = emission_x(i);
-      particle_v(p_i) = v;
-    }
   });
 }
 
@@ -1487,19 +1415,6 @@ __global__ void clear_acceleration(Variable<1, TF3> particle_a,
                            [&](U p_i) { particle_a(p_i) = cn<TF>().gravity; });
 }
 
-template <typename TF3>
-__global__ void apply_axial_gravitation(Variable<1, TF3> particle_a,
-                                        Variable<1, TF3> particle_x,
-                                        U num_particles) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 x_i = particle_x(p_i);
-    particle_a(p_i) =
-        TF3{x_i.x * cn<TF>().radial_gravity, x_i.y * cn<TF>().axial_gravity,
-            x_i.z * cn<TF>().radial_gravity};
-  });
-}
-
 template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void compute_particle_boundary_analytic(
     Variable<1, TF> volume_nodes, const TDistance distance, TF3 rigid_x,
@@ -1853,6 +1768,7 @@ __global__ void calculate_cfl_v2(Variable<1, TF3> particle_v,
     particle_cfl_v2(p_i) = length_sqr(particle_v(p_i) + particle_a(p_i) * dt);
   });
 }
+// IISPH
 template <typename TQ, typename TF3, typename TF>
 __global__ void predict_advection0(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
@@ -2076,20 +1992,6 @@ __global__ void kinematic_integration(Variable<1, TF3> particle_x,
     else
       particle_x(p_i) = wrap_y(particle_x(p_i) + v * dt);
     particle_v(p_i) = v;
-  });
-}
-template <typename TF3, typename TF>
-__global__ void move_particles(Variable<1, TF3> particle_x,
-                               Variable<1, TF3> particle_v, TF dt,
-                               TF3 exclusion_min, TF3 exclusion_max,
-                               U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    if (x_i.x < exclusion_min.x || x_i.x > exclusion_max.x ||
-        x_i.y < exclusion_min.y || x_i.y > exclusion_max.y ||
-        x_i.z < exclusion_min.z || x_i.z > exclusion_max.z) {
-      particle_x(p_i) = x_i + dt * particle_v(p_i);
-    }
   });
 }
 
@@ -2642,88 +2544,6 @@ __global__ void integrate_velocity(Variable<1, TF3> particle_x,
   });
 }
 
-template <typename TF3, typename TF>
-__global__ void set_ethier_steinman(Variable<1, TF3> particle_x,
-                                    Variable<1, TF3> particle_v, TF a, TF d,
-                                    TF kinematic_viscosity, TF t,
-                                    TF3 exclusion_min, TF3 exclusion_max,
-                                    U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    if (!within_box(x_i, exclusion_min, exclusion_max)) {
-      TF exp_ax = exp(a * x_i.x);
-      TF exp_ay = exp(a * x_i.y);
-      TF exp_az = exp(a * x_i.z);
-      TF exp_temporal = -a * exp(-d * d * kinematic_viscosity * t);
-      TF ay_dz = a * x_i.y + d * x_i.z;
-      TF ax_dy = a * x_i.x + d * x_i.y;
-      TF az_dx = a * x_i.z + d * x_i.x;
-      particle_v(p_i) =
-          exp_temporal * TF3{exp_ax * sin(ay_dz) + exp_az * cos(ax_dy),
-                             exp_ay * sin(az_dx) + exp_ax * cos(ay_dz),
-                             exp_az * sin(ax_dy) + exp_ay * cos(az_dx)};
-    }
-  });
-}
-
-template <typename TF3>
-__global__ void set_box_mask(Variable<1, TF3> particle_x, Variable<1, U> mask,
-                             TF3 box_min, TF3 box_max, U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    mask(p_i) = within_box(particle_x(p_i), box_min, box_max) ? 0 : 1;
-  });
-}
-
-template <typename TF3>
-__global__ void copy_kinematics_if_between(
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF3> dest_x, Variable<1, TF3> dest_v, TF3 outer_box_min,
-    TF3 outer_box_max, TF3 inner_box_min, TF3 inner_box_max, U num_particles,
-    Variable<1, U> num_copied) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    if (within_box(x_i, outer_box_min, outer_box_max) &&
-        !within_box(x_i, inner_box_min, inner_box_max)) {
-      U dest_id = atomicAdd(&num_copied(0), 1);
-      dest_x(dest_id) = x_i;
-      dest_v(dest_id) = particle_v(p_i);
-    }
-  });
-}
-
-template <typename TF3>
-__global__ void copy_kinematics_if_within(Variable<1, TF3> particle_x,
-                                          Variable<1, TF3> particle_v,
-                                          Variable<1, TF3> dest_x,
-                                          Variable<1, TF3> dest_v, TF3 box_min,
-                                          TF3 box_max, U num_particles,
-                                          Variable<1, U> num_copied) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    if (within_box(x_i, box_min, box_max)) {
-      U dest_id = atomicAdd(&num_copied(0), 1);
-      dest_x(dest_id) = x_i;
-      dest_v(dest_id) = particle_v(p_i);
-    }
-  });
-}
-template <typename TF3>
-__global__ void copy_kinematics_if_within_masked(
-    Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, U> mask, U mask_keep_value, Variable<1, TF3> dest_x,
-    Variable<1, TF3> dest_v, TF3 box_min, TF3 box_max, U num_particles,
-    Variable<1, U> num_copied) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    const U mask_i = mask(p_i);
-    if (within_box(x_i, box_min, box_max) && mask_i == mask_keep_value) {
-      U dest_id = atomicAdd(&num_copied(0), 1);
-      dest_x(dest_id) = x_i;
-      dest_v(dest_id) = particle_v(p_i);
-    }
-  });
-}
-
 // rigid
 template <typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
@@ -2966,31 +2786,6 @@ __global__ void drive_n_ellipse(
 }
 
 // statistics
-template <typename TF>
-__global__ void compute_inverse(Variable<1, TF> source, Variable<1, TF> dest,
-                                U n) {
-  forThreadMappedToElement(n, [&](U i) { dest(i) = 1 / source(i); });
-}
-
-template <typename TF3, typename TF>
-__global__ void compute_magnitude(Variable<1, TF3> v, Variable<1, TF> magnitude,
-                                  U n) {
-  forThreadMappedToElement(n, [&](U i) { magnitude(i) = length(v(i)); });
-}
-
-template <typename TF3>
-__global__ void count_out_of_grid(Variable<1, TF3> particle_x,
-                                  Variable<1, U> out_of_grid_count,
-                                  U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    I3 ipos = get_ipos(particle_x(p_i));
-    U pid_insert_index;
-    if (!within_grid(ipos)) {
-      atomicAdd(&out_of_grid_count(0), 1);
-    }
-  });
-}
-
 template <typename TQ, typename TF3, typename TF, typename TQuantity>
 __global__ void sample_fluid(
     Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
@@ -3121,16 +2916,6 @@ __global__ void compute_boundary_mask(const TDistance distance, TF3 rigid_x,
 }
 
 // Graphical post-processing
-template <typename TFDest, typename TF3Dest, typename TF3Source>
-__global__ void convert_fp3(Variable<1, TF3Dest> dest,
-                            Variable<1, TF3Source> source, U n) {
-  forThreadMappedToElement(n, [&](U i) {
-    TF3Source v = source(i);
-    dest(i) = TF3Dest{static_cast<TFDest>(v.x), static_cast<TFDest>(v.y),
-                      static_cast<TFDest>(v.z)};
-  });
-}
-
 template <typename TF3, typename TF>
 __global__ void normalize_vector_magnitude(Variable<1, TF3> v,
                                            Variable<1, TF> normalized,
@@ -3558,21 +3343,6 @@ class Runner {
                             steps_y, diameter);
     return n * steps_y;
   }
-  void launch_create_fluid_cylinder_sunflower(Variable<1, TF3>& particle_x,
-                                              U num_particles, TF radius,
-                                              U num_particles_per_slice,
-                                              TF slice_distance, TF y_min) {
-    launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          create_fluid_cylinder_sunflower<TF3, TF><<<grid_size, block_size>>>(
-              particle_x, num_particles, radius, num_particles_per_slice,
-              slice_distance, y_min);
-        },
-        "create_fluid_cylinder_sunflower",
-        create_fluid_cylinder_sunflower<TF3, TF>);
-  }
-
   void launch_create_fluid_cylinder(Variable<1, TF3>& particle_x,
                                     U num_particles, U offset, TF radius,
                                     TF particle_radius, TF y_min, TF y_max) {
@@ -3875,50 +3645,6 @@ class Runner {
               sample_boundary_kernel, num_samples);
         },
         "sample_position_density", sample_position_density<TQ, TF3, TF>);
-  }
-  void launch_copy_kinematics_if_within(
-      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-      Variable<1, TF3>& dest_x, Variable<1, TF3>& dest_v, TF3 const& box_min,
-      TF3 const& box_max, U num_particles, Variable<1, U>& num_copied) {
-    launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          copy_kinematics_if_within<<<grid_size, block_size>>>(
-              particle_x, particle_v, dest_x, dest_v, box_min, box_max,
-              num_particles, num_copied);
-        },
-        "copy_kinematics_if_within", copy_kinematics_if_within<TF3>);
-  }
-  void launch_copy_kinematics_if_within_masked(
-      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-      Variable<1, U>& mask, U mask_keep_value, Variable<1, TF3>& dest_x,
-      Variable<1, TF3>& dest_v, TF3 const& box_min, TF3 const& box_max,
-      U num_particles, Variable<1, U>& num_copied) {
-    launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          copy_kinematics_if_within_masked<<<grid_size, block_size>>>(
-              particle_x, particle_v, mask, mask_keep_value, dest_x, dest_v,
-              box_min, box_max, num_particles, num_copied);
-        },
-        "copy_kinematics_if_within_masked",
-        copy_kinematics_if_within_masked<TF3>);
-  }
-  void launch_copy_kinematics_if_between(
-      Variable<1, TF3>& particle_x, Variable<1, TF3>& particle_v,
-      Variable<1, TF3>& dest_x, Variable<1, TF3>& dest_v,
-      TF3 const& outer_box_min, TF3 const& outer_box_max,
-      TF3 const& inner_box_min, TF3 const& inner_box_max, U num_particles,
-      Variable<1, U>& num_copied) {
-    launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          copy_kinematics_if_between<<<grid_size, block_size>>>(
-              particle_x, particle_v, dest_x, dest_v, outer_box_min,
-              outer_box_max, inner_box_min, inner_box_max, num_particles,
-              num_copied);
-        },
-        "copy_kinematics_if_between", copy_kinematics_if_between<TF3>);
   }
   void launch_collision_test(
       dg::Distance<TF3, TF> const& virtual_dist,

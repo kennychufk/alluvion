@@ -70,28 +70,18 @@ struct SolverIi : public Solver<TF> {
     store.remove(*particle_pressure_accel);
     store.remove(*particle_density_err);
   }
-  template <U wrap, U gravitation>
+  template <U wrap>
   void step() {
     particle_force->set_zero();
     particle_torque->set_zero();
     pile.copy_kinematics_to_device();
-    if constexpr (gravitation == 0) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            clear_acceleration<<<grid_size, block_size>>>(*particle_a,
-                                                          num_particles);
-          },
-          "clear_acceleration", clear_acceleration<TF3>);
-    } else if constexpr (gravitation == 1) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            apply_axial_gravitation<<<grid_size, block_size>>>(
-                *particle_a, *particle_x, num_particles);
-          },
-          "apply_axial_gravitation", apply_axial_gravitation<TF3>);
-    }
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          clear_acceleration<<<grid_size, block_size>>>(*particle_a,
+                                                        num_particles);
+        },
+        "clear_acceleration", clear_acceleration<TF3>);
     compute_all_boundaries();
     Base::template update_particle_neighbors<wrap>();
     if (enable_surface_tension) {

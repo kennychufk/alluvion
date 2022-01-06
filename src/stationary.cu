@@ -105,7 +105,7 @@ int main(void) {
         store.map_graphical_pointers();
         // start of simulation loop
         for (U frame_interstep = 0; frame_interstep < 10; ++frame_interstep) {
-          solver.step<0, 0>();
+          solver.step<0>();
         }
         solver.normalize(solver.particle_v.get(),
                          particle_normalized_attr.get(), 0, 2);

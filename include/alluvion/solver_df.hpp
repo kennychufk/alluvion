@@ -68,7 +68,7 @@ struct SolverDf : public Solver<TF> {
     store.remove(*particle_kappa_v);
     store.remove(*particle_density_adv);
   }
-  template <U wrap, U gravitation>
+  template <U wrap>
   void step() {
     particle_force->set_zero();
     particle_torque->set_zero();
@@ -168,23 +168,13 @@ struct SolverDf : public Solver<TF> {
       // ===== ]divergence solve
     }
 
-    if constexpr (gravitation == 0) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            clear_acceleration<<<grid_size, block_size>>>(*particle_a,
-                                                          num_particles);
-          },
-          "clear_acceleration", clear_acceleration<TF3>);
-    } else if constexpr (gravitation == 1) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            apply_axial_gravitation<<<grid_size, block_size>>>(
-                *particle_a, *particle_x, num_particles);
-          },
-          "apply_axial_gravitation", apply_axial_gravitation<TF3>);
-    }
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          clear_acceleration<<<grid_size, block_size>>>(*particle_a,
+                                                        num_particles);
+        },
+        "clear_acceleration", clear_acceleration<TF3>);
     if (enable_surface_tension) {
       runner.launch(
           num_particles,

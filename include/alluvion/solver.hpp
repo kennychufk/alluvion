@@ -139,59 +139,6 @@ struct Solver {
     dt = max(min(cfl_dt, max_dt), min_dt);
     utilized_cfl = dt * max_v / length_scale;
   }
-  void emit_single(TF3 const& x, TF3 const& v) {
-    if (t < next_emission_t || num_particles == max_num_particles) return;
-    particle_x->set_bytes(&x, sizeof(TF3), sizeof(TF3) * num_particles);
-    particle_v->set_bytes(&v, sizeof(TF3), sizeof(TF3) * num_particles);
-    next_emission_t = t + particle_radius * 2 / length(v);
-    ++num_particles;
-  }
-  void emit_circle(TF3 const& center, TF3 const& v, TF radius, U num_emission) {
-    if (t < next_emission_t || num_particles == max_num_particles) return;
-    num_emission = min(num_emission, max_num_particles - num_particles);
-    runner.launch(
-        num_emission,
-        [&](U grid_size, U block_size) {
-          emit_cylinder_sunflower<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, num_emission, num_particles, radius,
-              center, v);
-        },
-        "emit_cylinder_sunflower", emit_cylinder_sunflower<TF3, TF>);
-    next_emission_t = t + particle_radius * 2 / length(v);
-    num_particles += num_emission;
-  }
-  void move_particles_naive(TF3 const& exclusion_min,
-                            TF3 const& exclusion_max) {
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          move_particles<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, dt, exclusion_min, exclusion_max,
-              num_particles);
-        },
-        "move_particles", move_particles<TF3, TF>);
-  }
-  void dictate_ethier_steinman(TF a, TF d, TF kinematic_viscosity,
-                               TF3 const& exclusion_min,
-                               TF3 const& exclusion_max) {
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          set_ethier_steinman<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, a, d, kinematic_viscosity, t,
-              exclusion_min, exclusion_max, num_particles);
-        },
-        "set_ethier_steinman", set_ethier_steinman<TF3, TF>);
-  }
-  void set_mask(Variable<1, U>& mask, TF3 const& box_min, TF3 const& box_max) {
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          set_box_mask<<<grid_size, block_size>>>(*particle_x, mask, box_min,
-                                                  box_max, num_particles);
-        },
-        "set_box_mask", set_box_mask<TF3>);
-  }
   void compute_all_boundaries() {
     pile.for_each_rigid(
         [&](U boundary_id, dg::Distance<TF3, TF> const& distance,

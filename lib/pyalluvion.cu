@@ -560,8 +560,6 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("surface_tension_boundary_coeff",
                      &TConst::surface_tension_boundary_coeff)
       .def_readwrite("gravity", &TConst::gravity)
-      .def_readwrite("axial_gravity", &TConst::axial_gravity)
-      .def_readwrite("radial_gravity", &TConst::radial_gravity)
       .def_readwrite("boundary_epsilon", &TConst::boundary_epsilon)
       .def_readwrite("dfsph_factor_epsilon", &TConst::dfsph_factor_epsilon)
       .def_readwrite("contact_tolerance", &TConst::contact_tolerance);
@@ -663,19 +661,6 @@ void declare_solver(py::module& m, const char* name) {
                &TSolver::normalize))
       .def("reset_solving_var", &TSolver::reset_solving_var)
       .def("reset_t", &TSolver::reset_t)
-      .def("emit_single", &TSolver::emit_single, py::arg("x"), py::arg("v"))
-      .def("emit_circle", &TSolver::emit_circle, py::arg("center"),
-           py::arg("v"), py::arg("radius"), py::arg("num_emission"))
-      .def("move_particles_naive", &TSolver::move_particles_naive,
-           py::arg("exclusion_min") = TF3{1, 1, 1},
-           py::arg("exclusion_max") = TF3{-1, -1, -1})
-      .def("dictate_ethier_steinman", &TSolver::dictate_ethier_steinman,
-           py::arg("a") = kPi<TF> / 4, py::arg("d") = kPi<TF> / 2,
-           py::arg("kinematic_viscosity") = 0,
-           py::arg("exclusion_min") = TF3{1, 1, 1},
-           py::arg("exclusion_max") = TF3{-1, -1, -1})
-      .def("set_mask", &TSolver::set_mask, py::arg("mask"), py::arg("box_min"),
-           py::arg("box_max"))
       .def("compute_all_boundaries", &TSolver::compute_all_boundaries)
       .def("sample_all_boundaries", &TSolver::sample_all_boundaries)
       .def("update_particle_neighbors",
@@ -728,9 +713,8 @@ void declare_solver_df(py::module& m, const char* name) {
                              [](TSolverDf const& solver) {
                                return solver.particle_density_adv.get();
                              })
-      .def("step", &TSolverDf::template step<0, 0>)
-      .def("step_wrap1", &TSolverDf::template step<1, 0>)
-      .def("step_wrap1_gravitation1", &TSolverDf::template step<1, 1>);
+      .def("step", &TSolverDf::template step<0>)
+      .def("step_wrap1", &TSolverDf::template step<1>);
 }
 
 template <typename TF>
@@ -783,9 +767,8 @@ void declare_solver_ii(py::module& m, const char* name) {
                              [](TSolverIi const& solver) {
                                return solver.particle_density_err.get();
                              })
-      .def("step", &TSolverIi::template step<0, 0>)
-      .def("step_wrap1", &TSolverIi::template step<1, 0>)
-      .def("step_wrap1_gravitation1", &TSolverIi::template step<1, 1>);
+      .def("step", &TSolverIi::template step<0>)
+      .def("step_wrap1", &TSolverIi::template step<1>);
 }
 
 template <typename TF>
@@ -828,9 +811,8 @@ void declare_solver_i(py::module& m, const char* name) {
                              [](TSolverI const& solver) {
                                return solver.particle_density_err.get();
                              })
-      .def("step", &TSolverI::template step<0, 0>)
-      .def("step_wrap1", &TSolverI::template step<1, 0>)
-      .def("step_wrap1_gravitation1", &TSolverI::template step<1, 1>);
+      .def("step", &TSolverI::template step<0>)
+      .def("step_wrap1", &TSolverI::template step<1>);
 }
 
 template <typename TF>
@@ -914,11 +896,6 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("internal_encoded_sorted"), py::arg("num_particles"),
            py::arg("offset"), py::arg("particle_radius"), py::arg("mode"),
            py::arg("box_min"), py::arg("box_max"))
-      .def("launch_create_fluid_cylinder_sunflower",
-           &TRunner::launch_create_fluid_cylinder_sunflower,
-           py::arg("particle_x"), py::arg("num_particles"), py::arg("radius"),
-           py::arg("num_particles_per_slice"), py::arg("slice_distance"),
-           py::arg("y_min"))
       .def("launch_create_fluid_cylinder",
            &TRunner::launch_create_fluid_cylinder, py::arg("particle_x"),
            py::arg("num_particles"), py::arg("offset"), py::arg("radius"),
@@ -939,12 +916,6 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_sample_velocity", &TRunner::launch_sample_velocity)
       .def("launch_sample_vorticity", &TRunner::launch_sample_vorticity)
       .def("launch_sample_density", &TRunner::launch_sample_density)
-      .def("launch_copy_kinematics_if_within",
-           &TRunner::launch_copy_kinematics_if_within)
-      .def("launch_copy_kinematics_if_within_masked",
-           &TRunner::launch_copy_kinematics_if_within_masked)
-      .def("launch_copy_kinematics_if_between",
-           &TRunner::launch_copy_kinematics_if_between)
       .def_static("get_fluid_block_num_particles",
                   &TRunner::get_fluid_block_num_particles, py::arg("mode"),
                   py::arg("box_min"), py::arg("box_max"),

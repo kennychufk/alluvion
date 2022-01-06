@@ -15,7 +15,6 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/display.cu
   ${CMAKE_CURRENT_LIST_DIR}/shading_program.cu
   ${CMAKE_CURRENT_LIST_DIR}/complete_framebuffer.cu
-  ${CMAKE_CURRENT_LIST_DIR}/typesetter.cu
   ${CMAKE_CURRENT_LIST_DIR}/camera.cu
   ${CMAKE_CURRENT_LIST_DIR}/trackball.cu
   ${CMAKE_CURRENT_LIST_DIR}/glad.c
@@ -28,7 +27,6 @@ add_library(lib_alluvion
 target_link_libraries(lib_alluvion
   PRIVATE
     glfw
-    ${FREETYPE_LIBRARIES}
   PUBLIC
     Eigen3::Eigen
     OpenMP::OpenMP_CXX
@@ -39,7 +37,6 @@ target_include_directories(lib_alluvion
   PUBLIC
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    ${FREETYPE_INCLUDE_DIRS}
 )
 
 # The reason for compiling all source files
@@ -69,7 +66,6 @@ target_include_directories(_alluvion
   PUBLIC
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    ${FREETYPE_INCLUDE_DIRS}
 )
 
 target_link_libraries(_alluvion
@@ -78,6 +74,4 @@ target_link_libraries(_alluvion
     Eigen3::Eigen
     OpenMP::OpenMP_CXX
     pybind11::module
-  PRIVATE
-    ${FREETYPE_LIBRARIES}
 )
