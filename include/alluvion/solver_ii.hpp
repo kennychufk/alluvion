@@ -42,10 +42,12 @@ struct SolverIi : public Solver<TF> {
   using Base::pid;
   using Base::pid_length;
   SolverIi(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-           U max_num_particles_arg, U num_ushers = 0,
+           U max_num_particles_arg, U max_num_provisional_ghosts_arg = 0,
+           U max_num_ghosts_arg = 0, U num_ushers = 0,
            bool enable_surface_tension_arg = false,
            bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
+      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg,
+             max_num_provisional_ghosts_arg, max_num_ghosts_arg, num_ushers,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
         particle_pressure(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_last_pressure(
@@ -230,7 +232,7 @@ struct SolverIi : public Solver<TF> {
         [&](U grid_size, U block_size) {
           kinematic_integration<wrap><<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_pressure_accel, dt,
-              num_particles);
+              num_particles, 0);
         },
         "kinematic_integration", kinematic_integration<wrap, TF3, TF>);
 

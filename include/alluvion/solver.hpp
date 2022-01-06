@@ -8,14 +8,21 @@ namespace alluvion {
 template <typename TF>
 struct Solver {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float2, double2> TF2;
   typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
   using TPile = Pile<TF>;
   using TRunner = Runner<TF>;
   Solver(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-         U max_num_particles_arg, U num_ushers = 0,
+         U max_num_particles_arg, U max_num_provisional_ghosts_arg = 0,
+         U max_num_ghosts_arg = 0, U num_ushers = 0,
          bool enable_surface_tension_arg = false,
          bool enable_vorticity_arg = false, bool graphical = false)
-      : max_num_particles(max_num_particles_arg),
+      : max_num_provisional_ghosts(max_num_provisional_ghosts_arg),
+        max_num_ghosts(max_num_ghosts_arg),
+        max_num_particles(max_num_particles_arg),
+        num_particles(0),
+        num_provisional_ghosts(0),
+        num_ghosts(0),
         store(store_arg),
         runner(runner_arg),
         pile(pile_arg),
@@ -24,18 +31,24 @@ struct Solver {
         dt(0),
         t(0),
         particle_radius(store_arg.get_cn<TF>().particle_radius),
+        ghost_boundary_volume_threshold(-1),
+        ghost_fluid_density_threshold(store_arg.get_cn<TF>().density0 * 0.9),
+        num_ghost_relaxation(5),
+        relax_rate(0.05),
         next_emission_t(-1),
-        particle_x(
-            graphical
-                ? store_arg.create_graphical<1, TF3>({max_num_particles_arg})
-                : store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_v(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_x(graphical ? store_arg.create_graphical<1, TF3>(
+                                   {max_num_particles_arg + max_num_ghosts_arg})
+                             : store_arg.create<1, TF3>({max_num_particles_arg +
+                                                         max_num_ghosts_arg})),
+        particle_v(store_arg.create<1, TF3>(
+            {max_num_particles_arg + max_num_ghosts_arg})),
         particle_a(store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_density(store_arg.create<1, TF>({max_num_particles_arg})),
-        particle_boundary(
-            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
-        particle_boundary_kernel(
-            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+        particle_density(store_arg.create<1, TF>(
+            {max_num_particles_arg + max_num_ghosts_arg})),
+        particle_boundary(store_arg.create<2, TQ>(
+            {pile.get_size(), max_num_particles_arg + max_num_ghosts_arg})),
+        particle_boundary_kernel(store_arg.create<2, TQ>(
+            {pile.get_size(), max_num_particles_arg + max_num_ghosts_arg})),
         particle_force(
             store_arg.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
         particle_torque(
@@ -58,10 +71,39 @@ struct Solver {
         pid_length(store_arg.create<3, U>({store_arg.get_cni().grid_res.x,
                                            store_arg.get_cni().grid_res.y,
                                            store_arg.get_cni().grid_res.z})),
+        pid_length_before_ghost(
+            max_num_ghosts_arg > 0
+                ? store_arg.create<3, U>({store_arg.get_cni().grid_res.x,
+                                          store_arg.get_cni().grid_res.y,
+                                          store_arg.get_cni().grid_res.z})
+                : new Variable<3, U>()),
         particle_neighbors(store_arg.create<2, TQ>(
-            {max_num_particles_arg,
+            {max_num_particles_arg + max_num_ghosts_arg,
              store_arg.get_cni().max_num_neighbors_per_particle})),
-        particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
+        particle_num_neighbors(store_arg.create<1, U>(
+            {max_num_particles_arg + max_num_ghosts_arg})),
+        particle_hcp_ipos(max_num_ghosts_arg > 0
+                              ? store_arg.create<1, U2>({max_num_particles_arg})
+                              : new Variable<1, U2>()),
+        need_ghost(
+            max_num_ghosts_arg > 0
+                ? store_arg.create<3, U>({store_arg.get_cni().hcp_grid_res.x,
+                                          store_arg.get_cni().hcp_grid_res.y,
+                                          store_arg.get_cni().hcp_grid_res.z})
+                : new Variable<3, U>()),
+        provisional_ghost_boundary(
+            max_num_ghosts_arg > 0
+                ? store_arg.create<1, TQ>({max_num_provisional_ghosts_arg})
+                : new Variable<1, TQ>()),
+        particle_lagrange_multiplier(
+            max_num_ghosts_arg > 0
+                ? store_arg.create<1, TF>(
+                      {max_num_particles_arg + max_num_ghosts_arg})
+                : new Variable<1, TF>()),
+        particle_density_before_ghost(
+            max_num_ghosts_arg > 0
+                ? store_arg.create<1, TF>({max_num_particles_arg})
+                : new Variable<1, TF>()),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {
     store.copy_cn<TF>();
@@ -86,8 +128,14 @@ struct Solver {
     store.remove(*particle_angular_acceleration);
     store.remove(*pid);
     store.remove(*pid_length);
+    store.remove(*pid_length_before_ghost);
     store.remove(*particle_neighbors);
     store.remove(*particle_num_neighbors);
+    store.remove(*particle_hcp_ipos);
+    store.remove(*need_ghost);
+    store.remove(*provisional_ghost_boundary);
+    store.remove(*particle_lagrange_multiplier);
+    store.remove(*particle_density_before_ghost);
   }
   void normalize(Variable<1, TF3> const* v,
                  Variable<1, TF>* particle_normalized_attr, TF lower_bound,
@@ -237,8 +285,196 @@ struct Solver {
                                   *particle_num_neighbors, *particle_density,
                                   *particle_boundary_kernel, num_particles);
   }
+  template <U wrap>
+  void relax_ghosts(bool revert_pid_length = true) {
+    if (revert_pid_length) {
+      pid_length->set_from(*pid_length_before_ghost);
+      particle_density->set_from(*particle_density_before_ghost, num_particles);
+    } else {
+      pid_length_before_ghost->set_from(*pid_length);
+      particle_density_before_ghost->set_from(*particle_density, num_particles);
+    }
+    runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                       num_ghosts, num_particles);
+    runner.template launch_make_neighbor_list<wrap>(
+        *particle_x, *pid, *pid_length, *particle_neighbors,
+        *particle_num_neighbors, num_particles + num_ghosts);
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          compute_density_and_lagrange_multiplier_for_fluid<<<grid_size,
+                                                              block_size>>>(
+              *particle_neighbors, *particle_num_neighbors, *particle_density,
+              *particle_lagrange_multiplier, num_particles);
+        },
+        "compute_density_and_lagrange_multiplier_for_fluid",
+        compute_density_and_lagrange_multiplier_for_fluid<TQ, TF>);
+    runner.launch(
+        num_ghosts,
+        [&](U grid_size, U block_size) {
+          compute_density_and_lagrange_multiplier_for_ghosts<<<grid_size,
+                                                               block_size>>>(
+              *particle_neighbors, *particle_num_neighbors, *particle_density,
+              *particle_lagrange_multiplier, num_ghosts, num_particles);
+        },
+        "compute_density_and_lagrange_multiplier_for_ghosts",
+        compute_density_and_lagrange_multiplier_for_ghosts<TQ, TF>);
+    runner.launch(
+        num_ghosts,
+        [&](U grid_size, U block_size) {
+          shift_using_lagrange_multipliers<<<grid_size, block_size>>>(
+              *particle_density, *particle_neighbors, *particle_num_neighbors,
+              *particle_lagrange_multiplier, *particle_x, num_ghosts,
+              num_particles, relax_rate);
+        },
+        "shift_using_lagrange_multipliers",
+        shift_using_lagrange_multipliers<TQ, TF3, TF>);
+  }
+  template <U wrap>
+  void initialize_ghosts() {
+    runner.launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          mark_deficient<<<grid_size, block_size>>>(
+              *particle_x, *particle_density, *particle_hcp_ipos,
+              num_particles);
+        },
+        "mark_deficient", mark_deficient<TF3, TF>);
+    U num_deficient = runner.partition_y_equal(
+        *particle_hcp_ipos, static_cast<U>(0), num_particles);
+
+    need_ghost->set_same(static_cast<I>(kFMax<U>));
+    runner.launch(
+        num_deficient,
+        [&](U grid_size, U block_size) {
+          expand_deficient<<<grid_size, block_size>>>(
+              *particle_hcp_ipos, *need_ghost, num_deficient);
+        },
+        "expand_deficient", expand_deficient<U>);
+    U num_full = 0;
+    if (num_deficient < num_particles) {
+      num_full = runner.partition_y_equal(*particle_hcp_ipos, static_cast<U>(1),
+                                          num_particles - num_deficient,
+                                          num_deficient);
+    }
+    U num_occupied = num_deficient + num_full;
+    runner.launch(
+        num_occupied,
+        [&](U grid_size, U block_size) {
+          clear_cells_with_fluid_particles<<<grid_size, block_size>>>(
+              *particle_hcp_ipos, *need_ghost, num_occupied);
+        },
+        "clear_cells_with_fluid_particles",
+        clear_cells_with_fluid_particles<U>);
+
+    num_provisional_ghosts = runner.partition_unequal(
+        *need_ghost, kFMax<U>, need_ghost->get_linear_shape());
+    if (num_provisional_ghosts > max_num_provisional_ghosts) {
+      std::cerr << "num_provisional_ghosts: " << num_provisional_ghosts << " > "
+                << max_num_provisional_ghosts << std::endl;
+      num_provisional_ghosts = max_num_provisional_ghosts;
+    }
+    std::cout << "num_provisional_ghosts = " << num_provisional_ghosts
+              << std::endl;
+    runner.launch(
+        num_provisional_ghosts,
+        [&](U grid_size, U block_size) {
+          initialize_provisional_ghosts<<<grid_size, block_size>>>(
+              *provisional_ghost_boundary, *need_ghost, num_provisional_ghosts);
+        },
+        "initialize_provisional_ghosts", initialize_provisional_ghosts<TQ>);
+
+    if (ghost_boundary_volume_threshold >= 0) {
+      pile.for_each_rigid(
+          [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+              Variable<1, TF> const& distance_grid,
+              Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+              TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
+              U3 const& resolution, TF3 const& cell_size, U num_nodes,
+              TF sign) {
+            runner.launch(
+                num_provisional_ghosts,
+                [&](U grid_size, U block_size) {
+                  accumulate_provisional_boundary_volume<wrap>
+                      <<<grid_size, block_size>>>(
+                          volume_grid, rigid_x, rigid_q, domain_min, domain_max,
+                          resolution, cell_size, *provisional_ghost_boundary,
+                          num_provisional_ghosts);
+                },
+                "accumulate_provisional_boundary_volume",
+                accumulate_provisional_boundary_volume<wrap, TQ, TF3, TF>);
+          });
+      num_provisional_ghosts = runner.partition_w_less(
+          *provisional_ghost_boundary, ghost_boundary_volume_threshold,
+          num_provisional_ghosts);
+      std::cout << "num_provisional_ghosts = " << num_provisional_ghosts
+                << std::endl;
+    }
+
+    runner.launch(
+        num_provisional_ghosts,
+        [&](U grid_size, U block_size) {
+          compute_provisional_fluid_density<wrap>
+              <<<grid_size, block_size>>>(*provisional_ghost_boundary, *pid,
+                                          *pid_length, num_provisional_ghosts);
+        },
+        "compute_provisional_fluid_density",
+        compute_provisional_fluid_density<wrap, TQ>);
+
+    num_ghosts = runner.partition_w_less(*provisional_ghost_boundary,
+                                         ghost_fluid_density_threshold,
+                                         num_provisional_ghosts);
+
+    if (num_ghosts > max_num_ghosts) {
+      std::cerr << "num_ghosts: " << num_ghosts << " > " << max_num_ghosts
+                << std::endl;
+      num_ghosts = max_num_ghosts;
+    }
+    std::cout << "num_ghosts = " << num_ghosts << std::endl;
+
+    runner.launch(
+        num_ghosts,
+        [&](U grid_size, U block_size) {
+          append_ghosts<<<grid_size, block_size>>>(*provisional_ghost_boundary,
+                                                   *particle_x, num_ghosts,
+                                                   num_particles);
+        },
+        "append_ghosts", append_ghosts<TQ, TF3>);
+  }
+  template <U wrap>
+  void prepare_ghosts() {
+    if (max_num_ghosts > 0) {
+      initialize_ghosts<wrap>();
+      for (U relaxation_i = 0; relaxation_i < num_ghost_relaxation;
+           ++relaxation_i) {
+        relax_ghosts<wrap>(relaxation_i > 0);
+      }
+      pid_length->set_from(*pid_length_before_ghost);
+      particle_density->set_from(*particle_density_before_ghost, num_particles);
+      runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                         num_ghosts, num_particles);
+      runner.template launch_make_neighbor_list<wrap>(
+          *particle_x, *pid, *pid_length, *particle_neighbors,
+          *particle_num_neighbors, num_particles + num_ghosts);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_density_and_lagrange_multiplier_for_fluid<<<grid_size,
+                                                                block_size>>>(
+                *particle_neighbors, *particle_num_neighbors, *particle_density,
+                *particle_lagrange_multiplier, num_particles);
+          },
+          "compute_density_and_lagrange_multiplier_for_fluid",
+          compute_density_and_lagrange_multiplier_for_fluid<TQ, TF>);
+    }
+  }
+
   U max_num_particles;
+  U max_num_provisional_ghosts;
+  U max_num_ghosts;
   U num_particles;
+  U num_provisional_ghosts;
+  U num_ghosts;
   TF t;
   TF dt;
   TF initial_dt;
@@ -248,6 +484,11 @@ struct Solver {
   TF particle_radius;
   bool enable_surface_tension;
   bool enable_vorticity;
+  TF ghost_boundary_volume_threshold;
+  TF ghost_fluid_density_threshold;
+  U num_ghost_relaxation;
+  TF relax_rate;
+
   TF next_emission_t;
 
   // report
@@ -277,8 +518,15 @@ struct Solver {
 
   std::unique_ptr<Variable<4, TQ>> pid;
   std::unique_ptr<Variable<3, U>> pid_length;
+  std::unique_ptr<Variable<3, U>> pid_length_before_ghost;
   std::unique_ptr<Variable<2, TQ>> particle_neighbors;
   std::unique_ptr<Variable<1, U>> particle_num_neighbors;
+
+  std::unique_ptr<Variable<1, U2>> particle_hcp_ipos;
+  std::unique_ptr<Variable<3, U>> need_ghost;
+  std::unique_ptr<Variable<1, TQ>> provisional_ghost_boundary;
+  std::unique_ptr<Variable<1, TF>> particle_lagrange_multiplier;
+  std::unique_ptr<Variable<1, TF>> particle_density_before_ghost;
 };
 }  // namespace alluvion
 

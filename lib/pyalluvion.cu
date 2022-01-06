@@ -541,6 +541,7 @@ void declare_const(py::module& m, const char* name) {
       .def("set_kernel_radius", &TConst::set_kernel_radius)
       .def("set_particle_attr", &TConst::set_particle_attr)
       .def("set_wrap_length", &TConst::set_wrap_length)
+      .def("set_hcp_grid", &TConst::set_hcp_grid)
       .def_readonly("kernel_radius", &TConst::kernel_radius)
       .def_readonly("particle_radius", &TConst::particle_radius)
       .def_readonly("particle_vol", &TConst::particle_vol)
@@ -559,6 +560,8 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("surface_tension_coeff", &TConst::surface_tension_coeff)
       .def_readwrite("surface_tension_boundary_coeff",
                      &TConst::surface_tension_boundary_coeff)
+      .def_readwrite("density_ghost_threshold",
+                     &TConst::density_ghost_threshold)
       .def_readwrite("gravity", &TConst::gravity)
       .def_readwrite("axial_gravity", &TConst::axial_gravity)
       .def_readwrite("radial_gravity", &TConst::radial_gravity)
@@ -575,18 +578,23 @@ void declare_solver(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("max_num_particles"),
+           py::arg("max_num_provisional_ghosts") = 0,
+           py::arg("max_num_ghosts") = 0, py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("max_num_particles", &TSolver::max_num_particles)
+      .def_readonly("max_num_ghosts", &TSolver::max_num_ghosts)
       .def_readonly("particle_max_v2", &TSolver::particle_max_v2)
       .def_readonly("pile_max_v2", &TSolver::pile_max_v2)
       .def_readonly("max_v2", &TSolver::max_v2)
       .def_readonly("cfl_dt", &TSolver::cfl_dt)
       .def_readonly("utilized_cfl", &TSolver::utilized_cfl)
       .def_readwrite("num_particles", &TSolver::num_particles)
+      .def_readwrite("num_provisional_ghosts", &TSolver::num_provisional_ghosts)
+      .def_readwrite("num_ghosts", &TSolver::num_ghosts)
       .def_readwrite("t", &TSolver::t)
       .def_readwrite("dt", &TSolver::dt)
       .def_readwrite("initial_dt", &TSolver::initial_dt)
@@ -596,6 +604,12 @@ void declare_solver(py::module& m, const char* name) {
       .def_readwrite("particle_radius", &TSolver::particle_radius)
       .def_readwrite("enable_surface_tension", &TSolver::enable_surface_tension)
       .def_readwrite("enable_vorticity", &TSolver::enable_vorticity)
+      .def_readwrite("ghost_boundary_volume_threshold",
+                     &TSolver::ghost_boundary_volume_threshold)
+      .def_readwrite("ghost_fluid_density_threshold",
+                     &TSolver::ghost_fluid_density_threshold)
+      .def_readwrite("num_ghost_relaxation", &TSolver::num_ghost_relaxation)
+      .def_readwrite("relax_rate", &TSolver::relax_rate)
       .def_readwrite("next_emission_t", &TSolver::next_emission_t)
       .def_property_readonly(
           "runner", [](TSolver const& solver) { return solver.runner; },
@@ -653,6 +667,13 @@ void declare_solver(py::module& m, const char* name) {
                              [](TSolver const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
+      .def_property_readonly(
+          "need_ghost",
+          [](TSolver const& solver) { return solver.need_ghost.get(); })
+      .def_property_readonly("particle_lagrange_multiplier",
+                             [](TSolver const& solver) {
+                               return solver.particle_lagrange_multiplier.get();
+                             })
       .def_property_readonly("pile",
                              [](TSolver const& solver) { return &solver.pile; })
       .def("normalize",
@@ -681,7 +702,10 @@ void declare_solver(py::module& m, const char* name) {
       .def("update_particle_neighbors",
            &TSolver::template update_particle_neighbors<0>)
       .def("update_particle_neighbors_wrap1",
-           &TSolver::template update_particle_neighbors<1>);
+           &TSolver::template update_particle_neighbors<1>)
+      .def("initialize_ghosts", &TSolver::template initialize_ghosts<0>)
+      .def("relax_ghosts", &TSolver::template relax_ghosts<0>,
+           py::arg("revert_pid_length") = true);
 }
 
 template <typename TF>
@@ -694,9 +718,11 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("max_num_particles"),
+           py::arg("max_num_provisional_ghosts") = 0,
+           py::arg("max_num_ghosts") = 0, py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_divergence_solve", &TSolverDf::num_divergence_solve)
@@ -743,9 +769,11 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("max_num_particles"),
+           py::arg("max_num_provisional_ghosts") = 0,
+           py::arg("max_num_ghosts") = 0, py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverIi::num_density_solve)
@@ -798,9 +826,11 @@ void declare_solver_i(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverI") + name;
   py::class_<TSolverI, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, U, U, bool, bool, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
-           py::arg("max_num_particles"), py::arg("num_ushers") = 0,
+           py::arg("max_num_particles"),
+           py::arg("max_num_provisional_ghosts") = 0,
+           py::arg("max_num_ghosts") = 0, py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
            py::arg("enable_vorticity") = false, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverI::num_density_solve)
@@ -930,9 +960,15 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            &TRunner::launch_compute_boundary_mask)
       .def("launch_update_particle_grid", &TRunner::launch_update_particle_grid)
       .def("launch_make_neighbor_list",
-           &TRunner::template launch_make_neighbor_list<0>)
+           &TRunner::template launch_make_neighbor_list<0>, py::arg("sample_x"),
+           py::arg("pid"), py::arg("pid_length"), py::arg("sample_neighbors"),
+           py::arg("sample_num_neighbors"), py::arg("num_samples"),
+           py::arg("offset") = 0)
       .def("launch_make_neighbor_list_wrap1",
-           &TRunner::template launch_make_neighbor_list<1>)
+           &TRunner::template launch_make_neighbor_list<1>, py::arg("sample_x"),
+           py::arg("pid"), py::arg("pid_length"), py::arg("sample_neighbors"),
+           py::arg("sample_num_neighbors"), py::arg("num_samples"),
+           py::arg("offset") = 0)
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
@@ -1122,7 +1158,9 @@ PYBIND11_MODULE(_alluvion, m) {
       .def_readwrite("grid_res", &ConstiN::grid_res)
       .def_readwrite("grid_offset", &ConstiN::grid_offset)
       .def_readwrite("max_num_neighbors_per_particle",
-                     &ConstiN::max_num_neighbors_per_particle);
+                     &ConstiN::max_num_neighbors_per_particle)
+      .def_readwrite("hcp_grid_res", &ConstiN::hcp_grid_res)
+      .def_readwrite("hcp_grid_offset", &ConstiN::hcp_grid_offset);
 
   py::module m_dg = m.def_submodule("dg", "Discregrid");
 

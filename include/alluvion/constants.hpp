@@ -19,10 +19,16 @@ constexpr T kFMax = std::numeric_limits<T>::max();
 template <class T>
 constexpr T kHcpStep0 =
     T(1.73205080756887729352744634150587236694280525381038062805581e+00L);
+template <class T>
+constexpr T kHcpStepInv0 =
+    T(0.577350269189625764509148780501957455647601751270126876018602e+00L);
 // 2 * sqrt(6) / 3
 template <class T>
 constexpr T kHcpStep1 =
     T(1.63299316185545206546485604980392759464396498710444675228846e+00L);
+template <class T>
+constexpr T kHcpStepInv1 =
+    T(0.612372435695794524549321018676472847991486870164167532108173e+00L);
 
 constexpr U kMaxNumCellsToSearch = 128;
 
@@ -35,6 +41,9 @@ struct Consti {
 
   U num_boundaries;
   U max_num_contacts;
+
+  U3 hcp_grid_res;
+  I3 hcp_grid_offset;
 };
 
 template <typename TF>
@@ -55,6 +64,8 @@ struct Const {
   TF cohesion_kernel_c;
 
   TF particle_radius;
+  TF hcp_radius;
+  TF hcp_radius_inv;
   TF particle_vol;
   TF particle_mass;
   TF density0;
@@ -66,6 +77,7 @@ struct Const {
   TF viscosity_omega;
   TF surface_tension_coeff;
   TF surface_tension_boundary_coeff;
+  TF density_ghost_threshold;
 
   TF3 gravity;
   TF axial_gravity;
@@ -124,6 +136,21 @@ struct Const {
     wrap_length = l;
     wrap_min = wmin;
     wrap_max = wmax;
+  }
+
+  void set_hcp_grid(Consti<kMaxNumCellsToSearch>& cni_arg, TF3 box_min,
+                    TF3 box_max, TF radius) {
+    hcp_radius = radius;
+    hcp_radius_inv = 1 / radius;
+    TF3 interval{radius * kHcpStep0<TF>, radius * kHcpStep1<TF>, radius * 2};
+    TF3 res_fp = (box_max - box_min) / interval;
+    TF3 offset_fp = box_min / interval;
+    cni_arg.hcp_grid_res =
+        U3{static_cast<U>(res_fp.x), static_cast<U>(res_fp.y),
+           static_cast<U>(res_fp.z)};
+    cni_arg.hcp_grid_offset =
+        I3{static_cast<I>(offset_fp.x), static_cast<I>(offset_fp.y),
+           static_cast<I>(offset_fp.z)};
   }
 };
 using Constf = Const<float>;
