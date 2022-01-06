@@ -201,9 +201,9 @@ struct Solver {
             U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
-              boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, sign, dt, *particle_x, *particle_boundary,
-              *particle_boundary_kernel, num_particles);
+              boundary_id, domain_min, domain_max, resolution, cell_size, sign,
+              *particle_x, *particle_boundary, *particle_boundary_kernel,
+              num_particles);
         });
   }
   void sample_all_boundaries(Variable<1, TF3>& sample_x,
@@ -218,9 +218,8 @@ struct Solver {
             U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
-              boundary_id, domain_min, domain_max, resolution, cell_size,
-              num_nodes, sign, dt, sample_x, sample_boundary,
-              sample_boundary_kernel, num_samples);
+              boundary_id, domain_min, domain_max, resolution, cell_size, sign,
+              sample_x, sample_boundary, sample_boundary_kernel, num_samples);
         });
   }
   template <U wrap>
@@ -233,9 +232,9 @@ struct Solver {
         *particle_x, *pid, *pid_length, *particle_neighbors,
         *particle_num_neighbors, num_particles);
 
-    runner.launch_compute_density(*particle_x, *particle_neighbors,
-                                  *particle_num_neighbors, *particle_density,
-                                  *particle_boundary_kernel, num_particles);
+    runner.launch_compute_density(*particle_neighbors, *particle_num_neighbors,
+                                  *particle_density, *particle_boundary_kernel,
+                                  num_particles);
   }
   U max_num_particles;
   U num_particles;

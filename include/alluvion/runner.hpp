@@ -1268,9 +1268,8 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
 template <typename TQ, typename TF3, typename TF>
 __device__ TF compute_volume_and_boundary_x(
     Variable<1, TF>* volume_nodes, Variable<1, TF>* distance_nodes,
-    TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes,
-    TF sign, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
-    TF3* xi_bxj, TF* d) {
+    TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, TF sign,
+    TF3& x, TF3& rigid_x, TQ& rigid_q, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1306,12 +1305,11 @@ __device__ TF compute_volume_and_boundary_x(
   return boundary_volume;
 }
 
-// TODO: remove dt
 template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
-    TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, TF sign, TF3& x,
-    TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
+    TF3 domain_max, U3 resolution, TF3 cell_size, TF sign, TF3& x, TF3& rigid_x,
+    TQ& rigid_q, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1506,7 +1504,7 @@ template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void compute_particle_boundary_analytic(
     Variable<1, TF> volume_nodes, const TDistance distance, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
+    TF3 cell_size, TF sign, Variable<1, TF3> particle_x,
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
@@ -1514,8 +1512,7 @@ __global__ void compute_particle_boundary_analytic(
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x_analytic<wrap>(
         &volume_nodes, distance, domain_min, domain_max, resolution, cell_size,
-        num_nodes, sign, particle_x(p_i), rigid_x, rigid_q, dt, &boundary_xj,
-        &xi_bxj, &d);
+        sign, particle_x(p_i), rigid_x, rigid_q, &boundary_xj, &xi_bxj, &d);
     TF3 kernel_grad = displacement_cubic_kernel_grad(xi_bxj);
     particle_boundary(boundary_id, p_i) =
         TQ{boundary_xj.x, boundary_xj.y, boundary_xj.z, boundary_volume};
@@ -1529,7 +1526,7 @@ template <typename TQ, typename TF3, typename TF>
 __global__ void compute_particle_boundary(
     Variable<1, TF> volume_nodes, Variable<1, TF> distance_nodes, TF3 rigid_x,
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
-    TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
+    TF3 cell_size, TF sign, Variable<1, TF3> particle_x,
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
     U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
@@ -1537,8 +1534,8 @@ __global__ void compute_particle_boundary(
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x(
         &volume_nodes, &distance_nodes, domain_min, domain_max, resolution,
-        cell_size, num_nodes, sign, particle_x(p_i), rigid_x, rigid_q, dt,
-        &boundary_xj, &xi_bxj, &d);
+        cell_size, sign, particle_x(p_i), rigid_x, rigid_q, &boundary_xj,
+        &xi_bxj, &d);
     TF3 kernel_grad = displacement_cubic_kernel_grad(xi_bxj);
     particle_boundary(boundary_id, p_i) =
         TQ{boundary_xj.x, boundary_xj.y, boundary_xj.z, boundary_volume};
@@ -1548,16 +1545,15 @@ __global__ void compute_particle_boundary(
   });
 }
 
-template <typename TQ, typename TF3, typename TF>
-__global__ void compute_density(Variable<1, TF3> particle_x,
-                                Variable<2, TQ> particle_neighbors,
+template <typename TQ, typename TF>
+__global__ void compute_density(Variable<2, TQ> particle_neighbors,
                                 Variable<1, U> particle_num_neighbors,
                                 Variable<1, TF> particle_density,
                                 Variable<2, TQ> particle_boundary_kernel,
                                 U num_particles) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF density = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
-    TF3 x_i = particle_x(p_i);
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
          ++neighbor_id) {
       TF3 xixj;
@@ -3096,7 +3092,7 @@ template <typename TQ, typename TF3, typename TF>
 __global__ void compute_boundary_mask(Variable<1, TF> distance_nodes,
                                       TF3 rigid_x, TQ rigid_q, TF3 domain_min,
                                       TF3 domain_max, U3 resolution,
-                                      TF3 cell_size, U num_nodes, TF sign,
+                                      TF3 cell_size, TF sign,
                                       Variable<1, TF3> sample_x,
                                       TF distance_threshold,
                                       Variable<1, U> mask, U num_samples) {
@@ -3595,8 +3591,7 @@ class Runner {
       Variable<1, TF> const& distance_nodes, TF3 const& rigid_x,
       TQ const& rigid_q, U boundary_id, TF3 const& domain_min,
       TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
-      U num_nodes, TF sign, TF dt, Variable<1, TF3>& particle_x,
-      Variable<2, TQ>& particle_boundary,
+      TF sign, Variable<1, TF3>& particle_x, Variable<2, TQ>& particle_boundary,
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
@@ -3611,9 +3606,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary<<<grid_size, block_size>>>(
                 volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary", compute_particle_boundary<TQ, TF3, TF>);
     } else if (TBoxDistance const* distance =
@@ -3623,9 +3617,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(BoxDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
@@ -3636,9 +3629,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(SphereDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
@@ -3649,9 +3641,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(CylinderDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF,
@@ -3664,9 +3655,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary_analytic<1><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
           compute_particle_boundary_analytic<1, TQ, TF3, TF,
@@ -3678,9 +3668,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
-                domain_min, domain_max, resolution, cell_size, num_nodes, sign,
-                dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles);
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
           },
           "compute_particle_boundary_analytic(CapsuleDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TCapsuleDistance>);
@@ -3704,7 +3693,7 @@ class Runner {
                                     TF3 const& rigid_x, TQ const& rigid_q,
                                     TF3 const& domain_min,
                                     TF3 const& domain_max, U3 const& resolution,
-                                    TF3 const& cell_size, U num_nodes, TF sign,
+                                    TF3 const& cell_size, TF sign,
                                     Variable<1, TF3> const& sample_x,
                                     TF distance_threshold, Variable<1, U>& mask,
                                     U num_samples) {
@@ -3721,8 +3710,8 @@ class Runner {
           [&](U grid_size, U block_size) {
             compute_boundary_mask<<<grid_size, block_size>>>(
                 distance_nodes, rigid_x, rigid_q, domain_min, domain_max,
-                resolution, cell_size, num_nodes, sign, sample_x,
-                distance_threshold, mask, num_samples);
+                resolution, cell_size, sign, sample_x, distance_threshold, mask,
+                num_samples);
           },
           "compute_boundary_mask", compute_boundary_mask<TQ, TF3, TF>);
     } else if (TBoxDistance const* distance =
@@ -3802,8 +3791,7 @@ class Runner {
         },
         "make_neighbor_list", make_neighbor_list<wrap, TQ, TF3>);
   }
-  void launch_compute_density(Variable<1, TF3>& particle_x,
-                              Variable<2, TQ>& particle_neighbors,
+  void launch_compute_density(Variable<2, TQ>& particle_neighbors,
                               Variable<1, U>& particle_num_neighbors,
                               Variable<1, TF>& particle_density,
                               Variable<2, TQ>& particle_boundary_kernel,
@@ -3812,10 +3800,10 @@ class Runner {
         num_particles,
         [&](U grid_size, U block_size) {
           compute_density<<<grid_size, block_size>>>(
-              particle_x, particle_neighbors, particle_num_neighbors,
-              particle_density, particle_boundary_kernel, num_particles);
+              particle_neighbors, particle_num_neighbors, particle_density,
+              particle_boundary_kernel, num_particles);
         },
-        "compute_density", compute_density<TQ, TF3, TF>);
+        "compute_density", compute_density<TQ, TF>);
   }
   template <typename TQuantity>
   void launch_sample_fluid(Variable<1, TF3>& sample_x,

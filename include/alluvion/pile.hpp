@@ -693,8 +693,8 @@ class Pile {
                      TF3 const& cell_size, U num_nodes, TF sign) {
       runner_.launch_compute_boundary_mask(
           distance, distance_grid, rigid_x, rigid_q, domain_min, domain_max,
-          resolution, cell_size, num_nodes, sign, sample_x, distance_threshold,
-          mask, num_samples);
+          resolution, cell_size, sign, sample_x, distance_threshold, mask,
+          num_samples);
     });
   }
 };
