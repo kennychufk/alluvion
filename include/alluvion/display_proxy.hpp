@@ -204,7 +204,7 @@ class DisplayProxy {
           glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
 
           glBindTexture(GL_TEXTURE_1D, colormap_tex);
-          glDrawArrays(GL_POINTS, 0, solver.num_particles + solver.num_ghosts);
+          glDrawArrays(GL_POINTS, 0, solver.num_particles);
         }));
   }
 

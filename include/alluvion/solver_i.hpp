@@ -16,7 +16,6 @@ struct SolverI : public Solver<TF> {
   using Base::dt;
   using Base::enable_surface_tension;
   using Base::enable_vorticity;
-  using Base::num_ghosts;
   using Base::num_particles;
   using Base::particle_radius;
   using Base::pile;
@@ -43,25 +42,20 @@ struct SolverI : public Solver<TF> {
   using Base::particle_num_neighbors;
   using Base::pid;
   using Base::pid_length;
-
   SolverI(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-          U max_num_particles_arg, U max_num_provisional_ghosts_arg = 0,
-          U max_num_ghosts_arg = 0, U num_ushers = 0,
+          U max_num_particles_arg, U num_ushers = 0,
           bool enable_surface_tension_arg = false,
           bool enable_vorticity_arg = false, bool graphical = false)
-      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg,
-             max_num_provisional_ghosts_arg, max_num_ghosts_arg, num_ushers,
+      : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
-        particle_pressure(store_arg.create<1, TF>(
-            {max_num_particles_arg + max_num_ghosts_arg})),
-        particle_last_pressure(store_arg.create<1, TF>(
-            {max_num_particles_arg + max_num_ghosts_arg})),
-        particle_diag_adv_density(store_arg.create<1, TF2>(
-            {max_num_particles_arg + max_num_ghosts_arg})),
-        particle_pressure_accel(store_arg.create<1, TF3>(
-            {max_num_particles_arg + max_num_ghosts_arg})),
-        particle_density_err(store_arg.create<1, TF>(
-            {max_num_particles_arg + max_num_ghosts_arg})),
+        particle_pressure(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_last_pressure(
+            store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_diag_adv_density(
+            store_arg.create<1, TF2>({max_num_particles_arg})),
+        particle_pressure_accel(
+            store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_density_err(store_arg.create<1, TF>({max_num_particles_arg})),
         density_error_tolerance(1e-3),
         min_density_solve(2),
         max_density_solve(100) {}
@@ -105,8 +99,6 @@ struct SolverI : public Solver<TF> {
                 *particle_neighbors, *particle_num_neighbors, num_particles);
           },
           "compute_normal", compute_normal<TQ, TF3, TF>);
-    }
-    if (enable_surface_tension) {
       runner.launch(
           num_particles,
           [&](U grid_size, U block_size) {
@@ -165,7 +157,6 @@ struct SolverI : public Solver<TF> {
     }
     update_dt();
 
-    Base::template prepare_ghosts<wrap>();
     // ===== [solve
     runner.launch(
         num_particles,
@@ -176,15 +167,6 @@ struct SolverI : public Solver<TF> {
         },
         "advect_and_init_pressure", advect_and_init_pressure<TF3, TF>);
     runner.launch(
-        num_ghosts,
-        [&](U grid_size, U block_size) {
-          extrapolate_fluid_velocity_to_ghost<<<grid_size, block_size>>>(
-              *particle_v, *particle_density, *particle_neighbors,
-              *particle_num_neighbors, num_ghosts, num_particles);
-        },
-        "extrapolate_fluid_velocity_to_ghost",
-        extrapolate_fluid_velocity_to_ghost<TQ, TF3, TF>);
-    runner.launch(
         num_particles,
         [&](U grid_size, U block_size) {
           calculate_isph_diagonal_adv_density<<<grid_size, block_size>>>(
@@ -192,7 +174,7 @@ struct SolverI : public Solver<TF> {
               *particle_diag_adv_density, *particle_neighbors,
               *particle_num_neighbors, *particle_boundary,
               *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles, 0);
+              *pile.omega_device_, dt, num_particles);
         },
         "calculate_isph_diagonal_adv_density",
         calculate_isph_diagonal_adv_density<TQ, TF3, TF2, TF>);
@@ -233,7 +215,7 @@ struct SolverI : public Solver<TF> {
         [&](U grid_size, U block_size) {
           kinematic_integration<wrap><<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_pressure_accel, dt,
-              num_particles, 0);
+              num_particles);
         },
         "kinematic_integration", kinematic_integration<wrap, TF3, TF>);
 

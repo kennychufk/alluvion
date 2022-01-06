@@ -2,7 +2,6 @@
 #define ALLUVION_RUNNER_HPP
 #include <thrust/count.h>
 #include <thrust/device_ptr.h>
-#include <thrust/partition.h>
 #include <thrust/reduce.h>
 #include <thrust/sort.h>
 
@@ -455,41 +454,6 @@ struct SquaredDifferenceYzMasked {
 template <typename M, typename TPrimitive>
 struct SquaredNorm {
   __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
-};
-
-template <typename M>
-struct NotEqualTo {
-  NotEqualTo(M ref_arg) : ref(ref_arg) {}
-  __device__ bool operator()(M const& v) { return v != ref; }
-  const M ref;
-};
-
-template <typename M>
-struct EqualTo {
-  EqualTo(M ref_arg) : ref(ref_arg) {}
-  __device__ bool operator()(M const& v) { return v == ref; }
-  const M ref;
-};
-
-template <typename M, typename TPrimitive>
-struct YEqualTo {
-  YEqualTo(TPrimitive ref_arg) : ref(ref_arg) {}
-  __device__ bool operator()(M const& v) { return v.y == ref; }
-  const TPrimitive ref;
-};
-
-template <typename M>
-struct LessThan {
-  LessThan(M ref_arg) : ref(ref_arg) {}
-  __device__ bool operator()(M const& v) { return v < ref; }
-  const M ref;
-};
-
-template <typename M, typename TPrimitive>
-struct WLessThan {
-  WLessThan(TPrimitive ref_arg) : ref(ref_arg) {}
-  __device__ bool operator()(M const& v) { return v.w < ref; }
-  const TPrimitive ref;
 };
 
 template <typename TF3, typename TF>
@@ -1301,12 +1265,11 @@ __global__ void update_volume_field(Variable<1, TF> volume_nodes,
   });
 }
 
-// TODO: remove dt, num_nodes
 template <typename TQ, typename TF3, typename TF>
 __device__ TF compute_volume_and_boundary_x(
     Variable<1, TF>* volume_nodes, Variable<1, TF>* distance_nodes,
     TF3 domain_min, TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes,
-    TF sign, TF3 const& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
+    TF sign, TF3& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
     TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
@@ -1343,13 +1306,12 @@ __device__ TF compute_volume_and_boundary_x(
   return boundary_volume;
 }
 
-// TODO: remove dt, num_nodes
+// TODO: remove dt
 template <U wrap, typename TQ, typename TF3, typename TF, typename TDistance>
 __device__ TF compute_volume_and_boundary_x_analytic(
     Variable<1, TF>* volume_nodes, TDistance const& distance, TF3 domain_min,
-    TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, TF sign,
-    TF3 const& x, TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj,
-    TF3* xi_bxj, TF* d) {
+    TF3 domain_max, U3 resolution, TF3 cell_size, U num_nodes, TF sign, TF3& x,
+    TF3& rigid_x, TQ& rigid_q, TF dt, TF3* boundary_xj, TF3* xi_bxj, TF* d) {
   TF boundary_volume = 0;
   TF3 local_xi =
       rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
@@ -1371,33 +1333,6 @@ __device__ TF compute_volume_and_boundary_x_analytic(
   normal *= (nl2 > 0 ? rsqrt(nl2) : 0);
   *xi_bxj = (*d) * normal;
   *boundary_xj = x - (*xi_bxj);
-  resolve(domain_min, domain_max, resolution, cell_size, local_xi, &ipos,
-          &inner_x);
-  if (ipos.x >= 0) {
-    get_shape_function(inner_x, N);
-    get_cells(resolution, ipos, cells);
-    boundary_volume = interpolate(volume_nodes, cells, N);
-  }
-
-  return boundary_volume;
-}
-
-template <U wrap, typename TQ, typename TF3, typename TF>
-__device__ TF compute_volume(Variable<1, TF>* volume_nodes, TF3 domain_min,
-                             TF3 domain_max, U3 resolution, TF3 cell_size,
-                             TF3 const& x, TF3& rigid_x, TQ& rigid_q) {
-  TF boundary_volume = 0;
-  TF3 local_xi =
-      rotate_using_quaternion(x - rigid_x, quaternion_conjugate(rigid_q));
-  if constexpr (wrap == 1) {
-    local_xi.y = 0;
-  }
-  // for grid enquiry
-  I3 ipos;
-  TF3 inner_x;
-  TF N[32];
-  U cells[32];
-
   resolve(domain_min, domain_max, resolution, cell_size, local_xi, &ipos,
           &inner_x);
   if (ipos.x >= 0) {
@@ -1476,211 +1411,13 @@ __device__ bool within_grid(TI3 ipos) {
          0 <= ipos.z and ipos.z < static_cast<I>(cni.grid_res.z);
 }
 
-template <typename TI3>
-__device__ U linearize_ipos(TI3 ipos) {
-  return (static_cast<U>(ipos.x) * cni.grid_res.y + static_cast<U>(ipos.y)) *
-             cni.grid_res.z +
-         static_cast<U>(ipos.z);
-}
-
-template <typename TI3>
-__device__ TI3 delinearize_ipos(U i) {
-  U yz = cni.grid_res.y * cni.grid_res.z;
-  U yz_residual = i % yz;
-  return TI3{static_cast<I>(i / yz),
-             static_cast<I>(yz_residual / cni.grid_res.z),
-             static_cast<I>(yz_residual % cni.grid_res.z)};
-}
-
-template <typename TI3, typename TF3>
-__device__ TF3 get_cell_corner_min(TI3 ipos) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  return make_vector<TF3>(cn<TF>().kernel_radius) * (ipos + cni.grid_offset);
-}
-
-// hcp grid
-template <typename TF3>
-__device__ I3 approximate_hcp_ipos(TF3 x) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  I3 ipos;
-  ipos.y = lround(cn<TF>().hcp_radius_inv * kHcpStepInv1<TF> * x.y);
-  ipos.x = lround(cn<TF>().hcp_radius_inv * kHcpStepInv0<TF> * x.x -
-                  (ipos.y % 2) / static_cast<TF>(3));
-  ipos.z = lround((cn<TF>().hcp_radius_inv * x.z - ((ipos.x + ipos.y) % 2)) *
-                  static_cast<TF>(0.5));
-  return ipos - cni.hcp_grid_offset;
-}
-
-template <typename TI3, typename TF3>
-__device__ TF3 get_hcp_cell_center(TI3 ipos) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  TI3 offset_ipos = ipos + cni.hcp_grid_offset;
-  return TF3{cn<TF>().hcp_radius * kHcpStep0<TF> *
-                 (offset_ipos.x + static_cast<TF>(offset_ipos.y % 2) / 3),
-             cn<TF>().hcp_radius * kHcpStep1<TF> * offset_ipos.y,
-             cn<TF>().hcp_radius *
-                 (offset_ipos.z * 2 + (offset_ipos.x + offset_ipos.y) % 2)};
-}
-
-template <typename TF3>
-__device__ I3 get_hcp_ipos(TF3 x) {
-  typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  I3 approx_ipos = approximate_hcp_ipos(x);
-
-  I3 jpos = approx_ipos;
-  TF3 jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  TF distance_sqr = length_sqr(jpos_center - x);
-  TF min_distance_sqr = distance_sqr;
-  I3 closest_jpos = jpos;
-
-  jpos = approx_ipos + I3{0, -1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{0, 1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{0, -1, -1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{1, 0, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{0, 1, -1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{1, 0, 1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{-1, 0, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{0, -1, 1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{-1, 0, -1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{0, 1, 1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{1, 1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{1, -1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{-1, -1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{-1, 1, 0};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{-1, 0, 1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-  jpos = approx_ipos + I3{1, 0, -1};
-  jpos_center = get_hcp_cell_center<I3, TF3>(jpos);
-  distance_sqr = length_sqr(jpos_center - x);
-  if (distance_sqr < min_distance_sqr) {
-    min_distance_sqr = distance_sqr;
-    closest_jpos = jpos;
-  }
-
-  return closest_jpos;
-}
-
-template <typename TI3>
-__device__ U linearize_hcp_ipos(TI3 ipos) {
-  return (static_cast<U>(ipos.x) * cni.hcp_grid_res.y +
-          static_cast<U>(ipos.y)) *
-             cni.hcp_grid_res.z +
-         static_cast<U>(ipos.z);
-}
-
-template <typename TI3>
-__device__ TI3 delinearize_hcp_ipos(U i) {
-  U yz = cni.hcp_grid_res.y * cni.hcp_grid_res.z;
-  U yz_residual = i % yz;
-  return TI3{static_cast<I>(i / yz),
-             static_cast<I>(yz_residual / cni.hcp_grid_res.z),
-             static_cast<I>(yz_residual % cni.hcp_grid_res.z)};
-}
-
-template <typename TI3>
-__device__ bool within_hcp_grid(TI3 ipos) {
-  return 0 <= ipos.x and ipos.x < static_cast<I>(cni.hcp_grid_res.x) and
-         0 <= ipos.y and ipos.y < static_cast<I>(cni.hcp_grid_res.y) and
-         0 <= ipos.z and ipos.z < static_cast<I>(cni.hcp_grid_res.z);
-}
-
 template <typename TQ, typename TF3>
 __global__ void update_particle_grid(Variable<1, TF3> particle_x,
                                      Variable<4, TQ> pid,
-                                     Variable<3, U> pid_length, U num_particles,
-                                     U offset) {
+                                     Variable<3, U> pid_length,
+                                     U num_particles) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     I3 ipos = get_ipos(x_i);
     U pid_insert_index;
@@ -1707,10 +1444,9 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
                                    Variable<3, U> pid_length,
                                    Variable<2, TQ> sample_neighbors,
                                    Variable<1, U> sample_num_neighbors,
-                                   U num_samples, U offset) {
+                                   U num_samples) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
-  forThreadMappedToElement(num_samples, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+  forThreadMappedToElement(num_samples, [&](U p_i) {
     TF3 x = sample_x(p_i);
     I3 ipos = get_ipos(x);
     U num_neighbors = 0;
@@ -1744,41 +1480,6 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
   });
 }
 
-template <U wrap, typename TQ>
-__global__ void compute_provisional_fluid_density(
-    Variable<1, TQ> provisional_ghost_boundary, Variable<4, TQ> pid,
-    Variable<3, U> pid_length, U num_provisional_ghosts) {
-  typedef std::conditional_t<std::is_same_v<TQ, float4>, float, double> TF;
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
-  forThreadMappedToElement(num_provisional_ghosts, [&](U p_i) {
-    const TQ x_boundary_vol = provisional_ghost_boundary(p_i);
-    TF3 const& x_i = reinterpret_cast<TF3 const&>(x_boundary_vol);
-    I3 ipos = get_ipos(x_i);
-    TF density = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
-#pragma unroll
-    for (I i = 0; i < 27; ++i) {
-      I3 neighbor_ipos = ipos + I3{i / 9, (i / 3) % 3, i % 3} - 1;
-      if constexpr (wrap == 1) neighbor_ipos = wrap_ipos_y(neighbor_ipos);
-      if (within_grid(neighbor_ipos)) {
-        U neighbor_occupancy =
-            min(pid_length(neighbor_ipos), cni.max_num_particles_per_cell);
-        for (U k = 0; k < neighbor_occupancy; ++k) {
-          TQ pid_entry = pid(neighbor_ipos, k);
-          TF3 x_j;
-          U p_j;
-          extract_pid(pid_entry, x_j, p_j);
-          TF3 xixj = x_i - x_j;
-          if constexpr (wrap == 1) xixj = wrap_y(xixj);
-          if (p_j != p_i) {
-            density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
-          }
-        }
-      }
-    }
-    provisional_ghost_boundary(p_i).w = density * cn<TF>().density0;
-  });
-}
-
 // fluid
 template <typename TF3>
 __global__ void clear_acceleration(Variable<1, TF3> particle_a,
@@ -1807,9 +1508,8 @@ __global__ void compute_particle_boundary_analytic(
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
     TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
-    U num_particles, U offset) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+    U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x_analytic<wrap>(
@@ -1831,9 +1531,8 @@ __global__ void compute_particle_boundary(
     TQ rigid_q, U boundary_id, TF3 domain_min, TF3 domain_max, U3 resolution,
     TF3 cell_size, U num_nodes, TF sign, TF dt, Variable<1, TF3> particle_x,
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
-    U num_particles, U offset) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+    U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 boundary_xj, xi_bxj;
     TF d;
     TF boundary_volume = compute_volume_and_boundary_x(
@@ -1849,32 +1548,14 @@ __global__ void compute_particle_boundary(
   });
 }
 
-template <U wrap, typename TQ, typename TF3, typename TF>
-__global__ void accumulate_provisional_boundary_volume(
-    Variable<1, TF> volume_nodes, TF3 rigid_x, TQ rigid_q, TF3 domain_min,
-    TF3 domain_max, U3 resolution, TF3 cell_size,
-    Variable<1, TQ> provisional_ghost_boundary, U num_provisional_ghosts) {
-  forThreadMappedToElement(num_provisional_ghosts, [&](U p_i) {
-    TF3 boundary_xj, xi_bxj;
-    TQ const& x_boundary_vol = provisional_ghost_boundary(p_i);
-    TF3 const& x_i = reinterpret_cast<TF3 const&>(x_boundary_vol);
-    TF boundary_volume =
-        compute_volume<wrap>(&volume_nodes, domain_min, domain_max, resolution,
-                             cell_size, x_i, rigid_x, rigid_q);
-    provisional_ghost_boundary(p_i).w += boundary_volume;
-  });
-}
-
-// TODO: remove particle_x
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_density(Variable<1, TF3> particle_x,
                                 Variable<2, TQ> particle_neighbors,
                                 Variable<1, U> particle_num_neighbors,
                                 Variable<1, TF> particle_density,
                                 Variable<2, TQ> particle_boundary_kernel,
-                                U num_particles, U offset) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+                                U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF density = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
     TF3 x_i = particle_x(p_i);
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
@@ -1887,121 +1568,6 @@ __global__ void compute_density(Variable<1, TF3> particle_x,
       density += particle_boundary_kernel(boundary_id, p_i).w;
     }
     particle_density(p_i) = density * cn<TF>().density0;
-  });
-}
-
-template <typename TQ, typename TF3, typename TF>
-__global__ void extrapolate_fluid_velocity_to_ghost(
-    Variable<1, TF3> particle_v, Variable<1, TF> particle_density,
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    U num_ghosts, U offset) {
-  forThreadMappedToElement(num_ghosts, [&](U p_i0) {
-    U p_i = p_i0 + offset;
-    TF3 v{0};
-    TF min_distance_sqr = 999.9;
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF distance_sqr = length_sqr(xixj);
-      if (p_j < offset && distance_sqr < min_distance_sqr) {
-        min_distance_sqr = distance_sqr;
-        v = particle_v(p_j);
-      }
-    }
-    particle_v(p_i) = v;
-    particle_density(p_i) = cn<TF>().density0;
-  });
-}
-
-template <typename TQ, typename TF>
-__global__ void compute_density_and_lagrange_multiplier_for_fluid(
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<1, TF> particle_density,
-    Variable<1, TF> particle_lagrange_multiplier, U num_particles) {
-  typedef std::conditional_t<std::is_same_v<TQ, float4>, float3, double3> TF3;
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF constraint_grad_sqr_sum = 0;
-    TF3 constraint_grad_sum{0};
-    TF rel_density = particle_density(p_i) / cn<TF>().density0;
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
-      constraint_grad_sum += grad_w;
-      constraint_grad_sqr_sum += length_sqr(grad_w);
-      if (p_j > num_particles) {
-        rel_density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
-      }
-    }
-    constraint_grad_sqr_sum += length_sqr(constraint_grad_sum);
-    particle_density(p_i) = rel_density * cn<TF>().density0;
-    particle_lagrange_multiplier(p_i) =
-        -(rel_density - 1) / (constraint_grad_sqr_sum * cn<TF>().particle_vol *
-                              cn<TF>().particle_vol);
-  });
-}
-
-template <typename TQ, typename TF>
-__global__ void compute_density_and_lagrange_multiplier_for_ghosts(
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<1, TF> particle_density,
-    Variable<1, TF> particle_lagrange_multiplier, U num_ghosts, U offset) {
-  typedef std::conditional_t<std::is_same_v<TQ, float4>, float3, double3> TF3;
-  forThreadMappedToElement(num_ghosts, [&](U p_i0) {
-    U p_i = p_i0 + offset;
-    TF constraint_grad_sqr_sum = 0;
-    TF3 constraint_grad_sum{0};
-    TF rel_density = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
-      constraint_grad_sum += grad_w;
-      constraint_grad_sqr_sum += length_sqr(grad_w);
-      rel_density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
-    }
-    constraint_grad_sqr_sum += length_sqr(constraint_grad_sum);
-    particle_density(p_i) = rel_density * cn<TF>().density0;
-    particle_lagrange_multiplier(p_i) =
-        (p_i > offset && rel_density < 1)
-            ? 0
-            : -(rel_density - 1) /
-                  (constraint_grad_sqr_sum * cn<TF>().particle_vol *
-                   cn<TF>().particle_vol);
-  });
-}
-
-template <typename TQ, typename TF3, typename TF>
-__global__ void shift_using_lagrange_multipliers(
-    Variable<1, TF> particle_density, Variable<2, TQ> particle_neighbors,
-    Variable<1, U> particle_num_neighbors,
-    Variable<1, TF> particle_lagrange_multiplier, Variable<1, TF3> particle_x,
-    U num_particles, U offset, TF relax_rate) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
-    TF lambda_i = particle_lagrange_multiplier(p_i);
-    TF density_i = particle_density(p_i);
-    TF lambda_div_i = lambda_i / density_i;
-    TF3 grad_lambda{0};
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF lambda_j = particle_lagrange_multiplier(p_j);
-      TF density_j = particle_density(p_j);
-      grad_lambda +=
-          (lambda_div_i + lambda_j * density_i / (density_j * density_j)) *
-          displacement_cubic_kernel_grad(xixj);
-    }
-    grad_lambda *= cn<TF>().particle_mass;
-    particle_x(p_i) += grad_lambda * relax_rate;
   });
 }
 
@@ -2283,240 +1849,6 @@ __global__ void compute_surface_tension(
 }
 
 template <typename TF3, typename TF>
-__global__ void mark_deficient(Variable<1, TF3> particle_x,
-                               Variable<1, TF> particle_density,
-                               Variable<1, U2> particle_hcp_ipos,
-                               U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    const TF density_i = particle_density(p_i);
-
-    I3 ipos = get_hcp_ipos(x_i);
-    bool is_within = within_hcp_grid(ipos);
-    U ipos_linear = is_within ? linearize_hcp_ipos(ipos) : kFMax<U>;
-    U label = is_within
-                  ? static_cast<U>(density_i > cn<TF>().density_ghost_threshold)
-                  : 2;
-    particle_hcp_ipos(p_i) = U2{ipos_linear, label};
-  });
-}
-
-template <typename TU>
-__global__ void expand_deficient(Variable<1, U2> particle_hcp_ipos,
-                                 Variable<3, TU> need_ghost, TU num_deficient) {
-  forThreadMappedToElement(num_deficient, [&](TU p_i) {
-    TU ipos_linear = particle_hcp_ipos(p_i).x;
-    I3 ipos = delinearize_hcp_ipos<I3>(ipos_linear);
-    I3 jpos = ipos + I3{-1, -2, -1};
-    TU jpos_linear = linearize_hcp_ipos(jpos);
-
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, -2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -2, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -2, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, -2, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, -2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, -1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, -1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, -1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, -1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, -1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -1, -2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, -1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, -1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, -1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, -1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, 0, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, 0, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, 0, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 0, -2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 0, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 0, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 0, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 0, -2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 0, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 0, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 0, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 0, 2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 0, -2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 0, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 0, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 0, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{2, 0, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{2, 0, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{2, 0, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, 1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-2, 1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 1, -2};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 1, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 1, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 1, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 2, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{-1, 2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 2, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{0, 2, 1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 2, -1};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-    jpos = ipos + I3{1, 2, 0};
-    jpos_linear = linearize_hcp_ipos(jpos);
-    if (within_hcp_grid(jpos)) need_ghost(jpos_linear) = jpos_linear;
-  });
-}
-
-template <typename TU>
-__global__ void clear_cells_with_fluid_particles(
-    Variable<1, U2> particle_hcp_ipos, Variable<3, TU> need_ghost,
-    TU num_particles) {
-  forThreadMappedToElement(num_particles, [&](TU p_i) {
-    TU ipos_linear = particle_hcp_ipos(p_i).x;
-    need_ghost(ipos_linear) = kFMax<U>;
-  });
-}
-
-template <typename TQ>
-__global__ void initialize_provisional_ghosts(
-    Variable<1, TQ> provisional_ghost_boundary, Variable<3, U> need_ghost,
-    U num_provisional_ghosts) {
-  typedef std::conditional_t<std::is_same_v<TQ, float4>, float3, double3> TF3;
-  forThreadMappedToElement(num_provisional_ghosts, [&](U l) {
-    I3 ipos = delinearize_hcp_ipos<I3>(need_ghost(l));
-    TF3 cell_center = get_hcp_cell_center<I3, TF3>(ipos);
-    provisional_ghost_boundary(l) =
-        TQ{cell_center.x, cell_center.y, cell_center.z, 0};
-  });
-}
-
-template <typename TQ, typename TF3>
-__global__ void append_ghosts(Variable<1, TQ> provisional_ghost_boundary,
-                              Variable<1, TF3> particle_x, U num_ghosts,
-                              U num_particles) {
-  forThreadMappedToElement(num_ghosts, [&](U p_i0) {
-    U p_i = p_i0 + num_particles;
-    TQ x_boundary_vol = provisional_ghost_boundary(p_i0);
-    particle_x(p_i) = reinterpret_cast<TF3 const&>(x_boundary_vol);
-  });
-}
-
-template <typename TF3, typename TF>
 __global__ void calculate_cfl_v2(Variable<1, TF3> particle_v,
                                  Variable<1, TF3> particle_a,
                                  Variable<1, TF> particle_cfl_v2, TF dt,
@@ -2712,14 +2044,12 @@ __global__ void compute_pressure_accels(
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
       TF densityj = particle_density(p_j);
       TF densityj2 = densityj * densityj;
-      TF dpj =
-          (p_j < num_particles ? particle_pressure(p_j) : static_cast<TF>(0)) /
-          densityj2;
-      ai -= cn<TF>().particle_mass * (dpi + dpj) * grad_w;
+      TF dpj = particle_pressure(p_j) / densityj2;
+      ai -= cn<TF>().particle_mass * (dpi + dpj) *
+            displacement_cubic_kernel_grad(xixj);
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TQ boundary = particle_boundary(boundary_id, p_i);
@@ -2741,9 +2071,8 @@ template <U wrap, typename TF3, typename TF>
 __global__ void kinematic_integration(Variable<1, TF3> particle_x,
                                       Variable<1, TF3> particle_v,
                                       Variable<1, TF3> particle_pressure_accel,
-                                      TF dt, U num_particles, U offset) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+                                      TF dt, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 v = particle_v(p_i);
     v += particle_pressure_accel(p_i) * dt;
     if constexpr (wrap == 0)
@@ -2788,9 +2117,8 @@ __global__ void calculate_isph_diagonal_adv_density(
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
     Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
     Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
-    Variable<1, TF3> rigid_omega, TF dt, U num_particles, U offset) {
-  forThreadMappedToElement(num_particles, [&](U p_i0) {
-    U p_i = p_i0 + offset;
+    Variable<1, TF3> rigid_omega, TF dt, U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF density = particle_density(p_i);
@@ -2805,11 +2133,11 @@ __global__ void calculate_isph_diagonal_adv_density(
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
       TF densityj = particle_density(p_j);
+
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
-      density_adv += (p_j < num_particles ? dt * cn<TF>().particle_vol *
-                                                dot(v - particle_v(p_j), grad_w)
-                                          : 0);
+      density_adv +=
+          dt * cn<TF>().particle_vol * dot(v - particle_v(p_j), grad_w);
       diag += cn<TF>().particle_vol * (density + densityj) /
               (density * densityj) /
               (length_sqr(xixj) +
@@ -2836,16 +2164,12 @@ __global__ void calculate_isph_diagonal_adv_density(
 }
 
 template <typename TQ, typename TF3, typename TF2, typename TF>
-__global__ void isph_solve_iteration(Variable<1, TF3> particle_x,
-                                     Variable<1, TF> particle_density,
-                                     Variable<1, TF> particle_last_pressure,
-                                     Variable<1, TF> particle_pressure,
-                                     Variable<1, TF2> particle_diag_adv_density,
-                                     Variable<1, TF> particle_density_err,
-                                     Variable<2, TQ> particle_neighbors,
-                                     Variable<1, U> particle_num_neighbors,
-
-                                     TF dt, U num_particles) {
+__global__ void isph_solve_iteration(
+    Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
+    Variable<1, TF> particle_last_pressure, Variable<1, TF> particle_pressure,
+    Variable<1, TF2> particle_diag_adv_density,
+    Variable<1, TF> particle_density_err, Variable<2, TQ> particle_neighbors,
+    Variable<1, U> particle_num_neighbors, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF last_pressure = particle_last_pressure(p_i);
@@ -2865,15 +2189,15 @@ __global__ void isph_solve_iteration(Variable<1, TF3> particle_x,
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
+
       TF densityj = particle_density(p_j);
       TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
-      TF change = cn<TF>().particle_vol * (density + densityj) /
+      off_diag -= cn<TF>().particle_vol * (density + densityj) /
                   (density * densityj) /
                   (length_sqr(xixj) +
                    static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
                   dot(xixj, grad_w) * particle_last_pressure(p_j);
-      off_diag -= p_j < num_particles ? change : static_cast<TF>(0);
     }
     off_diag *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
@@ -3891,56 +3215,6 @@ class Runner {
   }
 
   template <U D, typename M>
-  static U partition_unequal(Variable<D, M>& var, M value, U num_elements,
-                             U offset = 0) {
-    thrust::device_ptr<M> first =
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset;
-    thrust::device_ptr<M> middle =
-        thrust::partition(first, first + num_elements, NotEqualTo<M>(value));
-    return static_cast<U>(middle - first);
-  }
-
-  template <U D, typename M>
-  static U partition_equal(Variable<D, M>& var, M value, U num_elements,
-                           U offset = 0) {
-    thrust::device_ptr<M> first =
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset;
-    thrust::device_ptr<M> middle =
-        thrust::partition(first, first + num_elements, EqualTo<M>(value));
-    return static_cast<U>(middle - first);
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static U partition_y_equal(Variable<D, M>& var, TPrimitive value,
-                             U num_elements, U offset = 0) {
-    thrust::device_ptr<M> first =
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset;
-    thrust::device_ptr<M> middle = thrust::partition(
-        first, first + num_elements, YEqualTo<M, TPrimitive>(value));
-    return static_cast<U>(middle - first);
-  }
-
-  template <U D, typename M>
-  static U partition_less(Variable<D, M>& var, M value, U num_elements,
-                          U offset = 0) {
-    thrust::device_ptr<M> first =
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset;
-    thrust::device_ptr<M> middle =
-        thrust::partition(first, first + num_elements, LessThan<M>(value));
-    return static_cast<U>(middle - first);
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static U partition_w_less(Variable<D, M>& var, TPrimitive value,
-                            U num_elements, U offset = 0) {
-    thrust::device_ptr<M> first =
-        thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset;
-    thrust::device_ptr<M> middle = thrust::partition(
-        first, first + num_elements, WLessThan<M, TPrimitive>(value));
-    return static_cast<U>(middle - first);
-  }
-
-  template <U D, typename M>
   static U count(Variable<D, M> var, M const& value, U num_elements,
                  U offset = 0) {
     return thrust::count(
@@ -4323,8 +3597,7 @@ class Runner {
       TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
       U num_nodes, TF sign, TF dt, Variable<1, TF3>& particle_x,
       Variable<2, TQ>& particle_boundary,
-      Variable<2, TQ>& particle_boundary_kernel, U num_particles,
-      U offset = 0) {
+      Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
@@ -4340,7 +3613,7 @@ class Runner {
                 volume_nodes, distance_nodes, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary", compute_particle_boundary<TQ, TF3, TF>);
     } else if (TBoxDistance const* distance =
@@ -4352,7 +3625,7 @@ class Runner {
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary_analytic(BoxDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
@@ -4365,7 +3638,7 @@ class Runner {
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary_analytic(SphereDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TSphereDistance>);
@@ -4378,7 +3651,7 @@ class Runner {
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary_analytic(CylinderDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF,
@@ -4393,7 +3666,7 @@ class Runner {
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary_analytic(InfiniteCylinderDistance)",
           compute_particle_boundary_analytic<1, TQ, TF3, TF,
@@ -4407,7 +3680,7 @@ class Runner {
                 volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
                 domain_min, domain_max, resolution, cell_size, num_nodes, sign,
                 dt, particle_x, particle_boundary, particle_boundary_kernel,
-                num_particles, offset);
+                num_particles);
           },
           "compute_particle_boundary_analytic(CapsuleDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TCapsuleDistance>);
@@ -4497,19 +3770,19 @@ class Runner {
           "compute_boundary_mask(CapsuleDistance)",
           compute_boundary_mask<TQ, TF3, TF, TCapsuleDistance>);
     } else {
-      std::cerr << "[compute_boundary_mask] Distance type not supported."
+      std::cerr << "[compute_particle_boundary] Distance type not supported."
                 << std::endl;
     }
   }
   void launch_update_particle_grid(Variable<1, TF3>& particle_x,
                                    Variable<4, TQ>& pid,
-                                   Variable<3, U>& pid_length, U num_particles,
-                                   U offset = 0) {
+                                   Variable<3, U>& pid_length,
+                                   U num_particles) {
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           update_particle_grid<<<grid_size, block_size>>>(
-              particle_x, pid, pid_length, num_particles, offset);
+              particle_x, pid, pid_length, num_particles);
         },
         "update_particle_grid", update_particle_grid<TQ, TF3>);
   }
@@ -4519,13 +3792,13 @@ class Runner {
                                  Variable<3, U>& pid_length,
                                  Variable<2, TQ>& sample_neighbors,
                                  Variable<1, U>& sample_num_neighbors,
-                                 U num_samples, U offset = 0) {
+                                 U num_samples) {
     launch(
         num_samples,
         [&](U grid_size, U block_size) {
           make_neighbor_list<wrap><<<grid_size, block_size>>>(
               sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
-              num_samples, offset);
+              num_samples);
         },
         "make_neighbor_list", make_neighbor_list<wrap, TQ, TF3>);
   }
@@ -4534,14 +3807,13 @@ class Runner {
                               Variable<1, U>& particle_num_neighbors,
                               Variable<1, TF>& particle_density,
                               Variable<2, TQ>& particle_boundary_kernel,
-                              U num_particles, U offset = 0) {
+                              U num_particles) {
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           compute_density<<<grid_size, block_size>>>(
               particle_x, particle_neighbors, particle_num_neighbors,
-              particle_density, particle_boundary_kernel, num_particles,
-              offset);
+              particle_density, particle_boundary_kernel, num_particles);
         },
         "compute_density", compute_density<TQ, TF3, TF>);
   }
