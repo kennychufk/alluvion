@@ -87,6 +87,26 @@ void declare_vector_operator(py::class_<TVector>& vector_class) {
   }
 }
 
+template <typename TVector2, typename TPrimitive>
+void declare_vector2(py::module& m, const char* name) {
+  py::class_<TVector2> vector_class =
+      py::class_<TVector2>(m, name)
+          .def(py::init<TPrimitive, TPrimitive>())
+          .def_static("from_scalar",
+                      [](const TPrimitive s) {
+                        return TVector2{s, s};
+                      })
+          .def_readwrite("x", &TVector2::x)
+          .def_readwrite("y", &TVector2::y)
+          .def("__repr__", [](TVector2 const& v) {
+            std::stringstream stream;
+            stream << "(" << v.x << ", " << v.y << ", "
+                   << ")";
+            return stream.str();
+          });
+  declare_vector_operator<TVector2, TPrimitive>(vector_class);
+}
+
 template <typename TVector3, typename TPrimitive>
 void declare_vector3(py::module& m, const char* name) {
   py::class_<TVector3> vector_class =
@@ -976,6 +996,8 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_variable<1, float, bool>(m, store_class, &runner_float, nullptr,
                                    "1Dfloat");
+  declare_variable<1, float2, float>(m, store_class, &runner_float, nullptr,
+                                     "1Dfloat2");
   declare_variable<1, float3, float>(m, store_class, &runner_float, nullptr,
                                      "1Dfloat3");
   declare_variable<2, float, bool>(m, store_class, &runner_float, nullptr,
@@ -989,10 +1011,12 @@ PYBIND11_MODULE(_alluvion, m) {
 
   declare_variable<1, double, bool>(m, store_class, nullptr, &runner_double,
                                     "1Ddouble");
-  declare_variable<2, double, bool>(m, store_class, nullptr, &runner_double,
-                                    "2Ddouble");
+  declare_variable<1, double2, double>(m, store_class, nullptr, &runner_double,
+                                       "1Ddouble2");
   declare_variable<1, double3, double>(m, store_class, nullptr, &runner_double,
                                        "1Ddouble3");
+  declare_variable<2, double, bool>(m, store_class, nullptr, &runner_double,
+                                    "2Ddouble");
   declare_variable<2, double3, double>(m, store_class, nullptr, &runner_double,
                                        "2Ddouble3");
   declare_variable<2, double4, double>(m, store_class, nullptr, &runner_double,
@@ -1019,6 +1043,9 @@ PYBIND11_MODULE(_alluvion, m) {
       .value("i32", NumericType::i32)
       .value("u32", NumericType::u32)
       .value("undefined", NumericType::undefined);
+
+  declare_vector2<float2, float>(m, "float2");
+  declare_vector2<double2, double>(m, "double2");
 
   declare_vector3<float3, float>(m, "float3");
   declare_vector3<double3, double>(m, "double3");
