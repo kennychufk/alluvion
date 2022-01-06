@@ -1787,45 +1787,6 @@ __global__ void integrate_angular_acceleration(
   });
 }
 template <typename TQ, typename TF3, typename TF>
-__global__ void compute_gradient_correction(
-    Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
-    Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<1, TF3> particle_corr0, Variable<1, TF3> particle_corr1,
-    Variable<1, TF3> particle_corr2, Variable<2, TQ> particle_boundary,
-    U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF3 a0{0};
-    TF3 a1{0};
-    TF3 a2{0};
-    TF3 x_i = particle_x(p_i);
-    TF boundary_vol_sum = 0;
-    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 gradvol = cn<TF>().particle_mass / particle_density(p_j) *
-                    displacement_cubic_kernel_grad(xixj);
-      a0 -= gradvol.x * xixj;
-      a1 -= gradvol.y * xixj;
-      a2 -= gradvol.z * xixj;
-    }
-    for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
-      TQ const& boundary = particle_boundary(boundary_id, p_i);
-      boundary_vol_sum += fabs(boundary.w);
-    }
-    TF a_det = det(a0, a1, a2);
-    if (fabs(a_det) < cn<TF>().det_threshold) {
-      a0 = TF3{1, 0, 0};
-      a1 = TF3{0, 1, 0};
-      a2 = TF3{0, 0, 1};
-    }
-    particle_corr0(p_i) = a0;
-    particle_corr1(p_i) = a1;
-    particle_corr2(p_i) = a2;
-  });
-}
-template <typename TQ, typename TF3, typename TF>
 __global__ void compute_normal(Variable<1, TF3> particle_x,
                                Variable<1, TF> particle_density,
                                Variable<1, TF3> particle_normal,
@@ -2066,19 +2027,14 @@ __global__ void compute_pressure_accels(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_density,
     Variable<1, TF> particle_pressure, Variable<1, TF3> particle_pressure_accel,
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<1, TF3> particle_corr0, Variable<1, TF3> particle_corr1,
-    Variable<1, TF3> particle_corr2, Variable<2, TF3> particle_force,
-    Variable<2, TF3> particle_torque, Variable<2, TQ> particle_boundary,
-    Variable<2, TQ> particle_boundary_kernel, Variable<1, TF3> rigid_x,
-    U num_particles) {
+    Variable<2, TF3> particle_force, Variable<2, TF3> particle_torque,
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    Variable<1, TF3> rigid_x, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i);
     TF density2 = density * density;
     TF dpi = particle_pressure(p_i) / density2;
-    TF3 ai0 = particle_corr0(p_i);
-    TF3 ai1 = particle_corr1(p_i);
-    TF3 ai2 = particle_corr2(p_i);
 
     // target
     TF3 ai{0};
@@ -2088,21 +2044,12 @@ __global__ void compute_pressure_accels(
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF3 aj0 = particle_corr0(p_j);
-      TF3 aj1 = particle_corr1(p_j);
-      TF3 aj2 = particle_corr2(p_j);
-      TF3 a0 = 0.5 * (ai0 + aj0);
-      TF3 a1 = 0.5 * (ai1 + aj1);
-      TF3 a2 = 0.5 * (ai2 + aj2);
-      TF3 b0, b1, b2;
-      inv(a0, a1, a2, det(a0, a1, a2), b0, b1, b2);
-
-      TF3 grad_w = matmul(b0, b1, b2, displacement_cubic_kernel_grad(xixj));
 
       TF densityj = particle_density(p_j);
       TF densityj2 = densityj * densityj;
       TF dpj = particle_pressure(p_j) / densityj2;
-      ai -= cn<TF>().particle_mass * (dpi + dpj) * grad_w;
+      ai -= cn<TF>().particle_mass * (dpi + dpj) *
+            displacement_cubic_kernel_grad(xixj);
     }
     for (U boundary_id = 0; boundary_id < cni.num_boundaries; ++boundary_id) {
       TQ boundary = particle_boundary(boundary_id, p_i);
@@ -2168,18 +2115,13 @@ __global__ void calculate_isph_diagonal_adv_density(
     Variable<1, TF> particle_density,
     Variable<1, TF2> particle_diag_adv_density,
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    Variable<1, TF3> particle_corr0, Variable<1, TF3> particle_corr1,
-    Variable<1, TF3> particle_corr2, Variable<2, TQ> particle_boundary,
-    Variable<2, TQ> particle_boundary_kernel, Variable<1, TF3> rigid_x,
-    Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, TF dt,
-    U num_particles) {
+    Variable<2, TQ> particle_boundary, Variable<2, TQ> particle_boundary_kernel,
+    Variable<1, TF3> rigid_x, Variable<1, TF3> rigid_v,
+    Variable<1, TF3> rigid_omega, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF3 v = particle_v(p_i);
     TF density = particle_density(p_i);
-    TF3 ai0 = particle_corr0(p_i);
-    TF3 ai1 = particle_corr1(p_i);
-    TF3 ai2 = particle_corr2(p_i);
 
     // target
     TF density_adv = density / cn<TF>().density0;
@@ -2191,16 +2133,8 @@ __global__ void calculate_isph_diagonal_adv_density(
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
       TF densityj = particle_density(p_j);
-      TF3 aj0 = particle_corr0(p_j);
-      TF3 aj1 = particle_corr1(p_j);
-      TF3 aj2 = particle_corr2(p_j);
-      TF3 a0 = 0.5 * (ai0 + aj0);
-      TF3 a1 = 0.5 * (ai1 + aj1);
-      TF3 a2 = 0.5 * (ai2 + aj2);
-      TF3 b0, b1, b2;
-      inv(a0, a1, a2, det(a0, a1, a2), b0, b1, b2);
 
-      TF3 grad_w = matmul(b0, b1, b2, displacement_cubic_kernel_grad(xixj));
+      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
       density_adv +=
           dt * cn<TF>().particle_vol * dot(v - particle_v(p_j), grad_w);
@@ -2235,18 +2169,12 @@ __global__ void isph_solve_iteration(
     Variable<1, TF> particle_last_pressure, Variable<1, TF> particle_pressure,
     Variable<1, TF2> particle_diag_adv_density,
     Variable<1, TF> particle_density_err, Variable<2, TQ> particle_neighbors,
-    Variable<1, U> particle_num_neighbors, Variable<1, TF3> particle_corr0,
-    Variable<1, TF3> particle_corr1, Variable<1, TF3> particle_corr2,
-
-    TF dt, U num_particles) {
+    Variable<1, U> particle_num_neighbors, TF dt, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF last_pressure = particle_last_pressure(p_i);
     TF density = particle_density(p_i);
     TF2 diag_adv_density = particle_diag_adv_density(p_i);
-    TF3 ai0 = particle_corr0(p_i);
-    TF3 ai1 = particle_corr1(p_i);
-    TF3 ai2 = particle_corr2(p_i);
 
     TF b = 1 - diag_adv_density.y;
     TF dt2 = dt * dt;
@@ -2261,17 +2189,9 @@ __global__ void isph_solve_iteration(
       U p_j;
       TF3 xixj;
       extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
-      TF densityj = particle_density(p_j);
-      TF3 aj0 = particle_corr0(p_j);
-      TF3 aj1 = particle_corr1(p_j);
-      TF3 aj2 = particle_corr2(p_j);
-      TF3 a0 = 0.5 * (ai0 + aj0);
-      TF3 a1 = 0.5 * (ai1 + aj1);
-      TF3 a2 = 0.5 * (ai2 + aj2);
-      TF3 b0, b1, b2;
-      inv(a0, a1, a2, det(a0, a1, a2), b0, b1, b2);
 
-      TF3 grad_w = matmul(b0, b1, b2, displacement_cubic_kernel_grad(xixj));
+      TF densityj = particle_density(p_j);
+      TF3 grad_w = displacement_cubic_kernel_grad(xixj);
 
       off_diag -= cn<TF>().particle_vol * (density + densityj) /
                   (density * densityj) /

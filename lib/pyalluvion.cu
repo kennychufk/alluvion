@@ -539,7 +539,6 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("surface_tension_coeff", &TConst::surface_tension_coeff)
       .def_readwrite("surface_tension_boundary_coeff",
                      &TConst::surface_tension_boundary_coeff)
-      .def_readwrite("det_threshold", &TConst::det_threshold)
       .def_readwrite("gravity", &TConst::gravity)
       .def_readwrite("axial_gravity", &TConst::axial_gravity)
       .def_readwrite("radial_gravity", &TConst::radial_gravity)

@@ -30,9 +30,6 @@ struct SolverI : public Solver<TF> {
   using Base::particle_boundary;
   using Base::particle_boundary_kernel;
   using Base::particle_cfl_v2;
-  using Base::particle_corr0;
-  using Base::particle_corr1;
-  using Base::particle_corr2;
   using Base::particle_density;
   using Base::particle_force;
   using Base::particle_normal;
@@ -93,16 +90,6 @@ struct SolverI : public Solver<TF> {
     }
     compute_all_boundaries();
     Base::template update_particle_neighbors<wrap>();
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_gradient_correction<<<grid_size, block_size>>>(
-              *particle_x, *particle_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_corr0, *particle_corr1,
-              *particle_corr2, *particle_boundary, num_particles);
-        },
-        "compute_gradient_correction",
-        compute_gradient_correction<TQ, TF3, TF>);
     if (enable_surface_tension) {
       runner.launch(
           num_particles,
@@ -185,10 +172,9 @@ struct SolverI : public Solver<TF> {
           calculate_isph_diagonal_adv_density<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_density,
               *particle_diag_adv_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_corr0, *particle_corr1,
-              *particle_corr2, *particle_boundary, *particle_boundary_kernel,
-              *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-              num_particles);
+              *particle_num_neighbors, *particle_boundary,
+              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+              *pile.omega_device_, dt, num_particles);
         },
         "calculate_isph_diagonal_adv_density",
         calculate_isph_diagonal_adv_density<TQ, TF3, TF2, TF>);
@@ -204,8 +190,7 @@ struct SolverI : public Solver<TF> {
                 *particle_x, *particle_density, *particle_last_pressure,
                 *particle_pressure, *particle_diag_adv_density,
                 *particle_density_err, *particle_neighbors,
-                *particle_num_neighbors, *particle_corr0, *particle_corr1,
-                *particle_corr2, dt, num_particles);
+                *particle_num_neighbors, dt, num_particles);
           },
           "isph_solve_iteration", isph_solve_iteration<TQ, TF3, TF2, TF>);
       particle_last_pressure->set_from(*particle_pressure);
@@ -219,8 +204,7 @@ struct SolverI : public Solver<TF> {
           compute_pressure_accels<<<grid_size, block_size>>>(
               *particle_x, *particle_density, *particle_pressure,
               *particle_pressure_accel, *particle_neighbors,
-              *particle_num_neighbors, *particle_corr0, *particle_corr1,
-              *particle_corr2, *particle_force, *particle_torque,
+              *particle_num_neighbors, *particle_force, *particle_torque,
               *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
               num_particles);
         },

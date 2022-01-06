@@ -66,7 +66,6 @@ struct Const {
   TF viscosity_omega;
   TF surface_tension_coeff;
   TF surface_tension_boundary_coeff;
-  TF det_threshold;
 
   TF3 gravity;
   TF axial_gravity;
