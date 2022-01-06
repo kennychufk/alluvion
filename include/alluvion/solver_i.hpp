@@ -43,7 +43,7 @@ struct SolverI : public Solver<TF> {
   using Base::pid;
   using Base::pid_length;
   SolverI(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-          U max_num_particles_arg, U num_ushers,
+          U max_num_particles_arg, U num_ushers = 0,
           bool enable_surface_tension_arg = false,
           bool enable_vorticity_arg = false, bool graphical = false)
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,

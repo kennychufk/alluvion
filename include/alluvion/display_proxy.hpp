@@ -362,6 +362,7 @@ class DisplayProxy {
 
           glBindTexture(GL_TEXTURE_2D, buffer.color_tex_);
           glDrawArrays(GL_TRIANGLES, 0, 6);
+          glEnable(GL_DEPTH_TEST);
         }));
   }
   void resize(int width, int height) {
