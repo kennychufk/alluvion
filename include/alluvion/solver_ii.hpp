@@ -109,7 +109,8 @@ struct SolverIi : public Solver<TF> {
           compute_viscosity<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_density, *particle_neighbors,
               *particle_num_neighbors, *particle_a, *particle_force,
-              *particle_torque, *particle_boundary, *pile.x_device_,
+              *particle_torque, *particle_boundary,
+              *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
               *pile.v_device_, *pile.omega_device_, num_particles);
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
@@ -122,8 +123,8 @@ struct SolverIi : public Solver<TF> {
                 *particle_a, *particle_angular_acceleration,
                 *particle_neighbors, *particle_num_neighbors, *particle_force,
                 *particle_torque, *particle_boundary, *particle_boundary_kernel,
-                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-                num_particles);
+                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
+                *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
           "compute_micropolar_vorticity",
           compute_micropolar_vorticity<TQ, TF3, TF>);
@@ -169,8 +170,9 @@ struct SolverIi : public Solver<TF> {
               *particle_x, *particle_v, *particle_dii, *particle_adv_density,
               *particle_aii, *particle_density, *particle_neighbors,
               *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
+              *particle_boundary_kernel, *pile.volume_map_id_to_boundary_id_,
+              *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+              num_particles);
         },
         "predict_advection1", predict_advection1<TQ, TF3, TF>);
     mean_density_error = std::numeric_limits<TF>::max();
@@ -210,7 +212,8 @@ struct SolverIi : public Solver<TF> {
               *particle_x, *particle_density, *particle_pressure,
               *particle_pressure_accel, *particle_neighbors,
               *particle_num_neighbors, *particle_force, *particle_torque,
-              *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
+              *particle_boundary, *particle_boundary_kernel,
+              *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
               num_particles);
         },
         "compute_pressure_accels", compute_pressure_accels<TQ, TF3, TF>);

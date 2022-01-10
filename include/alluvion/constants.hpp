@@ -33,7 +33,7 @@ struct Consti {
   I3 grid_offset;
   U max_num_neighbors_per_particle;
 
-  U num_boundaries;
+  U num_volume_maps;
   U max_num_contacts;
 };
 
@@ -53,6 +53,7 @@ struct Const {
   TF adhesion_kernel_k;
   TF cohesion_kernel_k;
   TF cohesion_kernel_c;
+  TF hcp_radius;
 
   TF particle_radius;
   TF particle_vol;

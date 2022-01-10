@@ -69,7 +69,8 @@ class DisplayProxy {
   void add_particle_shading_program(Variable<1, TF3> const& x,
                                     Variable<1, TF> const& attr,
                                     GLuint colormap_tex, float particle_radius,
-                                    Solver<TF> const& solver) {
+                                    Solver<TF> const& solver,
+                                    bool include_boundary) {
 #include "alluvion/glsl/particle.frag"
 #include "alluvion/glsl/particle.vert"
     std::string vector3_str = "vec3";
@@ -130,8 +131,8 @@ class DisplayProxy {
          std::make_tuple(
              reinterpret_cast<GraphicalVariable<1, TF> const&>(attr).vbo_, 1,
              attribute_type, 0)},
-        [colormap_tex, particle_radius, &solver](ShadingProgram& program,
-                                                 Display& display) {
+        [colormap_tex, particle_radius, include_boundary, &solver](
+            ShadingProgram& program, Display& display) {
           glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
           glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                              glm::value_ptr(glm::mat4(1)));
@@ -195,7 +196,10 @@ class DisplayProxy {
           glUniform1f(program.get_uniform_location("material.shininess"), 5.0);
 
           glBindTexture(GL_TEXTURE_1D, colormap_tex);
-          glDrawArrays(GL_POINTS, 0, solver.num_particles);
+          glDrawArrays(
+              GL_POINTS, 0,
+              solver.num_particles +
+                  (include_boundary ? solver.pile.total_num_particles_ : 0));
         }));
   }
 

@@ -116,7 +116,7 @@ int main(void) {
   GLuint colormap_tex = display_proxy.create_colormap_viridis();
   display_proxy.add_particle_shading_program(
       *solver.particle_x, *particle_normalized_attr, colormap_tex,
-      solver.particle_radius, solver);
+      solver.particle_radius, solver, false);
 
   display_proxy.add_pile_shading_program(pile);
   display->run();
