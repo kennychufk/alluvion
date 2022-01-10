@@ -209,9 +209,7 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
               "set_from",
               py::overload_cast<VariableClass const&>(&VariableClass::set_from),
               py::arg("src"))
-          .def("set_zero", py::overload_cast<>(&VariableClass::set_zero))
-          .def("set_zero", py::overload_cast<U, U>(&VariableClass::set_zero),
-               py::arg("num_elements") = -1, py::arg("offset") = 0)
+          .def("set_zero", &VariableClass::set_zero)
           .def("set_same",
                py::overload_cast<int, U, U>(&VariableClass::set_same),
                py::arg("value"), py::arg("num_elements") = -1,
@@ -352,7 +350,6 @@ void declare_pile(py::module& m, const char* name) {
       .def_readonly("cell_size_list", &TPile::cell_size_list_)
       .def_readonly("sign_list", &TPile::sign_list_)
       .def_readonly("grid_size_list", &TPile::grid_size_list_)
-      .def_readonly("total_num_particles", &TPile::total_num_particles_)
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
@@ -373,33 +370,18 @@ void declare_pile(py::module& m, const char* name) {
             return result;
           })
       .def_property_readonly(
-          "particle_list",
-          [](TPile const& pile) {
-            std::vector<Variable<1, TF3> const*> result;
-            result.reserve(pile.particle_list_.size());
-            for (std::unique_ptr<Variable<1, TF3>> const& particles :
-                 pile.particle_list_) {
-              result.push_back(particles.get());
-            }
-            return result;
-          })
-      .def_property_readonly(
           "x_device", [](TPile const& pile) { return pile.x_device_.get(); })
       .def_property_readonly(
           "v_device", [](TPile const& pile) { return pile.v_device_.get(); })
       .def_property_readonly(
           "omega_device",
           [](TPile const& pile) { return pile.omega_device_.get(); })
-      .def_property_readonly("volume_map_id_to_boundary_id",
-                             [](TPile const& pile) {
-                               return pile.volume_map_id_to_boundary_id_.get();
-                             })
       .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
            py::arg("sign") = 1, py::arg("collision_mesh") = Mesh(),
            py::arg("mass") = 0, py::arg("restitution") = 1,
            py::arg("friction") = 0, py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
-           py::arg("display_mesh") = Mesh(), py::arg("use_particles") = false,
+           py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
            py::arg("volume_grid_filename") = nullptr)
       .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
@@ -408,9 +390,10 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("restitution") = 1, py::arg("friction") = 0,
            py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
-           py::arg("display_mesh") = Mesh(), py::arg("use_particles") = false,
+           py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
            py::arg("volume_grid_filename") = nullptr)
+      .def("build_grids", &TPile::build_grids)
       .def("build_grid", &TPile::build_grid)
       .def("compute_sort_fluid_block_internal_all",
            &TPile::compute_sort_fluid_block_internal_all,
@@ -579,8 +562,7 @@ void declare_const(py::module& m, const char* name) {
       .def_readwrite("gravity", &TConst::gravity)
       .def_readwrite("boundary_epsilon", &TConst::boundary_epsilon)
       .def_readwrite("dfsph_factor_epsilon", &TConst::dfsph_factor_epsilon)
-      .def_readwrite("contact_tolerance", &TConst::contact_tolerance)
-      .def_readwrite("hcp_radius", &TConst::hcp_radius);
+      .def_readwrite("contact_tolerance", &TConst::contact_tolerance);
 }
 
 template <typename TF>
@@ -1104,7 +1086,7 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_const<double>(m, "double");
 
   py::class_<ConstiN>(m, "ConstiN")
-      .def_readonly("num_volume_maps", &ConstiN::num_volume_maps)
+      .def_readonly("num_boundaries", &ConstiN::num_boundaries)
       .def_readonly("max_num_contacts", &ConstiN::max_num_contacts)
       .def_readwrite("max_num_particles_per_cell",
                      &ConstiN::max_num_particles_per_cell)

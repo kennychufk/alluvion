@@ -27,24 +27,19 @@ struct Solver {
         next_emission_t(-1),
         particle_x(
             graphical
-                ? store_arg.create_graphical<1, TF3>(
-                      {max_num_particles_arg + pile_arg.total_num_particles_})
-                : store_arg.create<1, TF3>(
-                      {max_num_particles_arg + pile_arg.total_num_particles_})),
-        particle_v(store_arg.create<1, TF3>(
-            {max_num_particles_arg + pile_arg.total_num_particles_})),
-        particle_a(store_arg.create<1, TF3>(
-            {max_num_particles_arg + pile_arg.total_num_particles_})),
-        particle_density(store_arg.create<1, TF>(
-            {max_num_particles_arg + pile_arg.total_num_particles_})),
-        particle_boundary(store_arg.create<2, TQ>(
-            {pile_arg.num_volume_maps_, max_num_particles_arg})),
-        particle_boundary_kernel(store_arg.create<2, TQ>(
-            {pile_arg.num_volume_maps_, max_num_particles_arg})),
-        particle_force(store_arg.create<2, TF3>(
-            {pile_arg.num_volume_maps_, max_num_particles_arg})),
-        particle_torque(store_arg.create<2, TF3>(
-            {pile_arg.num_volume_maps_, max_num_particles_arg})),
+                ? store_arg.create_graphical<1, TF3>({max_num_particles_arg})
+                : store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_v(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_a(store_arg.create<1, TF3>({max_num_particles_arg})),
+        particle_density(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_boundary(
+            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+        particle_boundary_kernel(
+            store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
+        particle_force(
+            store_arg.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
+        particle_torque(
+            store_arg.create<2, TF3>({pile.get_size(), max_num_particles_arg})),
         particle_cfl_v2(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_normal(enable_surface_tension_arg
                             ? store_arg.create<1, TF3>({max_num_particles_arg})
@@ -64,10 +59,9 @@ struct Solver {
                                            store_arg.get_cni().grid_res.y,
                                            store_arg.get_cni().grid_res.z})),
         particle_neighbors(store_arg.create<2, TQ>(
-            {max_num_particles_arg + pile_arg.total_num_particles_,
+            {max_num_particles_arg,
              store_arg.get_cni().max_num_neighbors_per_particle})),
-        particle_num_neighbors(store_arg.create<1, U>(
-            {max_num_particles_arg + pile_arg.total_num_particles_})),
+        particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {
     store.copy_cn<TF>();
@@ -149,18 +143,14 @@ struct Solver {
     pile.for_each_rigid(
         [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
             Variable<1, TF> const& distance_grid,
-            Variable<1, TF> const& volume_grid, I volume_map_id,
-            Variable<1, TF3> const& local_particle_x, U particle_offset,
-            TF3 const& rigid_x, TF3 const& rigid_v, TQ const& rigid_q,
-            TF3 const& rigid_omega, TF3 const& domain_min,
-            TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
-            U num_nodes, TF sign) {
-          if (volume_map_id < 0) return;
+            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
-              static_cast<U>(volume_map_id), domain_min, domain_max, resolution,
-              cell_size, sign, *particle_x, *particle_boundary,
-              *particle_boundary_kernel, num_particles);
+              boundary_id, domain_min, domain_max, resolution, cell_size, sign,
+              *particle_x, *particle_boundary, *particle_boundary_kernel,
+              num_particles);
         });
   }
   void sample_all_boundaries(Variable<1, TF3>& sample_x,
@@ -170,59 +160,28 @@ struct Solver {
     pile.for_each_rigid(
         [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
             Variable<1, TF> const& distance_grid,
-            Variable<1, TF> const& volume_grid, I volume_map_id,
-            Variable<1, TF3> const& local_particle_x, U particle_offset,
-            TF3 const& rigid_x, TF3 const& rigid_v, TQ const& rigid_q,
-            TF3 const& rigid_omega, TF3 const& domain_min,
-            TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
-            U num_nodes, TF sign) {
-          if (volume_map_id < 0) return;
+            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
+            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
-              static_cast<U>(volume_map_id), domain_min, domain_max, resolution,
-              cell_size, sign, sample_x, sample_boundary,
-              sample_boundary_kernel, num_samples);
-        });
-  }
-  void update_boundary_particles() {
-    pile.for_each_rigid(
-        [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
-            Variable<1, TF> const& distance_grid,
-            Variable<1, TF> const& volume_grid, I volume_map_id,
-            Variable<1, TF3> const& local_particle_x, U particle_offset,
-            TF3 const& rigid_x, TF3 const& rigid_v, TQ const& rigid_q,
-            TF3 const& rigid_omega, TF3 const& domain_min,
-            TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
-            U num_nodes, TF sign) {
-          U num_rigid_particles = local_particle_x.get_linear_shape();
-          runner.launch(
-              num_rigid_particles,
-              [&](U grid_size, U block_size) {
-                transform_boundary_particles<<<grid_size, block_size>>>(
-                    local_particle_x, *particle_x, *particle_v, rigid_x,
-                    rigid_v, rigid_q, rigid_omega, num_rigid_particles,
-                    num_particles + particle_offset);
-              },
-              "transform_boundary_particles",
-              transform_boundary_particles<TQ, TF3>);
+              boundary_id, domain_min, domain_max, resolution, cell_size, sign,
+              sample_x, sample_boundary, sample_boundary_kernel, num_samples);
         });
   }
   template <U wrap>
   void update_particle_neighbors() {
     pid_length->set_zero();
-    runner.launch_update_particle_grid(
-        *particle_x, *pid, *pid_length,
-        num_particles + pile.total_num_particles_);
+    runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                       num_particles);
 
     runner.template launch_make_neighbor_list<wrap>(
         *particle_x, *pid, *pid_length, *particle_neighbors,
-        *particle_num_neighbors, num_particles + pile.total_num_particles_);
+        *particle_num_neighbors, num_particles);
 
     runner.launch_compute_density(*particle_neighbors, *particle_num_neighbors,
                                   *particle_density, *particle_boundary_kernel,
                                   num_particles);
-    runner.launch_reset_density(*particle_density, pile.total_num_particles_,
-                                num_particles);
   }
   U max_num_particles;
   U num_particles;

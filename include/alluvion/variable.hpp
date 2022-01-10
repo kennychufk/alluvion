@@ -21,7 +21,7 @@ namespace alluvion {
 template <U D, typename M>
 class Variable {
  public:
-  Variable() : ptr_(nullptr), shape_({0}) {}
+  Variable() : ptr_(nullptr) {}
   Variable(const Variable& var) = default;
   Variable(std::array<U, D> const& shape) : ptr_(nullptr) {
     std::copy(std::begin(shape), std::end(shape), std::begin(shape_));
@@ -76,17 +76,6 @@ class Variable {
     set_from(src, src.get_linear_shape());
   }
   void set_zero() { Allocator::set(ptr_, get_num_bytes()); }
-  void set_zero(U num_elements, U offset = 0) {
-    U num_bytes = num_elements * sizeof(M);
-    if (num_bytes == 0) return;
-    U byte_offset = offset * sizeof(M);
-    if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
-                << " " << get_num_bytes() << std::endl;
-      abort();
-    }
-    Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes);
-  }
   void set_same(int value, U num_elements, U offset = 0) {
     U num_bytes = num_elements * sizeof(M);
     if (num_bytes == 0) return;

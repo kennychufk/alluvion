@@ -93,11 +93,6 @@ class Pile {
 
   std::vector<MeshBuffer> mesh_buffer_list_;
   std::vector<std::unique_ptr<Variable<1, TF3>>> collision_vertex_list_;
-  std::vector<std::unique_ptr<Variable<1, TF3>>> particle_list_;
-  std::vector<bool> is_particle_based_list_;
-  U num_volume_maps_;
-  U total_num_particles_;
-  std::unique_ptr<Variable<1, U>> volume_map_id_to_boundary_id_;
 
   std::unique_ptr<Variable<1, TF3>> x_device_;
   std::unique_ptr<Variable<1, TF3>> v_device_;
@@ -115,8 +110,6 @@ class Pile {
   Pile(Store& store, TRunner& runner, U max_num_contacts)
       : store_(store),
         runner_(runner),
-        num_volume_maps_(0),
-        total_num_particles_(0),
         x_(store.create_pinned<1, TF3>({0})),
         q_(store.create_pinned<1, TQ>({0})),
         v_(store.create_pinned<1, TF3>({0})),
@@ -124,7 +117,6 @@ class Pile {
         x_device_(store.create<1, TF3>({0})),
         v_device_(store.create<1, TF3>({0})),
         omega_device_(store.create<1, TF3>({0})),
-        volume_map_id_to_boundary_id_(store.create<1, U>({0})),
         contacts_(store.create<1, TContact>({max_num_contacts})),
         num_contacts_(store.create<1, U>({1})),
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
@@ -139,7 +131,6 @@ class Pile {
       store_.remove(*distance_grids_[i]);
       store_.remove(*volume_grids_[i]);
       store_.remove(*collision_vertex_list_[i]);
-      store_.remove(*particle_list_[i]);
     }
     // PinnedVariable
     store_.remove(x_);
@@ -154,14 +145,11 @@ class Pile {
     store_.remove(*omega_device_);
     store_.remove(*contacts_);
     store_.remove(*num_contacts_);
-    store_.remove(*volume_map_id_to_boundary_id_);
   }
-  // TODO: bool for volume map / particles
   U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
         Mesh const& collision_mesh, TF mass, TF restitution, TF friction,
         TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-        Mesh const& display_mesh, bool use_particles = false,
-        const char* distance_grid_filename = nullptr,
+        Mesh const& display_mesh, const char* distance_grid_filename = nullptr,
         const char* volume_grid_filename = nullptr) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
@@ -177,13 +165,10 @@ class Pile {
 
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
-    num_volume_maps_ += static_cast<U>(!use_particles);
-    is_particle_based_list_.push_back(use_particles);
 
     // placeholders
     distance_grids_.emplace_back(store_.create<1, TF>({0}));
     volume_grids_.emplace_back(store_.create<1, TF>({0}));
-    particle_list_.emplace_back(store_.create<1, TF3>({0}));
     domain_min_list_.push_back(TF3{0, 0, 0});
     domain_max_list_.push_back(TF3{0, 0, 0});
     grid_size_list_.push_back(0);
@@ -201,7 +186,6 @@ class Pile {
     cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
     reallocate_kinematics_on_pinned();
-    reallocate_kinematics_on_device();
     U boundary_id = get_size() - 1;
     v_(boundary_id) = TF3{0, 0, 0};
     x_(boundary_id) = x;
@@ -215,7 +199,6 @@ class Pile {
                TF sign, Mesh const& collision_mesh, TF mass, TF restitution,
                TF friction, TF3 const& inertia_tensor, TF3 const& x,
                TQ const& q, Mesh const& display_mesh,
-               bool use_particles = false,
                const char* distance_grid_filename = nullptr,
                const char* volume_grid_filename = nullptr) {
     mass_[i] = mass;
@@ -231,17 +214,12 @@ class Pile {
 
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;
-    num_volume_maps_ -= static_cast<U>(!is_particle_based_list_[i]);
-    num_volume_maps_ += static_cast<U>(!use_particles);
-    is_particle_based_list_[i] = use_particles;
 
     // placeholders
     store_.remove(*distance_grids_[i]);
     distance_grids_[i].reset(store_.create<1, TF>({0}));
     store_.remove(*volume_grids_[i]);
     volume_grids_[i].reset(store_.create<1, TF>({0}));
-    store_.remove(*particle_list_[i]);
-    particle_list_[i].reset(store_.create<1, TF3>({0}));
     domain_min_list_[i] = TF3{0, 0, 0};
     domain_max_list_[i] = TF3{0, 0, 0};
     grid_size_list_[i] = 0;
@@ -260,8 +238,6 @@ class Pile {
     collision_vertex_list_[i].reset(collision_vertices_var);
     cast_vertices(*collision_vertices_var, collision_mesh.vertices);
 
-    reallocate_kinematics_on_pinned();
-    reallocate_kinematics_on_device();
     v_(i) = TF3{0, 0, 0};
     x_(i) = x;
     q_(i) = q;
@@ -271,20 +247,13 @@ class Pile {
   }
   void build_grid(U i, const char* distance_grid_filename = nullptr,
                   const char* volume_grid_filename = nullptr) {
-    using TMeshDistance = dg::MeshDistance<TF3, TF>;
-    using TBoxDistance = dg::BoxDistance<TF3, TF>;
-    using TSphereDistance = dg::SphereDistance<TF3, TF>;
-    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
-    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
-    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
-    bool const& is_particle_based = is_particle_based_list_[i];
     U& num_nodes = grid_size_list_[i];
     TF3& cell_size = cell_size_list_[i];
     TF3& domain_min = domain_min_list_[i];
     TF3& domain_max = domain_max_list_[i];
     TF& sign = sign_list_[i];
-    TF margin = sign < 0 ? store_.get_cn<TF>().kernel_radius * 4
-                         : store_.get_cn<TF>().kernel_radius * 4;
+    TF margin = sign < 0 ? store_.get_cn<TF>().kernel_radius
+                         : store_.get_cn<TF>().kernel_radius * 2;
 
     dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
     calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
@@ -294,147 +263,106 @@ class Pile {
       Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
       distance_grids_[i].reset(distance_grid);
       distance_grid->read_file(distance_grid_filename);
-    } else if (TMeshDistance const* distance =
-                   dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
-      store_.remove(*distance_grids_[i]);
-      Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
-      distance_grids_[i].reset(distance_grid);
-      std::vector<TF> nodes_host =
-          construct_distance_grid(virtual_dist, resolution_list_[i], margin,
-                                  sign_list_[i], domain_min, domain_max);
-      distance_grid->set_bytes(nodes_host.data());
     }
 
     store_.remove(*volume_grids_[i]);
-    std::cout << i << " num_nodes = " << num_nodes << std::endl;
-    volume_grids_[i].reset(is_particle_based
-                               ? new Variable<1, TF>()
-                               : store_.create<1, TF>({num_nodes}));
-    Variable<1, TF>* volume_grid = volume_grids_[i].get();
-    if (not is_particle_based) {
-      // DEBUG
-      std::cout << "udpate_volume_map" << std::endl;
-      if (volume_grid_filename != nullptr) {
-        volume_grid->read_file(volume_grid_filename);
-      } else {
-        volume_grid->set_zero();
-        if (TMeshDistance const* distance =
-                dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance_grids_[i], domain_min, domain_max,
-                    resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field", update_volume_field<TF3, TF>);
-        } else if (TBoxDistance const* distance =
-                       dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance, domain_min, resolution_list_[i],
-                    cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field(BoxDistance)",
-              update_volume_field<TF3, TF, TBoxDistance>);
-        } else if (TSphereDistance const* distance =
-                       dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance, domain_min, resolution_list_[i],
-                    cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field(SphereDistance)",
-              update_volume_field<TF3, TF, TSphereDistance>);
-        } else if (TCylinderDistance const* distance =
-                       dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance, domain_min, resolution_list_[i],
-                    cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field(CylinderDistance)",
-              update_volume_field<TF3, TF, TCylinderDistance>);
-        } else if (TInfiniteCylinderDistance const* distance =
-                       dynamic_cast<TInfiniteCylinderDistance const*>(
-                           &virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance, domain_min, resolution_list_[i],
-                    cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field(InfiniteCylinderDistance)",
-              update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
-        } else if (TCapsuleDistance const* distance =
-                       dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
-          runner_.launch(
-              num_nodes,
-              [&](U grid_size, U block_size) {
-                update_volume_field<<<grid_size, block_size>>>(
-                    *volume_grid, *distance, domain_min, resolution_list_[i],
-                    cell_size, num_nodes, sign_list_[i]);
-              },
-              "update_volume_field(CapsuleDistance)",
-              update_volume_field<TF3, TF, TCapsuleDistance>);
-        } else {
-          std::cerr << "[update_volume_field] Distance type not supported."
-                    << std::endl;
-        }
-      }
+    Variable<1, TF>* volume_grid = store_.create<1, TF>({num_nodes});
+    volume_grids_[i].reset(volume_grid);
+    if (volume_grid_filename != nullptr) {
+      volume_grid->read_file(volume_grid_filename);
+      return;
     }
-
-    total_num_particles_ -= particle_list_[i]->get_linear_shape();
-    store_.remove(*particle_list_[i]);
-    U num_particles = 0;
-    Variable<1, TF3>* local_particle_x = new Variable<1, TF3>();
-    if (is_particle_based) {
-      U3 hcp_grid_res;
-      I3 hcp_grid_offset;
-      get_hcp_grid_attr(domain_min, domain_max, store_.get_cn<TF>().hcp_radius,
-                        hcp_grid_res, hcp_grid_offset);
-      U num_cells = hcp_grid_res.x * hcp_grid_res.y * hcp_grid_res.z;
-      Variable<3, U>* mask =
-          store_.create<3, U>({hcp_grid_res.x, hcp_grid_res.y, hcp_grid_res.z});
-      if (TBoxDistance const* distance =
-              dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
-        runner_.launch(
-            num_cells,
-            [&](U grid_size, U block_size) {
-              mask_boundary_on_hcp_grid<<<grid_size, block_size>>>(
-                  *distance, sign_list_[i], hcp_grid_offset, *mask,
-                  hcp_grid_res);
-            },
-            "mask_boundary_on_hcp_grid(BoxDistance)",
-            mask_boundary_on_hcp_grid<TF, TBoxDistance>);
+    volume_grid->set_zero();
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      if (distance_grid_filename == nullptr) {
+        store_.remove(*distance_grids_[i]);
+        Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
+        distance_grids_[i].reset(distance_grid);
+        std::vector<TF> nodes_host =
+            construct_distance_grid(virtual_dist, resolution_list_[i], margin,
+                                    sign_list_[i], domain_min, domain_max);
+        distance_grid->set_bytes(nodes_host.data());
       }
-      // TODO: other shapes
-
-      num_particles =
-          runner_.partition_less(*mask, kFMax<U>, mask->get_linear_shape());
-      local_particle_x = store_.create<1, TF3>({num_particles});
-
       runner_.launch(
-          num_particles,
+          num_nodes,
           [&](U grid_size, U block_size) {
-            generate_particles_from_hcp_ipos<<<grid_size, block_size>>>(
-                hcp_grid_offset, hcp_grid_res, *mask, *local_particle_x,
-                num_particles);
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance_grids_[i], domain_min, domain_max,
+                resolution_list_[i], cell_size, num_nodes, sign_list_[i]);
           },
-          "generate_particles_from_hcp_ipos",
-          generate_particles_from_hcp_ipos<TF3>);
-      store_.remove(*mask);
+          "update_volume_field", update_volume_field<TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(BoxDistance)",
+          update_volume_field<TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(SphereDistance)",
+          update_volume_field<TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(CylinderDistance)",
+          update_volume_field<TF3, TF, TCylinderDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(InfiniteCylinderDistance)",
+          update_volume_field<TF3, TF, TInfiniteCylinderDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      runner_.launch(
+          num_nodes,
+          [&](U grid_size, U block_size) {
+            update_volume_field<<<grid_size, block_size>>>(
+                *volume_grid, *distance, domain_min, resolution_list_[i],
+                cell_size, num_nodes, sign_list_[i]);
+          },
+          "update_volume_field(CapsuleDistance)",
+          update_volume_field<TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[update_volume_field] Distance type not supported."
+                << std::endl;
     }
-    particle_list_[i].reset(local_particle_x);
-    std::cout << "num particles" << num_particles << std::endl;
-    total_num_particles_ += num_particles;
+  }
+  void build_grids() {
+    for (U i = 0; i < get_size(); ++i) {
+      build_grid(i);
+    }
   }
   void compute_fluid_block_internal(U i, Variable<1, U>& internal_encoded,
                                     TF3 const& box_min, TF3 const& box_max,
@@ -465,24 +393,11 @@ class Pile {
     store_.remove(*x_device_);
     store_.remove(*v_device_);
     store_.remove(*omega_device_);
-    store_.remove(*volume_map_id_to_boundary_id_);
     x_device_.reset(store_.create<1, TF3>({get_size()}));
     v_device_.reset(store_.create<1, TF3>({get_size()}));
     omega_device_.reset(store_.create<1, TF3>({get_size()}));
-    volume_map_id_to_boundary_id_.reset(
-        store_.create<1, U>({num_volume_maps_}));
 
-    std::vector<U> volume_map_id_to_boundary_id_host(num_volume_maps_);
-    U volume_map_id = 0;
-    for (U boundary_id = 0; boundary_id < get_size(); ++boundary_id) {
-      if (not is_particle_based_list_[boundary_id]) {
-        volume_map_id_to_boundary_id_host[volume_map_id] = boundary_id;
-        ++volume_map_id;
-      }
-    }
-    volume_map_id_to_boundary_id_->set_bytes(
-        volume_map_id_to_boundary_id_host.data());
-    store_.get_cni().num_volume_maps = num_volume_maps_;
+    store_.get_cni().num_boundaries = get_size();
   }
   void reallocate_kinematics_on_pinned() {
     PinnedVariable<1, TF3> x_new = store_.create_pinned<1, TF3>({get_size()});
@@ -756,27 +671,14 @@ class Pile {
 
   template <class Lambda>
   void for_rigid(U i, Lambda f) {
-    f(i, *distance_list_[i], *distance_grids_[i], x_(i), v_(i), q_(i),
-      omega_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
-      cell_size_list_[i], grid_size_list_[i], sign_list_[i]);
-  }
-
-  template <class Lambda>
-  void for_rigid(U i, I volume_map_id, U particle_offset, Lambda f) {
-    f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i],
-      volume_map_id, *particle_list_[i], particle_offset, x_(i), v_(i), q_(i),
-      omega_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
+    f(i, *distance_list_[i], *distance_grids_[i], *volume_grids_[i], x_(i),
+      q_(i), domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
       cell_size_list_[i], grid_size_list_[i], sign_list_[i]);
   }
   template <class Lambda>
   void for_each_rigid(Lambda f) {
-    U particle_offset = 0;
-    I volume_map_id = 0;
     for (U i = 0; i < get_size(); ++i) {
-      bool const& is_particle_based = is_particle_based_list_[i];
-      for_rigid(i, is_particle_based ? -1 : volume_map_id, particle_offset, f);
-      volume_map_id += static_cast<I>(not is_particle_based);
-      particle_offset += particle_list_[i]->get_linear_shape();
+      for_rigid(i, f);
     }
   }
 
@@ -784,9 +686,9 @@ class Pile {
                     Variable<1, TF3> const& sample_x, Variable<1, U>& mask,
                     U num_samples) {
     for_rigid(i, [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
-                     Variable<1, TF> const& distance_grid, TF3 const& rigid_x,
-                     TF3 const& rigid_v, TQ const& rigid_q,
-                     TF3 const& rigid_omega, TF3 const& domain_min,
+                     Variable<1, TF> const& distance_grid,
+                     Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+                     TQ const& rigid_q, TF3 const& domain_min,
                      TF3 const& domain_max, U3 const& resolution,
                      TF3 const& cell_size, U num_nodes, TF sign) {
       runner_.launch_compute_boundary_mask(

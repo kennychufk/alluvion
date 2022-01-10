@@ -92,8 +92,7 @@ struct SolverDf : public Solver<TF> {
             warm_start_divergence_solve_0<<<grid_size, block_size>>>(
                 *particle_x, *particle_v, *particle_kappa_v,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary, *particle_boundary_kernel,
-                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
                 *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
           "warm_start_divergence_solve_0",
@@ -105,9 +104,8 @@ struct SolverDf : public Solver<TF> {
                 *particle_x, *particle_v, *particle_kappa_v,
                 *particle_neighbors, *particle_num_neighbors,
                 *particle_boundary, *particle_boundary_kernel, *particle_force,
-                *particle_torque, *pile.volume_map_id_to_boundary_id_,
-                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-                num_particles);
+                *particle_torque, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
           },
           "warm_start_divergence_solve_1",
           warm_start_divergence_solve_1<TQ, TF3, TF>);
@@ -119,9 +117,8 @@ struct SolverDf : public Solver<TF> {
                 *particle_x, *particle_v, *particle_dfsph_factor,
                 *particle_density_adv, *particle_neighbors,
                 *particle_num_neighbors, *particle_boundary,
-                *particle_boundary_kernel, *pile.volume_map_id_to_boundary_id_,
-                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
-                num_particles);
+                *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
           },
           "compute_velocity_of_density_change",
           compute_velocity_of_density_change<TQ, TF3, TF>);
@@ -139,8 +136,8 @@ struct SolverDf : public Solver<TF> {
                   *particle_density_adv, *particle_kappa_v, *particle_neighbors,
                   *particle_num_neighbors, *particle_boundary,
                   *particle_boundary_kernel, *particle_force, *particle_torque,
-                  *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                  *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
             },
             "divergence_solve_iteration",
             divergence_solve_iteration<TQ, TF3, TF>);
@@ -152,8 +149,8 @@ struct SolverDf : public Solver<TF> {
                   *particle_x, *particle_v, *particle_density_adv,
                   *particle_neighbors, *particle_num_neighbors,
                   *particle_boundary, *particle_boundary_kernel,
-                  *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                  *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
             },
             "compute_divergence_solve_density_error",
             compute_divergence_solve_density_error<TQ, TF3, TF>);
@@ -204,8 +201,7 @@ struct SolverDf : public Solver<TF> {
           compute_viscosity<<<grid_size, block_size>>>(
               *particle_x, *particle_v, *particle_density, *particle_neighbors,
               *particle_num_neighbors, *particle_a, *particle_force,
-              *particle_torque, *particle_boundary,
-              *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
+              *particle_torque, *particle_boundary, *pile.x_device_,
               *pile.v_device_, *pile.omega_device_, num_particles);
         },
         "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
@@ -219,8 +215,8 @@ struct SolverDf : public Solver<TF> {
                 *particle_a, *particle_angular_acceleration,
                 *particle_neighbors, *particle_num_neighbors, *particle_force,
                 *particle_torque, *particle_boundary, *particle_boundary_kernel,
-                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                num_particles);
           },
           "compute_micropolar_vorticity",
           compute_micropolar_vorticity<TQ, TF3, TF>);
@@ -264,8 +260,7 @@ struct SolverDf : public Solver<TF> {
             warm_start_pressure_solve0<<<grid_size, block_size>>>(
                 *particle_x, *particle_v, *particle_density, *particle_kappa,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary, *particle_boundary_kernel,
-                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
                 *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
           "warm_start_pressure_solve0",
@@ -277,8 +272,8 @@ struct SolverDf : public Solver<TF> {
                 *particle_x, *particle_v, *particle_kappa, *particle_neighbors,
                 *particle_num_neighbors, *particle_boundary,
                 *particle_boundary_kernel, *particle_force, *particle_torque,
-                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                num_particles);
           },
           "warm_start_pressure_solve1",
           warm_start_pressure_solve1<TQ, TF3, TF>);
@@ -289,8 +284,7 @@ struct SolverDf : public Solver<TF> {
                 *particle_x, *particle_v, *particle_density,
                 *particle_dfsph_factor, *particle_density_adv,
                 *particle_neighbors, *particle_num_neighbors,
-                *particle_boundary, *particle_boundary_kernel,
-                *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
                 *pile.v_device_, *pile.omega_device_, dt, num_particles);
           },
           "compute_rho_adv", compute_rho_adv<TQ, TF3, TF>);
@@ -307,8 +301,8 @@ struct SolverDf : public Solver<TF> {
                   *particle_density_adv, *particle_kappa, *particle_neighbors,
                   *particle_num_neighbors, *particle_boundary,
                   *particle_boundary_kernel, *particle_force, *particle_torque,
-                  *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                  *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                  *pile.x_device_, *pile.v_device_, *pile.omega_device_, dt,
+                  num_particles);
             },
             "pressure_solve_iteration", pressure_solve_iteration<TQ, TF3, TF>);
         runner.launch(
@@ -318,9 +312,8 @@ struct SolverDf : public Solver<TF> {
                   *particle_x, *particle_v, *particle_density,
                   *particle_density_adv, *particle_neighbors,
                   *particle_num_neighbors, *particle_boundary,
-                  *particle_boundary_kernel,
-                  *pile.volume_map_id_to_boundary_id_, *pile.x_device_,
-                  *pile.v_device_, *pile.omega_device_, dt, num_particles);
+                  *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+                  *pile.omega_device_, dt, num_particles);
             },
             "compute_pressure_solve_density_error",
             compute_pressure_solve_density_error<TQ, TF3, TF>);
