@@ -2099,9 +2099,10 @@ __global__ void isph_solve_iteration(
     }
     off_diag *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
-      pressure = max((1 - jacobi_weight) * last_pressure +
-                         jacobi_weight / denom * (b - dt2 * off_diag),
-                     static_cast<TF>(0));
+      pressure =
+          max((1 - jacobi_weight) * last_pressure +
+                  jacobi_weight * (b / denom - off_diag / diag_adv_density.x),
+              static_cast<TF>(0));
     }
     particle_density_err(p_i) =
         pressure == 0 ? 0 : (denom * pressure + off_diag * dt2 - b);
