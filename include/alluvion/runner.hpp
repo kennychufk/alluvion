@@ -336,8 +336,7 @@ inline __device__ TF3 displacement_cubic_kernel_grad(TF3 d) {
 
 template <typename TF>
 constexpr __device__ TF dist_gaussian_kernel(TF r, TF h) {
-  return static_cast<TF>(0.179587122125166561689081983628) *
-         exp(-r * r / (h * h));
+  return exp(-r * r / (h * h));
 }
 
 template <typename TF>
@@ -2761,12 +2760,12 @@ __global__ void drive_n_ellipse(
     const TF3 v_i = particle_v(p_i);
     TF3 da{0};
     for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
-      TF3 fx0 = focal_x(0, usher_id);
-      TF3 fx1 = focal_x(1, usher_id);
-      TF3 fx2 = focal_x(2, usher_id);
-      TF3 fv0 = focal_v(0, usher_id);
-      TF3 fv1 = focal_v(1, usher_id);
-      TF3 fv2 = focal_v(2, usher_id);
+      TF3 fx0 = focal_x(usher_id, 0);
+      TF3 fx1 = focal_x(usher_id, 1);
+      TF3 fx2 = focal_x(usher_id, 2);
+      TF3 fv0 = focal_v(usher_id, 0);
+      TF3 fv1 = focal_v(usher_id, 1);
+      TF3 fv2 = focal_v(usher_id, 2);
       TF d0 = length(x_i - fx0);
       TF d1 = length(x_i - fx1);
       TF d2 = length(x_i - fx2);

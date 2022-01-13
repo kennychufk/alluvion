@@ -28,8 +28,8 @@ struct Usher {
   Usher(Store& store_arg, TPile& pile_arg, U num_ushers_arg)
       : store(store_arg),
         num_ushers(num_ushers_arg),
-        focal_x(store_arg.create<2, TF3>({3, num_ushers_arg})),
-        focal_v(store_arg.create<2, TF3>({3, num_ushers_arg})),
+        focal_x(store_arg.create<2, TF3>({num_ushers_arg, 3})),
+        focal_v(store_arg.create<2, TF3>({num_ushers_arg, 3})),
         focal_dist(store_arg.create<1, TF>({num_ushers_arg})),
         usher_kernel_radius(store_arg.create<1, TF>({num_ushers_arg})),
         drive_strength(store_arg.create<1, TF>({num_ushers_arg})) {}
