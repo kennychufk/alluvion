@@ -20,24 +20,26 @@ list(APPEND lib_alluvion_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/glad.c
 )
 
-add_library(lib_alluvion
-  ${lib_alluvion_SOURCES}
-)
+if (ALLUVION_BUILD_EXECUTABLES OR ALLUVION_BUILD_TESTS)
+  add_library(lib_alluvion
+    ${lib_alluvion_SOURCES}
+  )
 
-target_link_libraries(lib_alluvion
-  PRIVATE
-    glfw
-  PUBLIC
-    Eigen3::Eigen
-    OpenMP::OpenMP_CXX
-)
+  target_link_libraries(lib_alluvion
+    PRIVATE
+      glfw
+    PUBLIC
+      Eigen3::Eigen
+      OpenMP::OpenMP_CXX
+  )
 
 
-target_include_directories(lib_alluvion
-  PUBLIC
-    $<INSTALL_INTERFACE:include>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-)
+  target_include_directories(lib_alluvion
+    PUBLIC
+      $<INSTALL_INTERFACE:include>
+      $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+  )
+endif()
 
 # The reason for compiling all source files
 # https://forums.developer.nvidia.com/t/issue-with-cudamemcpytosymbol-and-separable-compilation/70850/11
