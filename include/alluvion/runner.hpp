@@ -1340,6 +1340,7 @@ template <typename TQ, typename TF3>
 __global__ void update_particle_grid(Variable<1, TF3> particle_x,
                                      Variable<4, TQ> pid,
                                      Variable<3, U> pid_length,
+                                     Variable<1, U> has_out_of_grid,
                                      U num_particles) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   forThreadMappedToElement(num_particles, [&](U p_i) {
@@ -1358,6 +1359,7 @@ __global__ void update_particle_grid(Variable<1, TF3> particle_x,
       reinterpret_cast<U&>(pid_entry.w) = p_i;
       pid(ipos, pid_insert_index) = pid_entry;
     } else {
+      has_out_of_grid(0) = 1;
       printf("Particle falls out of the grid\n");
     }
   });
@@ -3536,12 +3538,14 @@ class Runner {
   void launch_update_particle_grid(Variable<1, TF3>& particle_x,
                                    Variable<4, TQ>& pid,
                                    Variable<3, U>& pid_length,
+                                   Variable<1, U>& has_out_of_grid,
                                    U num_particles) {
+    has_out_of_grid.set_zero();
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           update_particle_grid<<<grid_size, block_size>>>(
-              particle_x, pid, pid_length, num_particles);
+              particle_x, pid, pid_length, has_out_of_grid, num_particles);
         },
         "update_particle_grid", update_particle_grid<TQ, TF3>);
   }

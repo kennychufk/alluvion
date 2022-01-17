@@ -62,6 +62,7 @@ struct Solver {
             {max_num_particles_arg,
              store_arg.get_cni().max_num_neighbors_per_particle})),
         particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
+        has_out_of_grid(store_arg.create<1, U>({1})),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {
     store.copy_cn<TF>();
@@ -173,7 +174,7 @@ struct Solver {
   void update_particle_neighbors() {
     pid_length->set_zero();
     runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
-                                       num_particles);
+                                       *has_out_of_grid, num_particles);
 
     runner.template launch_make_neighbor_list<wrap>(
         *particle_x, *pid, *pid_length, *particle_neighbors,
@@ -225,6 +226,7 @@ struct Solver {
   std::unique_ptr<Variable<3, U>> pid_length;
   std::unique_ptr<Variable<2, TQ>> particle_neighbors;
   std::unique_ptr<Variable<1, U>> particle_num_neighbors;
+  std::unique_ptr<Variable<1, U>> has_out_of_grid;
 };
 }  // namespace alluvion
 
