@@ -423,7 +423,8 @@ template <typename M, typename TPrimitive>
 struct SquaredDifferenceMasked {
   __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
     M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return length_sqr(diff) * thrust::get<2>(vvm);
+    return thrust::get<2>(vvm) == 1 ? length_sqr(diff)
+                                    : static_cast<TPrimitive>(0);
   }
 };
 
@@ -431,7 +432,7 @@ template <typename M, typename TPrimitive>
 struct NormDifferenceMasked {
   __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
     M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return length(diff) * thrust::get<2>(vvm);
+    return thrust::get<2>(vvm) == 1 ? length(diff) : static_cast<TPrimitive>(0);
   }
 };
 
@@ -439,7 +440,8 @@ template <typename M, typename TPrimitive>
 struct SquaredDifferenceYzMasked {
   __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
     M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return (diff.y * diff.y + diff.z * diff.z) * thrust::get<2>(vvm);
+    return thrust::get<2>(vvm) == 1 ? (diff.y * diff.y + diff.z * diff.z)
+                                    : static_cast<TPrimitive>(0);
   }
 };
 
