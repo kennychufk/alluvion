@@ -652,8 +652,8 @@ void declare_solver(py::module& m, const char* name) {
                                return solver.particle_num_neighbors.get();
                              })
       .def_property_readonly(
-          "has_out_of_grid",
-          [](TSolver const& solver) { return solver.has_out_of_grid.get(); })
+          "grid_anomaly",
+          [](TSolver const& solver) { return solver.grid_anomaly.get(); })
       .def_property_readonly("pile",
                              [](TSolver const& solver) { return &solver.pile; })
       .def("normalize",
