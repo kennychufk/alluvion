@@ -1340,7 +1340,7 @@ template <typename TQ, typename TF3>
 __global__ void update_particle_grid(Variable<1, TF3> particle_x,
                                      Variable<4, TQ> pid,
                                      Variable<3, U> pid_length,
-                                     Variable<1, U> has_out_of_grid,
+                                     Variable<1, U> grid_anomaly,
                                      U num_particles) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   forThreadMappedToElement(num_particles, [&](U p_i) {
@@ -1349,18 +1349,17 @@ __global__ void update_particle_grid(Variable<1, TF3> particle_x,
     U pid_insert_index;
     if (within_grid(ipos)) {
       pid_insert_index = atomicAdd(&pid_length(ipos), 1);
-      if (pid_insert_index == cni.max_num_particles_per_cell) {
-        printf("Too many particles at ipos = (%d, %d, %d)\n", ipos.x, ipos.y,
-               ipos.z);
-      }
       // NOTE: pack x_i and p_i together to avoid scatter-read from particle_x
       // in make_neighbor_list
       TQ pid_entry{x_i.x, x_i.y, x_i.z, 0};
       reinterpret_cast<U&>(pid_entry.w) = p_i;
-      pid(ipos, pid_insert_index) = pid_entry;
+      pid(ipos, min(cni.max_num_particles_per_cell - 1, pid_insert_index)) =
+          pid_entry;
+      if (pid_insert_index == cni.max_num_particles_per_cell) {
+        grid_anomaly(1) = 1;
+      }
     } else {
-      has_out_of_grid(0) = 1;
-      printf("Particle falls out of the grid\n");
+      grid_anomaly(0) = 1;
     }
   });
 }
@@ -1371,7 +1370,7 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
                                    Variable<3, U> pid_length,
                                    Variable<2, TQ> sample_neighbors,
                                    Variable<1, U> sample_num_neighbors,
-                                   U num_samples) {
+                                   Variable<1, U> grid_anomaly, U num_samples) {
   typedef std::conditional_t<std::is_same_v<TF3, float3>, float, double> TF;
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF3 x = sample_x(p_i);
@@ -1394,16 +1393,18 @@ __global__ void make_neighbor_list(Variable<1, TF3> sample_x,
           if (p_j != p_i && length_sqr(xixj) < cn<TF>().kernel_radius_sqr) {
             TQ neighbor_entry{xixj.x, xixj.y, xixj.z, 0};
             reinterpret_cast<U&>(neighbor_entry.w) = p_j;
-            sample_neighbors(p_i, num_neighbors) = neighbor_entry;
+            sample_neighbors(p_i, min(cni.max_num_neighbors_per_particle - 1,
+                                      num_neighbors)) = neighbor_entry;
             num_neighbors += 1;
-            if (num_neighbors == cni.max_num_neighbors_per_particle) {
-              printf("Particle %d has too many neighbors\n", p_i);
-            }
           }
         }
       }
     }
-    sample_num_neighbors(p_i) = num_neighbors;
+    sample_num_neighbors(p_i) =
+        min(cni.max_num_neighbors_per_particle, num_neighbors);
+    if (num_neighbors > cni.max_num_neighbors_per_particle) {
+      grid_anomaly(2) = 1;
+    }
   });
 }
 
@@ -3538,14 +3539,13 @@ class Runner {
   void launch_update_particle_grid(Variable<1, TF3>& particle_x,
                                    Variable<4, TQ>& pid,
                                    Variable<3, U>& pid_length,
-                                   Variable<1, U>& has_out_of_grid,
+                                   Variable<1, U>& grid_anomaly,
                                    U num_particles) {
-    has_out_of_grid.set_zero();
     launch(
         num_particles,
         [&](U grid_size, U block_size) {
           update_particle_grid<<<grid_size, block_size>>>(
-              particle_x, pid, pid_length, has_out_of_grid, num_particles);
+              particle_x, pid, pid_length, grid_anomaly, num_particles);
         },
         "update_particle_grid", update_particle_grid<TQ, TF3>);
   }
@@ -3555,13 +3555,13 @@ class Runner {
                                  Variable<3, U>& pid_length,
                                  Variable<2, TQ>& sample_neighbors,
                                  Variable<1, U>& sample_num_neighbors,
-                                 U num_samples) {
+                                 Variable<1, U>& grid_anomaly, U num_samples) {
     launch(
         num_samples,
         [&](U grid_size, U block_size) {
           make_neighbor_list<wrap><<<grid_size, block_size>>>(
               sample_x, pid, pid_length, sample_neighbors, sample_num_neighbors,
-              num_samples);
+              grid_anomaly, num_samples);
         },
         "make_neighbor_list", make_neighbor_list<wrap, TQ, TF3>);
   }
