@@ -274,6 +274,11 @@ void declare_metrics(py::module& m,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_mae_yz_masked",
+      &Runner<TPrimitive>::template calculate_mae_yz_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mean_squared",
       &Runner<TPrimitive>::template calculate_mean_squared<D, M, TPrimitive>,
       py::arg("var"), py::arg("n"), py::arg("offset") = 0);

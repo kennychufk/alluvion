@@ -446,6 +446,15 @@ struct SquaredDifferenceYzMasked {
 };
 
 template <typename M, typename TPrimitive>
+struct NormDifferenceYzMasked {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
+    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
+    return thrust::get<2>(vvm) == 1 ? sqrt(diff.y * diff.y + diff.z * diff.z)
+                                    : static_cast<TPrimitive>(0);
+  }
+};
+
+template <typename M, typename TPrimitive>
 struct SquaredNorm {
   __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
 };
@@ -3068,10 +3077,40 @@ class Runner {
                                (offset + num_elements),
                            thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
                                (offset + num_elements)));
+    U num_masked = sum(mask, num_elements);
+    if (num_masked == 0) {
+      return static_cast<TPrimitive>(0);
+    }
     return thrust::transform_reduce(
                begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
                static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
-           num_elements;
+           num_masked;
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mae_yz_masked(Variable<D, M> v0,
+                                            Variable<D, M> v1,
+                                            Variable<D, U> mask, U num_elements,
+                                            U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
+        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
+                               (offset + num_elements)));
+    U num_masked = sum(mask, num_elements);
+    if (num_masked == 0) {
+      return static_cast<TPrimitive>(0);
+    }
+    return thrust::transform_reduce(
+               begin, end, NormDifferenceYzMasked<M, TPrimitive>(),
+               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           num_masked;
   }
 
   template <U D, typename M, typename TPrimitive>
