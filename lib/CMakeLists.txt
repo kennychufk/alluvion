@@ -70,6 +70,11 @@ target_include_directories(_alluvion
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
 )
 
+# target_compile_options(_alluvion
+#   PRIVATE
+#     $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>
+# )
+
 target_link_libraries(_alluvion
   PUBLIC
     glfw

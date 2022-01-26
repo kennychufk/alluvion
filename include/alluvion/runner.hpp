@@ -3203,6 +3203,28 @@ class Runner {
     Allocator::abort_if_error(cudaEventDestroy(event_stop));
   }
 
+  void record_elapsed_start(std::string name) {
+    cudaEvent_t& event_start = custom_event_dict_[name];
+    Allocator::abort_if_error(cudaEventCreate(&event_start));
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_start));
+  }
+
+  void record_elapsed_end(std::string name) {
+    cudaEvent_t& event_start = custom_event_dict_[name];
+    cudaEvent_t event_stop;
+    float elapsed;
+    Allocator::abort_if_error(cudaEventCreate(&event_stop));
+    Allocator::abort_if_error(cudaGetLastError());
+    Allocator::abort_if_error(cudaEventRecord(event_stop));
+    Allocator::abort_if_error(cudaEventSynchronize(event_stop));
+    Allocator::abort_if_error(
+        cudaEventElapsedTime(&elapsed, event_start, event_stop));
+    custom_elapsed_dict_[name] = elapsed;
+    Allocator::abort_if_error(cudaEventDestroy(event_start));
+    Allocator::abort_if_error(cudaEventDestroy(event_stop));
+  }
+
   template <class Lambda, typename Func>
   void launch(U n, Lambda f, std::string name, Func func) {
     if (n == 0) return;
@@ -3803,6 +3825,8 @@ class Runner {
   std::unordered_map<std::string,
                      std::array<std::pair<U, float>, kNumBlockSizeCandidates>>
       launch_stat_dict_;
+  std::unordered_map<std::string, float> custom_elapsed_dict_;
+  std::unordered_map<std::string, cudaEvent_t> custom_event_dict_;
   std::unordered_map<std::string, U> optimal_block_size_dict_;
 };
 

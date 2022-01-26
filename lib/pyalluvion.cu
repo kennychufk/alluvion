@@ -895,6 +895,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
   return py::class_<TRunner>(m, class_name.c_str())
       .def(py::init<>())
       .def_readonly("launch_stat_dict", &TRunner::launch_stat_dict_)
+      .def_readonly("custom_elapsed_dict", &TRunner::custom_elapsed_dict_)
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("particle_radius"), py::arg("mode"), py::arg("box_min"),

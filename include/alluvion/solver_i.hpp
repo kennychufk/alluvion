@@ -68,6 +68,7 @@ struct SolverI : public Solver<TF> {
   }
   template <U wrap>
   void step() {
+    runner.record_elapsed_start("step(total)");
     particle_force->set_zero();
     particle_torque->set_zero();
     pile.copy_kinematics_to_device();
@@ -222,6 +223,7 @@ struct SolverI : public Solver<TF> {
     pile.find_contacts();
     pile.solve_contacts();
     t += dt;
+    runner.record_elapsed_end("step(total)");
   }
 
   virtual void reset_solving_var() override {
