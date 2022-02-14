@@ -2739,30 +2739,6 @@ __global__ void collision_test(
 
 // fluid control
 template <typename TF3, typename TF>
-__global__ void drive_linear(Variable<1, TF3> particle_x,
-                             Variable<1, TF3> particle_v,
-                             Variable<1, TF3> particle_a,
-                             Variable<1, TF3> usher_x, Variable<1, TF3> usher_v,
-                             Variable<1, TF> drive_kernel_radius,
-                             Variable<1, TF> drive_strength, U num_ushers,
-                             U num_particles) {
-  forThreadMappedToElement(num_particles, [&](U p_i) {
-    const TF3 x_i = particle_x(p_i);
-    const TF3 v_i = particle_v(p_i);
-    TF3 da{0};
-    for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
-      TF3 c_x = usher_x(usher_id);
-      TF3 c_v = usher_v(usher_id);
-      TF c_kernel = drive_kernel_radius(usher_id);
-      TF c_strength = drive_strength(usher_id);
-      da += c_strength * c_kernel * c_kernel * c_kernel * 8 * 0.1 *
-            displacement_cubic_kernel(x_i - c_x, c_kernel) * (c_v - v_i);
-    }
-    particle_a(p_i) += da;
-  });
-}
-
-template <typename TF3, typename TF>
 __global__ void drive_n_ellipse(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
     Variable<1, TF3> particle_a, Variable<2, TF3> focal_x,

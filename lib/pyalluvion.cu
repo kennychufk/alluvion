@@ -843,9 +843,10 @@ void declare_usher(py::module& m, const char* name) {
       .def_property_readonly(
           "usher_kernel_radius",
           [](TUsher const& usher) { return usher.usher_kernel_radius.get(); })
-      .def_property_readonly("drive_strength", [](TUsher const& usher) {
-        return usher.drive_strength.get();
-      });
+      .def_property_readonly(
+          "drive_strength",
+          [](TUsher const& usher) { return usher.drive_strength.get(); })
+      .def("reset", &TUsher::reset);
 }
 
 template <typename TF>
