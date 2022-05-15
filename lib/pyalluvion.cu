@@ -11,6 +11,7 @@
 #include "alluvion/dg/capsule_distance.hpp"
 #include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
+#include "alluvion/dg/infinite_tube_distance.hpp"
 #include "alluvion/dg/mesh_distance.hpp"
 #include "alluvion/dg/sphere_distance.hpp"
 #include "alluvion/display.hpp"
@@ -20,6 +21,7 @@
 #include "alluvion/solver_df.hpp"
 #include "alluvion/solver_i.hpp"
 #include "alluvion/solver_ii.hpp"
+#include "alluvion/solver_pellet.hpp"
 #include "alluvion/store.hpp"
 
 using namespace alluvion;
@@ -340,7 +342,10 @@ void declare_pile(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
-      .def(py::init<Store&, TRunner&, U>())
+      .def(py::init<Store&, TRunner&, U, VolumeMethod, U>(), py::arg("store"),
+           py::arg("runner"), py::arg("max_num_contacts"),
+           py::arg("volume_method") = VolumeMethod::volume_map,
+           py::arg("max_num_pellets") = 10000)
       .def_readwrite("mass", &TPile::mass_)
       .def_readwrite("x", &TPile::x_)
       .def_readwrite("v", &TPile::v_)
@@ -355,6 +360,8 @@ void declare_pile(py::module& m, const char* name) {
       .def_readonly("cell_size_list", &TPile::cell_size_list_)
       .def_readonly("sign_list", &TPile::sign_list_)
       .def_readonly("grid_size_list", &TPile::grid_size_list_)
+      .def_readonly("num_pellets", &TPile::num_pellets_)
+      .def_readonly("num_collision_pellets", &TPile::num_collision_pellets_)
       .def_property_readonly("distance_grids", &TPile::get_distance_grids)
       .def_property_readonly("volume_grids", &TPile::get_volume_grids)
       .def_property_readonly(
@@ -381,19 +388,53 @@ void declare_pile(py::module& m, const char* name) {
       .def_property_readonly(
           "omega_device",
           [](TPile const& pile) { return pile.omega_device_.get(); })
-      .def("add", &TPile::add, py::arg("distance"), py::arg("resolution"),
-           py::arg("sign") = 1, py::arg("collision_mesh") = Mesh(),
+      .def("add_pellets",
+           py::overload_cast<dg::Distance<TF3, TF>*, U3 const&, TF,
+                             Variable<1, TF3> const&, TF, TF, TF, TF3 const&,
+                             TF3 const&, TQ const&, Mesh const&, const char*,
+                             const char*>(&TPile::add),
+           py::arg("distance"), py::arg("resolution"), py::arg("sign") = 1,
+           py::arg("pellets") = Variable<1, TF3>(), py::arg("mass") = 0,
+           py::arg("restitution") = 1, py::arg("friction") = 0,
+           py::arg("inertia_tensor") = TF3{1, 1, 1},
+           py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
+           py::arg("display_mesh") = Mesh(),
+           py::arg("distance_grid_filename") = nullptr,
+           py::arg("volume_grid_filename") = nullptr)
+      .def(
+          "add",
+          py::overload_cast<dg::Distance<TF3, TF>*, U3 const&, TF, Mesh const&,
+                            TF, TF, TF, TF3 const&, TF3 const&, TQ const&,
+                            Mesh const&, const char*, const char*>(&TPile::add),
+          py::arg("distance"), py::arg("resolution"), py::arg("sign") = 1,
+          py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
+          py::arg("restitution") = 1, py::arg("friction") = 0,
+          py::arg("inertia_tensor") = TF3{1, 1, 1}, py::arg("x") = TF3{0, 0, 0},
+          py::arg("q") = TQ{0, 0, 0, 1}, py::arg("display_mesh") = Mesh(),
+          py::arg("distance_grid_filename") = nullptr,
+          py::arg("volume_grid_filename") = nullptr)
+      .def("replace_pellets",
+           py::overload_cast<U, dg::Distance<TF3, TF>*, U3 const&, TF,
+                             Variable<1, TF3> const&, TF, TF, TF, TF3 const&,
+                             TF3 const&, TQ const&, Mesh const&, const char*,
+                             const char*>(&TPile::replace),
+           py::arg("i"), py::arg("distance"), py::arg("resolution"),
+           py::arg("sign") = 1, py::arg("pellets") = Variable<1, TF3>(),
            py::arg("mass") = 0, py::arg("restitution") = 1,
            py::arg("friction") = 0, py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
            py::arg("volume_grid_filename") = nullptr)
-      .def("replace", &TPile::replace, py::arg("i"), py::arg("distance"),
-           py::arg("resolution"), py::arg("sign") = 1,
-           py::arg("collision_mesh") = Mesh(), py::arg("mass") = 0,
-           py::arg("restitution") = 1, py::arg("friction") = 0,
-           py::arg("inertia_tensor") = TF3{1, 1, 1},
+      .def("replace",
+           py::overload_cast<U, dg::Distance<TF3, TF>*, U3 const&, TF,
+                             Mesh const&, TF, TF, TF, TF3 const&, TF3 const&,
+                             TQ const&, Mesh const&, const char*, const char*>(
+               &TPile::replace),
+           py::arg("i"), py::arg("distance"), py::arg("resolution"),
+           py::arg("sign") = 1, py::arg("collision_mesh") = Mesh(),
+           py::arg("mass") = 0, py::arg("restitution") = 1,
+           py::arg("friction") = 0, py::arg("inertia_tensor") = TF3{1, 1, 1},
            py::arg("x") = TF3{0, 0, 0}, py::arg("q") = TQ{0, 0, 0, 1},
            py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
@@ -404,6 +445,10 @@ void declare_pile(py::module& m, const char* name) {
            &TPile::compute_sort_fluid_block_internal_all,
            py::arg("internal_encoded"), py::arg("box_min"), py::arg("box_max"),
            py::arg("particle_radius"), py::arg("mode") = 0)
+      .def("compute_sort_fluid_cylinder_internal_all",
+           &TPile::compute_sort_fluid_cylinder_internal_all,
+           py::arg("internal_encoded"), py::arg("radius"),
+           py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
       .def("set_gravity", &TPile::set_gravity)
       .def("reallocate_kinematics_on_device",
            &TPile::reallocate_kinematics_on_device)
@@ -494,6 +539,24 @@ void declare_infinite_cylinder_distance(py::module& m, const char* name) {
           "create",
           [](TF radius) { return new TInfiniteCylinderDistance(radius); },
           py::return_value_policy::reference);
+}
+
+template <typename TF3, typename TF>
+void declare_infinite_tube_distance(py::module& m, const char* name) {
+  using TInfiniteTubeDistance = dg::InfiniteTubeDistance<TF3, TF>;
+  std::string class_name = std::string("InfiniteTubeDistance") + name;
+  py::class_<TInfiniteTubeDistance, dg::Distance<TF3, TF>>(m,
+                                                           class_name.c_str())
+      .def(py::init<TF, TF, TF>(), py::arg("inner_radius"),
+           py::arg("outer_radius"), py::arg("aabb_half_length") = 0)
+      .def_static(
+          "create",
+          [](TF inner_radius, TF outer_radius, TF aabb_half_length) {
+            return new TInfiniteTubeDistance(inner_radius, outer_radius,
+                                             aabb_half_length);
+          },
+          py::arg("inner_radius"), py::arg("outer_radius"),
+          py::arg("aabb_half_length") = 0, py::return_value_policy::reference);
 }
 
 template <typename TF3, typename TF>
@@ -824,6 +887,30 @@ void declare_solver_i(py::module& m, const char* name) {
 }
 
 template <typename TF>
+void declare_solver_pellet(py::module& m, const char* name) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TF, float>, float4, double4> TQ;
+  using TSolver = Solver<TF>;
+  using TSolverPellet = SolverPellet<TF>;
+  using TPile = Pile<TF>;
+  using TRunner = Runner<TF>;
+  std::string class_name = std::string("SolverPellet") + name;
+  py::class_<TSolverPellet, TSolver>(m, class_name.c_str())
+      .def(py::init<TRunner&, TPile&, Store&, U, bool>(), py::arg("runner"),
+           py::arg("pile"), py::arg("store"), py::arg("max_num_particles"),
+           py::arg("graphical") = false)
+      .def_readwrite("cohesion", &TSolverPellet::cohesion)
+      .def_readwrite("adhesion", &TSolverPellet::adhesion)
+      .def_property_readonly("particle_dfsph_factor",
+                             [](TSolverPellet const& solver) {
+                               return solver.particle_dfsph_factor.get();
+                             })
+      .def("set_pellets", &TSolverPellet::set_pellets)
+      .def("step", &TSolverPellet::template step<0>)
+      .def("step_wrap1", &TSolverPellet::template step<1>);
+}
+
+template <typename TF>
 void declare_usher(py::module& m, const char* name) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   using TUsher = Usher<TF>;
@@ -860,7 +947,9 @@ void declare_display_proxy(py::module& m, const char* name) {
   py::class_<TDisplayProxy>(m, class_name.c_str())
       .def("create_colormap_viridis", &TDisplayProxy::create_colormap_viridis)
       .def("add_particle_shading_program",
-           &TDisplayProxy::add_particle_shading_program)
+           &TDisplayProxy::add_particle_shading_program, py::arg("x"),
+           py::arg("attr"), py::arg("colormap_tex"), py::arg("particle_radius"),
+           py::arg("solver"), py::arg("clear") = true)
       .def("add_pile_shading_program", &TDisplayProxy::add_pile_shading_program)
       .def("add_map_graphical_pointers",
            &TDisplayProxy::add_map_graphical_pointers)
@@ -908,6 +997,11 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("box_min"), py::arg("box_max"))
       .def("launch_create_fluid_cylinder",
            &TRunner::launch_create_fluid_cylinder, py::arg("particle_x"),
+           py::arg("num_particles"), py::arg("offset"), py::arg("radius"),
+           py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
+      .def("launch_create_fluid_cylinder_internal",
+           &TRunner::launch_create_fluid_cylinder_internal,
+           py::arg("particle_x"), py::arg("internal_encoded_sorted"),
            py::arg("num_particles"), py::arg("offset"), py::arg("radius"),
            py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
@@ -1071,6 +1165,9 @@ PYBIND11_MODULE(_alluvion, m) {
       .def("write", &CompleteFramebuffer::write)
       .def("get", &CompleteFramebuffer::get)
       .def("read", &CompleteFramebuffer::read);
+  py::enum_<VolumeMethod>(m, "VolumeMethod")
+      .value("volume_map", VolumeMethod::volume_map)
+      .value("pellets", VolumeMethod::pellets);
   declare_pile<float>(m, "float");
   declare_pile<double>(m, "double");
 
@@ -1086,6 +1183,9 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_solver_i<float>(m, "float");
   declare_solver_i<double>(m, "double");
 
+  declare_solver_pellet<float>(m, "float");
+  declare_solver_pellet<double>(m, "double");
+
   declare_usher<float>(m, "float");
   declare_usher<double>(m, "double");
 
@@ -1096,8 +1196,8 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_const<double>(m, "double");
 
   py::class_<ConstiN>(m, "ConstiN")
-      .def_readonly("num_boundaries", &ConstiN::num_boundaries)
       .def_readonly("max_num_contacts", &ConstiN::max_num_contacts)
+      .def_readwrite("num_boundaries", &ConstiN::num_boundaries)
       .def_readwrite("max_num_particles_per_cell",
                      &ConstiN::max_num_particles_per_cell)
       .def_readwrite("grid_res", &ConstiN::grid_res)
@@ -1118,6 +1218,8 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_cylinder_distance<double3, double>(m_dg, "double");
   declare_infinite_cylinder_distance<float3, float>(m_dg, "float");
   declare_infinite_cylinder_distance<double3, double>(m_dg, "double");
+  declare_infinite_tube_distance<float3, float>(m_dg, "float");
+  declare_infinite_tube_distance<double3, double>(m_dg, "double");
   declare_capsule_distance<float3, float>(m_dg, "float");
   declare_capsule_distance<double3, double>(m_dg, "double");
   declare_mesh_distance<float3, float>(m_dg, "float");

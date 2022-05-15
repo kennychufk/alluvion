@@ -6,12 +6,13 @@ import numpy as np
 
 
 class Depot(Store):
+
     def __init__(self, default_dtype=np.float32):
         self.default_dtype = default_dtype
         numeric_type_str = self.dtype_to_string(self.default_dtype)
         float_typed_classnames = [
-            'Runner', 'Pile', 'SolverDf', 'SolverIi', 'SolverI', 'Solver',
-            'DisplayProxy'
+            'Runner', 'Pile', 'SolverDf', 'SolverIi', 'SolverI',
+            'SolverPellet', 'Solver', 'DisplayProxy'
         ]
         _al = importlib.import_module("._alluvion", "alluvion")
         for classname in float_typed_classnames:
@@ -20,8 +21,8 @@ class Depot(Store):
 
         float_typed_dg_classnames = [
             'BoxDistance', 'CapsuleDistance', 'CylinderDistance', 'Distance',
-            'InfiniteCylinderDistance', 'SphereDistance', 'MeshDistance',
-            'TriangleMesh'
+            'InfiniteCylinderDistance', 'InfiniteTubeDistance',
+            'SphereDistance', 'MeshDistance', 'TriangleMesh'
         ]
         for classname in float_typed_dg_classnames:
             setattr(self, classname,

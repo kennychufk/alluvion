@@ -22,6 +22,7 @@ struct SolverI : public Solver<TF> {
   using Base::runner;
   using Base::store;
   using Base::t;
+  using Base::transform_all_pellets;
   using Base::update_dt;
   using Base::usher;
 
@@ -38,7 +39,9 @@ struct SolverI : public Solver<TF> {
   using Base::particle_v;
   using Base::particle_x;
 
+  using Base::particle_boundary_neighbors;
   using Base::particle_neighbors;
+  using Base::particle_num_boundary_neighbors;
   using Base::particle_num_neighbors;
   using Base::pid;
   using Base::pid_length;
@@ -48,9 +51,10 @@ struct SolverI : public Solver<TF> {
           bool enable_vorticity_arg = false, bool graphical = false)
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
-        particle_pressure(store_arg.create<1, TF>({max_num_particles_arg})),
-        particle_last_pressure(
-            store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_pressure(store_arg.create<1, TF>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
+        particle_last_pressure(store_arg.create<1, TF>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_diag_adv_density(
             store_arg.create<1, TF2>({max_num_particles_arg})),
         particle_pressure_accel(
@@ -79,7 +83,11 @@ struct SolverI : public Solver<TF> {
                                                         num_particles);
         },
         "clear_acceleration", clear_acceleration<TF3>);
-    compute_all_boundaries();
+    if (pile.volume_method_ == VolumeMethod::volume_map) {
+      compute_all_boundaries();
+    } else {
+      transform_all_pellets();
+    }
     Base::template update_particle_neighbors<wrap>();
     if (enable_surface_tension) {
       runner.launch(
@@ -100,16 +108,32 @@ struct SolverI : public Solver<TF> {
           },
           "compute_surface_tension", compute_surface_tension<TQ, TF3, TF>);
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_viscosity<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_a, *particle_force,
-              *particle_torque, *particle_boundary, *pile.x_device_,
-              *pile.v_device_, *pile.omega_device_, num_particles);
-        },
-        "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
+    if (pile.volume_method_ == VolumeMethod::volume_map) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_viscosity<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_density,
+                *particle_neighbors, *particle_num_neighbors, *particle_a,
+                *particle_force, *particle_torque, *particle_boundary,
+                *pile.x_device_, *pile.v_device_, *pile.omega_device_,
+                num_particles);
+          },
+          "compute_viscosity", compute_viscosity<TQ, TF3, TF>);
+    } else {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_viscosity_with_pellets<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_density,
+                *particle_neighbors, *particle_num_neighbors, *particle_a,
+                *particle_force, *particle_torque, *particle_boundary_neighbors,
+                *particle_num_boundary_neighbors, *pile.pellet_id_to_rigid_id_,
+                *pile.x_device_, num_particles);
+          },
+          "compute_viscosity_with_pellets",
+          compute_viscosity_with_pellets<TQ, TF3, TF>);
+    }
     if (enable_vorticity) {
       runner.launch(
           num_particles,
@@ -157,49 +181,112 @@ struct SolverI : public Solver<TF> {
               *particle_last_pressure, dt, num_particles);
         },
         "advect_and_init_pressure", advect_and_init_pressure<TF3, TF>);
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          calculate_isph_diagonal_adv_density<<<grid_size, block_size>>>(
-              *particle_x, *particle_v, *particle_density,
-              *particle_diag_adv_density, *particle_neighbors,
-              *particle_num_neighbors, *particle_boundary,
-              *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
-              *pile.omega_device_, dt, num_particles);
-        },
-        "calculate_isph_diagonal_adv_density",
-        calculate_isph_diagonal_adv_density<TQ, TF3, TF2, TF>);
+    if (pile.volume_method_ == VolumeMethod::volume_map) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            calculate_isph_diagonal_adv_density<<<grid_size, block_size>>>(
+                *particle_x, *particle_v, *particle_density,
+                *particle_diag_adv_density, *particle_neighbors,
+                *particle_num_neighbors, *particle_boundary,
+                *particle_boundary_kernel, *pile.x_device_, *pile.v_device_,
+                *pile.omega_device_, dt, num_particles);
+          },
+          "calculate_isph_diagonal_adv_density",
+          calculate_isph_diagonal_adv_density<TQ, TF3, TF2, TF>);
+    } else {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            calculate_isph_diagonal_adv_density_with_pellets<<<grid_size,
+                                                               block_size>>>(
+                *particle_x, *particle_v, *particle_density,
+                *particle_diag_adv_density, *particle_neighbors,
+                *particle_num_neighbors, *particle_boundary_neighbors,
+                *particle_num_boundary_neighbors, dt, num_particles);
+          },
+          "calculate_isph_diagonal_adv_density_with_pellets",
+          calculate_isph_diagonal_adv_density_with_pellets<TQ, TF3, TF2, TF>);
+    }
     mean_density_error = std::numeric_limits<TF>::max();
     num_density_solve = 0;
     while ((mean_density_error > density_error_tolerance ||
             num_density_solve < min_density_solve) &&
            num_density_solve < max_density_solve) {
-      runner.launch(
-          num_particles,
-          [&](U grid_size, U block_size) {
-            isph_solve_iteration<<<grid_size, block_size>>>(
-                *particle_x, *particle_density, *particle_last_pressure,
-                *particle_pressure, *particle_diag_adv_density,
-                *particle_density_err, *particle_neighbors,
-                *particle_num_neighbors, dt, num_particles);
-          },
-          "isph_solve_iteration", isph_solve_iteration<TQ, TF3, TF2, TF>);
-      particle_last_pressure->set_from(*particle_pressure);
+      if (pile.volume_method_ == VolumeMethod::volume_map) {
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              isph_solve_iteration<<<grid_size, block_size>>>(
+                  *particle_x, *particle_density, *particle_last_pressure,
+                  *particle_pressure, *particle_diag_adv_density,
+                  *particle_density_err, *particle_neighbors,
+                  *particle_num_neighbors, dt, num_particles);
+            },
+            "isph_solve_iteration", isph_solve_iteration<TQ, TF3, TF2, TF>);
+      } else {
+        runner.launch(
+            pile.num_pellets_,
+            [&](U grid_size, U block_size) {
+              extrapolate_pressure_to_pellet<<<grid_size, block_size>>>(
+                  *particle_x, *particle_last_pressure, *particle_neighbors,
+                  *particle_num_neighbors, num_particles, pile.num_pellets_);
+            },
+            "extrapolate_pressure_to_pellet",
+            extrapolate_pressure_to_pellet<TQ, TF3, TF>);
+        runner.launch(
+            num_particles,
+            [&](U grid_size, U block_size) {
+              isph_solve_iteration_with_pellets<<<grid_size, block_size>>>(
+                  *particle_x, *particle_density, *particle_last_pressure,
+                  *particle_pressure, *particle_diag_adv_density,
+                  *particle_density_err, *particle_neighbors,
+                  *particle_num_neighbors, *particle_boundary_neighbors,
+                  *particle_num_boundary_neighbors, dt, num_particles);
+            },
+            "isph_solve_iteration_with_pellets",
+            isph_solve_iteration_with_pellets<TQ, TF3, TF2, TF>);
+      }
+      particle_last_pressure->set_from(*particle_pressure, num_particles);
       mean_density_error =
           TRunner::sum(*particle_density_err, num_particles) / num_particles;
       ++num_density_solve;
     }
-    runner.launch(
-        num_particles,
-        [&](U grid_size, U block_size) {
-          compute_pressure_accels<<<grid_size, block_size>>>(
-              *particle_x, *particle_density, *particle_pressure,
-              *particle_pressure_accel, *particle_neighbors,
-              *particle_num_neighbors, *particle_force, *particle_torque,
-              *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
-              num_particles);
-        },
-        "compute_pressure_accels", compute_pressure_accels<TQ, TF3, TF>);
+    if (pile.volume_method_ == VolumeMethod::volume_map) {
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_pressure_accels<<<grid_size, block_size>>>(
+                *particle_x, *particle_density, *particle_pressure,
+                *particle_pressure_accel, *particle_neighbors,
+                *particle_num_neighbors, *particle_force, *particle_torque,
+                *particle_boundary, *particle_boundary_kernel, *pile.x_device_,
+                num_particles);
+          },
+          "compute_pressure_accels", compute_pressure_accels<TQ, TF3, TF>);
+    } else {
+      runner.launch(
+          pile.num_pellets_,
+          [&](U grid_size, U block_size) {
+            extrapolate_pressure_to_pellet<<<grid_size, block_size>>>(
+                *particle_x, *particle_pressure, *particle_neighbors,
+                *particle_num_neighbors, num_particles, pile.num_pellets_);
+          },
+          "extrapolate_pressure_to_pellet",
+          extrapolate_pressure_to_pellet<TQ, TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_pressure_accels_with_pellets<<<grid_size, block_size>>>(
+                *particle_x, *particle_density, *particle_pressure,
+                *particle_pressure_accel, *particle_neighbors,
+                *particle_num_neighbors, *particle_force, *particle_torque,
+                *particle_boundary_neighbors, *particle_num_boundary_neighbors,
+                *pile.pellet_id_to_rigid_id_, *pile.x_device_, num_particles);
+          },
+          "compute_pressure_accels_with_pellets",
+          compute_pressure_accels_with_pellets<TQ, TF3, TF>);
+    }
     // ===== ]solve
     runner.launch(
         num_particles,

@@ -26,12 +26,15 @@ struct Solver {
         particle_radius(store_arg.get_cn<TF>().particle_radius),
         next_emission_t(-1),
         particle_x(
-            graphical
-                ? store_arg.create_graphical<1, TF3>({max_num_particles_arg})
-                : store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_v(store_arg.create<1, TF3>({max_num_particles_arg})),
+            graphical ? store_arg.create_graphical<1, TF3>(
+                            {max_num_particles_arg + pile_arg.max_num_pellets_})
+                      : store_arg.create<1, TF3>({max_num_particles_arg +
+                                                  pile_arg.max_num_pellets_})),
+        particle_v(store_arg.create<1, TF3>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_a(store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_density(store_arg.create<1, TF>({max_num_particles_arg})),
+        particle_density(store_arg.create<1, TF>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_boundary(
             store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
         particle_boundary_kernel(
@@ -59,9 +62,15 @@ struct Solver {
                                            store_arg.get_cni().grid_res.y,
                                            store_arg.get_cni().grid_res.z})),
         particle_neighbors(store_arg.create<2, TQ>(
-            {max_num_particles_arg,
+            {max_num_particles_arg + pile_arg.max_num_pellets_,
              store_arg.get_cni().max_num_neighbors_per_particle})),
-        particle_num_neighbors(store_arg.create<1, U>({max_num_particles_arg})),
+        particle_num_neighbors(store_arg.create<1, U>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
+        particle_boundary_neighbors(store_arg.create<2, TQ>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_,
+             store_arg.get_cni().max_num_neighbors_per_particle})),
+        particle_num_boundary_neighbors(store_arg.create<1, U>(
+            {max_num_particles_arg + pile_arg.max_num_pellets_})),
         grid_anomaly(store_arg.create<1, U>({3})),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {
@@ -89,6 +98,8 @@ struct Solver {
     store.remove(*pid_length);
     store.remove(*particle_neighbors);
     store.remove(*particle_num_neighbors);
+    store.remove(*particle_boundary_neighbors);
+    store.remove(*particle_num_boundary_neighbors);
   }
   void normalize(Variable<1, TF3> const* v,
                  Variable<1, TF>* particle_normalized_attr, TF lower_bound,
@@ -143,10 +154,12 @@ struct Solver {
   void compute_all_boundaries() {
     pile.for_each_rigid(
         [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+            Variable<1, TF3> const& local_pellet_x, U pellet_index_offset,
             Variable<1, TF> const& distance_grid,
             Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
-            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
-            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
+            TF3 const& rigid_v, TQ const& rigid_q, TF3 const& rigid_omega,
+            TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+            TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size, sign,
@@ -160,32 +173,95 @@ struct Solver {
                              U num_samples) {
     pile.for_each_rigid(
         [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+            Variable<1, TF3> const& local_pellet_x, U pellet_index_offset,
             Variable<1, TF> const& distance_grid,
             Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
-            TQ const& rigid_q, TF3 const& domain_min, TF3 const& domain_max,
-            U3 const& resolution, TF3 const& cell_size, U num_nodes, TF sign) {
+            TF3 const& rigid_v, TQ const& rigid_q, TF3 const& rigid_omega,
+            TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+            TF3 const& cell_size, U num_nodes, TF sign) {
           runner.launch_compute_particle_boundary(
               distance, volume_grid, distance_grid, rigid_x, rigid_q,
               boundary_id, domain_min, domain_max, resolution, cell_size, sign,
               sample_x, sample_boundary, sample_boundary_kernel, num_samples);
         });
   }
+  void transform_all_pellets() {
+    pile.for_each_rigid(
+        [&](U boundary_id, dg::Distance<TF3, TF> const& distance,
+            Variable<1, TF3> const& local_pellet_x, U pellet_index_offset,
+            Variable<1, TF> const& distance_grid,
+            Variable<1, TF> const& volume_grid, TF3 const& rigid_x,
+            TF3 const& rigid_v, TQ const& rigid_q, TF3 const& rigid_omega,
+            TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+            TF3 const& cell_size, U num_nodes, TF sign) {
+          U num_rigid_particles = local_pellet_x.get_linear_shape();
+          runner.launch(
+              num_rigid_particles,
+              [&](U grid_size, U block_size) {
+                transform_pellets<<<grid_size, block_size>>>(
+                    local_pellet_x, *particle_x, *particle_v, rigid_x, rigid_v,
+                    rigid_q, rigid_omega, num_rigid_particles,
+                    num_particles + pellet_index_offset);
+              },
+              "transform_pellets", transform_pellets<TQ, TF3>);
+        });
+  }
   template <U wrap>
   void update_particle_neighbors() {
     pid_length->set_zero();
     grid_anomaly->set_zero();
-    runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
-                                       *grid_anomaly, num_particles);
 
-    runner.template launch_make_neighbor_list<wrap>(
-        *particle_x, *pid, *pid_length, *particle_neighbors,
-        *particle_num_neighbors, *grid_anomaly, num_particles);
+    if (num_particles == max_num_particles) {
+      runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                         *grid_anomaly,
+                                         num_particles + pile.num_pellets_);
+    } else {
+      runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                         *grid_anomaly, num_particles);
+      runner.launch_update_particle_grid(*particle_x, *pid, *pid_length,
+                                         *grid_anomaly, pile.num_pellets_,
+                                         max_num_particles);
+    }
 
-    runner.launch_compute_density(*particle_neighbors, *particle_num_neighbors,
-                                  *particle_density, *particle_boundary_kernel,
-                                  num_particles);
+    if (pile.volume_method_ == VolumeMethod::volume_map) {
+      runner.template launch_make_neighbor_list<wrap>(
+          *particle_x, *pid, *pid_length, *particle_neighbors,
+          *particle_num_neighbors, *grid_anomaly, num_particles);
+      runner.launch_compute_density(*particle_neighbors,
+                                    *particle_num_neighbors, *particle_density,
+                                    *particle_boundary_kernel, num_particles);
+    } else {
+      if (num_particles == max_num_particles) {
+        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
+            *particle_x, *pid, *pid_length, *particle_neighbors,
+            *particle_num_neighbors, *particle_boundary_neighbors,
+            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
+            num_particles + pile.num_pellets_);
+      } else {
+        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
+            *particle_x, *pid, *pid_length, *particle_neighbors,
+            *particle_num_neighbors, *particle_boundary_neighbors,
+            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
+            num_particles);
+        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
+            *particle_x, *pid, *pid_length, *particle_neighbors,
+            *particle_num_neighbors, *particle_boundary_neighbors,
+            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
+            pile.num_pellets_, max_num_particles);
+      }
+      runner.launch_compute_pellet_volume(
+          *particle_boundary_neighbors, *particle_num_boundary_neighbors,
+          *particle_density, num_particles, pile.num_pellets_);
+      runner.launch_compute_density_with_pellets(
+          *particle_neighbors, *particle_num_neighbors,
+          *particle_boundary_neighbors, *particle_num_boundary_neighbors,
+          *particle_density, num_particles);
+      runner.launch_compute_grad_wvol_pellet(*particle_boundary_neighbors,
+                                             *particle_num_boundary_neighbors,
+                                             *particle_density, num_particles);
+    }
   }
-  U max_num_particles;
+  const U max_num_particles;
   U num_particles;
   TF t;
   TF dt;
@@ -227,6 +303,8 @@ struct Solver {
   std::unique_ptr<Variable<3, U>> pid_length;
   std::unique_ptr<Variable<2, TQ>> particle_neighbors;
   std::unique_ptr<Variable<1, U>> particle_num_neighbors;
+  std::unique_ptr<Variable<2, TQ>> particle_boundary_neighbors;
+  std::unique_ptr<Variable<1, U>> particle_num_boundary_neighbors;
   std::unique_ptr<Variable<1, U>> grid_anomaly;
 };
 }  // namespace alluvion

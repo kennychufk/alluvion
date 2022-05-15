@@ -1444,10 +1444,16 @@ inline __host__ __device__ uint dot(uint4 a, uint4 b) {
 //
 inline __host__ __device__ float length_sqr(float2 v) { return dot(v, v); }
 inline __host__ __device__ float length_sqr(float3 v) { return dot(v, v); }
+inline __host__ __device__ float length_sqr(float x, float y, float z) {
+  return fmaf(x, x, fmaf(y, y, z * z));
+}
 inline __host__ __device__ float length_sqr(float4 v) { return dot(v, v); }
 
 inline __host__ __device__ double length_sqr(double2 v) { return dot(v, v); }
 inline __host__ __device__ double length_sqr(double3 v) { return dot(v, v); }
+inline __host__ __device__ double length_sqr(double x, double y, double z) {
+  return fma(x, x, fma(y, y, z * z));
+}
 inline __host__ __device__ double length_sqr(double4 v) { return dot(v, v); }
 
 inline __host__ __device__ float length(float2 v) { return sqrtf(dot(v, v)); }
@@ -1510,6 +1516,26 @@ inline __host__ __device__ double3 floor(double3 v) {
 }
 inline __host__ __device__ double4 floor(double4 v) {
   return make_double4(floor(v.x), floor(v.y), floor(v.z), floor(v.w));
+}
+
+inline __host__ __device__ float2 ceil(float2 v) {
+  return make_float2(ceilf(v.x), ceilf(v.y));
+}
+inline __host__ __device__ float3 ceil(float3 v) {
+  return make_float3(ceilf(v.x), ceilf(v.y), ceilf(v.z));
+}
+inline __host__ __device__ float4 ceil(float4 v) {
+  return make_float4(ceilf(v.x), ceilf(v.y), ceilf(v.z), ceilf(v.w));
+}
+
+inline __host__ __device__ double2 ceil(double2 v) {
+  return make_double2(ceil(v.x), ceil(v.y));
+}
+inline __host__ __device__ double3 ceil(double3 v) {
+  return make_double3(ceil(v.x), ceil(v.y), ceil(v.z));
+}
+inline __host__ __device__ double4 ceil(double4 v) {
+  return make_double4(ceil(v.x), ceil(v.y), ceil(v.z), ceil(v.w));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

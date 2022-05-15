@@ -40,14 +40,16 @@ int main(void) {
 
   // rigids
   U max_num_contacts = 512;
-  Pile<F> pile(store, runner, max_num_contacts);
-  Mesh cube_mesh;
-  cube_mesh.set_box(float3{4, 3, 1.5}, 4);
-  Mesh sphere_mesh;
-  F sphere_radius = 0.1_F;
-  sphere_mesh.set_uv_sphere(sphere_radius, 24, 24);
+  Pile<F> pile(store, runner, max_num_contacts, VolumeMethod::pellets, 70000);
+  Mesh cube_particle_mesh;
+  cube_particle_mesh.set_obj(
+      "/home/kennychufk/workspace/cppWs/alluvion/"
+      "box-40-30-15-shell-particles.obj");
+  cube_particle_mesh.scale(scale_factor);
+  // cube_particle_mesh.set_box(float3{40, 30, 15}, 5);
+  // cube_particle_mesh.scale(scale_factor);
   pile.add(new BoxDistance<F3, F>(scale_factor * F3{40, 30, 15}),
-           U3{80, 60, 30}, -1._F, cube_mesh, 0._F, 1, 0, F3{1, 1, 1},
+           U3{80, 60, 30}, -1._F, cube_particle_mesh, 0._F, 1, 0, F3{1, 1, 1},
            F3{0, 15 * scale_factor, 0}, Q{0, 0, 0, 1}, Mesh());
   // SphereDistance<F3, F> sphere_distance(sphere_radius);
   // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
@@ -122,4 +124,5 @@ int main(void) {
   display->run();
   store.remove_graphical(
       dynamic_cast<GraphicalVariable<1, F>&>(*particle_normalized_attr));
+  return 0;
 }

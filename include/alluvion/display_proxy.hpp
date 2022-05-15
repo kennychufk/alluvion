@@ -69,7 +69,8 @@ class DisplayProxy {
   void add_particle_shading_program(Variable<1, TF3> const& x,
                                     Variable<1, TF> const& attr,
                                     GLuint colormap_tex, float particle_radius,
-                                    Solver<TF> const& solver) {
+                                    Solver<TF> const& solver,
+                                    bool clear = true) {
 #include "alluvion/glsl/particle.frag"
 #include "alluvion/glsl/particle.vert"
     std::string vector3_str = "vec3";
@@ -130,9 +131,11 @@ class DisplayProxy {
          std::make_tuple(
              reinterpret_cast<GraphicalVariable<1, TF> const&>(attr).vbo_, 1,
              attribute_type, 0)},
-        [colormap_tex, particle_radius, &solver](ShadingProgram& program,
-                                                 Display& display) {
-          glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        [colormap_tex, particle_radius, clear, &solver](ShadingProgram& program,
+                                                        Display& display) {
+          if (clear) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+          }
           glUniformMatrix4fv(program.get_uniform_location("M"), 1, GL_FALSE,
                              glm::value_ptr(glm::mat4(1)));
           glUniformMatrix4fv(
