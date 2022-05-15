@@ -33,8 +33,7 @@ struct Solver {
         particle_v(store_arg.create<1, TF3>(
             {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_a(store_arg.create<1, TF3>({max_num_particles_arg})),
-        particle_density(store_arg.create<1, TF>(
-            {max_num_particles_arg + pile_arg.max_num_pellets_})),
+        particle_density(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_boundary(
             store_arg.create<2, TQ>({pile.get_size(), max_num_particles_arg})),
         particle_boundary_kernel(
@@ -231,34 +230,15 @@ struct Solver {
                                     *particle_num_neighbors, *particle_density,
                                     *particle_boundary_kernel, num_particles);
     } else {
-      if (num_particles == max_num_particles) {
-        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
-            *particle_x, *pid, *pid_length, *particle_neighbors,
-            *particle_num_neighbors, *particle_boundary_neighbors,
-            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
-            num_particles + pile.num_pellets_);
-      } else {
-        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
-            *particle_x, *pid, *pid_length, *particle_neighbors,
-            *particle_num_neighbors, *particle_boundary_neighbors,
-            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
-            num_particles);
-        runner.template launch_make_bead_pellet_neighbor_list<wrap>(
-            *particle_x, *pid, *pid_length, *particle_neighbors,
-            *particle_num_neighbors, *particle_boundary_neighbors,
-            *particle_num_boundary_neighbors, *grid_anomaly, max_num_particles,
-            pile.num_pellets_, max_num_particles);
-      }
-      runner.launch_compute_pellet_volume(
-          *particle_boundary_neighbors, *particle_num_boundary_neighbors,
-          *particle_density, num_particles, pile.num_pellets_);
+      runner.template launch_make_bead_pellet_neighbor_list_check_contiguous<
+          wrap>(*particle_x, *pid, *pid_length, *particle_neighbors,
+                *particle_num_neighbors, *particle_boundary_neighbors,
+                *particle_num_boundary_neighbors, *grid_anomaly,
+                max_num_particles, num_particles, pile.num_pellets_);
       runner.launch_compute_density_with_pellets(
           *particle_neighbors, *particle_num_neighbors,
           *particle_boundary_neighbors, *particle_num_boundary_neighbors,
           *particle_density, num_particles);
-      runner.launch_compute_grad_wvol_pellet(*particle_boundary_neighbors,
-                                             *particle_num_boundary_neighbors,
-                                             *particle_density, num_particles);
     }
   }
   const U max_num_particles;

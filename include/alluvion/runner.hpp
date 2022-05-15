@@ -1642,48 +1642,6 @@ __device__ TF compute_volume_and_boundary_x_analytic(
   return boundary_volume;
 }
 
-template <typename TQ, typename TF>
-__global__ void compute_pellet_volume(
-    Variable<2, TQ> particle_boundary_neighbors,
-    Variable<1, U> particle_num_boundary_neighbors,
-    Variable<1, TF> particle_density,  // latter portion is pellet volume
-    U max_num_beads, U num_pellets) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
-  forThreadMappedToElement(num_pellets, [&](U p_i0) {
-    U p_i = p_i0 + max_num_beads;
-    // TF vol_inv = cn<TF>().cubic_kernel_zero;
-    // for (U neighbor_id = 0; neighbor_id <
-    // particle_num_boundary_neighbors(p_i);
-    //      ++neighbor_id) {
-    //   TF3 xixj;
-    //   extract_displacement(particle_boundary_neighbors(p_i, neighbor_id),
-    //   xixj); vol_inv += displacement_cubic_kernel(xixj);
-    // }
-    // particle_density(p_i) = 1 / vol_inv;
-    particle_density(p_i) = cn<TF>().particle_vol;
-  });
-}
-
-template <typename TQ, typename TF>
-__global__ void compute_grad_wvol_pellet(
-    Variable<2, TQ> particle_boundary_neighbors,
-    Variable<1, U> particle_num_boundary_neighbors,
-    Variable<1, TF> particle_density, U num_fluid_particles) {
-  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
-  forThreadMappedToElement(num_fluid_particles, [&](U p_i) {
-    for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
-         ++neighbor_id) {
-      U p_j;
-      TF3 xixj;
-      TQ boundary_neighbor = particle_boundary_neighbors(p_i, neighbor_id);
-      extract_pid(boundary_neighbor, xixj, p_j);
-      reinterpret_cast<TF3&>(boundary_neighbor) =
-          particle_density(p_j) * displacement_cubic_kernel_grad(xixj);
-      particle_boundary_neighbors(p_i, neighbor_id) = boundary_neighbor;
-    }
-  });
-}
-
 // gradient must be initialized to zero
 template <typename TF3, typename TF>
 __device__ TF interpolate_and_derive(Variable<1, TF>* nodes, TF3* cell_size,
@@ -1968,21 +1926,21 @@ __global__ void compute_density_with_pellets(
     Variable<1, TF> particle_density, U num_particles) {
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
   forThreadMappedToElement(num_particles, [&](U p_i) {
-    TF density = cn<TF>().particle_vol * cn<TF>().cubic_kernel_zero;
+    TF density = cn<TF>().cubic_kernel_zero;
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
          ++neighbor_id) {
       TF3 xixj;
       extract_displacement(particle_neighbors(p_i, neighbor_id), xixj);
-      density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
+      density += displacement_cubic_kernel(xixj);
     }
     for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
          ++neighbor_id) {
       TF3 xixj;
       U p_j;
       extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
-      density += particle_density(p_j) * displacement_cubic_kernel(xixj);
+      density += displacement_cubic_kernel(xixj);
     }
-    particle_density(p_i) = density * cn<TF>().density0;
+    particle_density(p_i) = density * cn<TF>().particle_mass;
   });
 }
 
@@ -2141,17 +2099,16 @@ __global__ void compute_viscosity_with_pellets(
     for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
-      TF3 grad_wvol;
-      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), grad_wvol,
-                  p_j);
-      TF3 xixj = x_i - particle_x(p_j);
-      TF3 a = cn<TF>().boundary_viscosity * dot(xixj, grad_wvol) /
+      TF3 xixj;
+      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
+      TF3 a = cn<TF>().particle_vol * cn<TF>().boundary_viscosity *
+              dot(xixj, displacement_cubic_kernel_grad(xixj)) /
               (length_sqr(xixj) +
                static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
               (v_i - particle_v(p_j));
       da += a;
 
-      TF3 pellet_x = particle_x(p_j);
+      TF3 pellet_x = x_i - xixj;
       U boundary_id = pellet_id_to_rigid_id(p_j - num_particles);
       TF3 r_x = rigid_x(boundary_id);
       TF3 force = -cn<TF>().particle_mass * a;
@@ -2711,16 +2668,16 @@ __global__ void compute_pressure_accels_with_pellets(
     for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
-      TF3 grad_wvol;
-      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), grad_wvol,
-                  p_j);
-      TF3 x_j = particle_x(p_j);
+      TF3 xixj;
+      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
+      TF3 x_j = x_i - xixj;
       U boundary_id = pellet_id_to_rigid_id(p_j - num_particles);
 
       TF densityj = cn<TF>().density0;
       TF densityj2 = densityj * densityj;
       TF dpj = particle_pressure(p_j) / densityj2;
-      TF3 a = cn<TF>().density0 * (dpi + dpj) * grad_wvol;
+      TF3 a = cn<TF>().particle_mass * (dpi + dpj) *
+              displacement_cubic_kernel_grad(xixj);
       TF3 force = cn<TF>().particle_mass * a;
       ai -= a;
       particle_force(boundary_id, p_i) += force;
@@ -2850,10 +2807,10 @@ __global__ void calculate_isph_diagonal_adv_density_with_pellets(
     for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
-      TF3 grad_wvol;
-      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), grad_wvol,
-                  p_j);
-      TF3 xixj = x_i - particle_x(p_j);
+      TF3 xixj;
+      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
+      TF3 grad_wvol =
+          cn<TF>().particle_vol * displacement_cubic_kernel_grad(xixj);
       density_adv += dt * dot(v - particle_v(p_j), grad_wvol);
       diag += (density + cn<TF>().density0) / (density * cn<TF>().density0) /
               (length_sqr(xixj) +
@@ -2956,17 +2913,17 @@ __global__ void isph_solve_iteration_with_pellets(
     for (U neighbor_id = 0; neighbor_id < particle_num_boundary_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
-      TF3 grad_wvol;
-      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), grad_wvol,
-                  p_j);
-      TF3 xixj = x_i - particle_x(p_j);
+      TF3 xixj;
+      extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
 
       TF densityj = cn<TF>().density0;
 
-      off_diag -= (density + densityj) / (density * densityj) /
+      off_diag -= cn<TF>().particle_vol * (density + densityj) /
+                  (density * densityj) /
                   (length_sqr(xixj) +
                    static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr) *
-                  dot(xixj, grad_wvol) * particle_last_pressure(p_j);
+                  dot(xixj, displacement_cubic_kernel_grad(xixj)) *
+                  particle_last_pressure(p_j);
     }
     off_diag *= cn<TF>().density0;
     if (fabs(denom) > static_cast<TF>(1.0e-9)) {
@@ -4764,31 +4721,31 @@ class Runner {
         "make_bead_pellet_neighbor_list",
         make_bead_pellet_neighbor_list<wrap, TQ, TF3>);
   }
-  void launch_compute_pellet_volume(
-      Variable<2, TQ>& particle_boundary_neighbors,
-      Variable<1, U>& particle_num_boundary_neighbors,
-      Variable<1, TF>& particle_density, U num_fluid_particles, U num_pellets) {
-    launch(
-        num_pellets,
-        [&](U grid_size, U block_size) {
-          compute_pellet_volume<<<grid_size, block_size>>>(
-              particle_boundary_neighbors, particle_num_boundary_neighbors,
-              particle_density, num_fluid_particles, num_pellets);
-        },
-        "compute_pellet_volume", compute_pellet_volume<TQ, TF>);
-  }
-  void launch_compute_grad_wvol_pellet(
-      Variable<2, TQ>& particle_boundary_neighbors,
-      Variable<1, U>& particle_num_boundary_neighbors,
-      Variable<1, TF>& particle_density, U num_fluid_particles) {
-    launch(
-        num_fluid_particles,
-        [&](U grid_size, U block_size) {
-          compute_grad_wvol_pellet<<<grid_size, block_size>>>(
-              particle_boundary_neighbors, particle_num_boundary_neighbors,
-              particle_density, num_fluid_particles);
-        },
-        "compute_grad_wvol_pellet", compute_grad_wvol_pellet<TQ, TF>);
+  template <U wrap>
+  void launch_make_bead_pellet_neighbor_list_check_contiguous(
+      Variable<1, TF3>& sample_x, Variable<4, TQ>& pid,
+      Variable<3, U>& pid_length, Variable<2, TQ>& sample_bead_neighbors,
+      Variable<1, U>& sample_num_bead_neighbors,
+      Variable<2, TQ>& sample_pellet_neighbors,
+      Variable<1, U>& sample_num_pellet_neighbors, Variable<1, U>& grid_anomaly,
+      U max_num_beads, U num_beads, U num_pellets) {
+    if (num_beads == max_num_beads) {
+      launch_make_bead_pellet_neighbor_list<wrap>(
+          sample_x, pid, pid_length, sample_bead_neighbors,
+          sample_num_bead_neighbors, sample_pellet_neighbors,
+          sample_num_pellet_neighbors, grid_anomaly, max_num_beads,
+          num_beads + num_pellets);
+    } else {
+      launch_make_bead_pellet_neighbor_list<wrap>(
+          sample_x, pid, pid_length, sample_bead_neighbors,
+          sample_num_bead_neighbors, sample_pellet_neighbors,
+          sample_num_pellet_neighbors, grid_anomaly, max_num_beads, num_beads);
+      launch_make_bead_pellet_neighbor_list<wrap>(
+          sample_x, pid, pid_length, sample_bead_neighbors,
+          sample_num_bead_neighbors, sample_pellet_neighbors,
+          sample_num_pellet_neighbors, grid_anomaly, max_num_beads, num_pellets,
+          max_num_beads);
+    }
   }
   void launch_compute_density(Variable<2, TQ>& particle_neighbors,
                               Variable<1, U>& particle_num_neighbors,

@@ -1014,6 +1014,24 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            &TRunner::template launch_make_neighbor_list<0>)
       .def("launch_make_neighbor_list_wrap1",
            &TRunner::template launch_make_neighbor_list<1>)
+      .def("launch_make_bead_pellet_neighbor_list",
+           &TRunner::template launch_make_bead_pellet_neighbor_list<0>,
+           py::arg("sample_x"), py::arg("pid"), py::arg("pid_length"),
+           py::arg("sample_bead_neighbors"),
+           py::arg("sample_num_bead_neighbors"),
+           py::arg("sample_pellet_neighbors"),
+           py::arg("sample_num_pellet_neighbors"), py::arg("grid_anomaly"),
+           py::arg("max_num_beads"), py::arg("num_samples"),
+           py::arg("offset") = 0)
+      .def("launch_make_bead_pellet_neighbor_list_wrap1",
+           &TRunner::template launch_make_bead_pellet_neighbor_list<1>,
+           py::arg("sample_x"), py::arg("pid"), py::arg("pid_length"),
+           py::arg("sample_bead_neighbors"),
+           py::arg("sample_num_bead_neighbors"),
+           py::arg("sample_pellet_neighbors"),
+           py::arg("sample_num_pellet_neighbors"), py::arg("grid_anomaly"),
+           py::arg("max_num_beads"), py::arg("num_samples"),
+           py::arg("offset") = 0)
       .def("launch_compute_density", &TRunner::launch_compute_density)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
