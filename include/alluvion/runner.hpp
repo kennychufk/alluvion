@@ -1967,6 +1967,32 @@ __global__ void sample_position_density(Variable<1, TF3> sample_x,
   });
 }
 
+template <typename TQ, typename TF3, typename TF>
+__global__ void sample_position_density_with_pellets(
+    Variable<1, TF3> sample_x, Variable<2, TQ> sample_neighbors,
+    Variable<1, U> sample_num_neighbors,
+    Variable<2, TQ> sample_pellet_neighbors,
+    Variable<1, U> sample_num_pellet_neighbors, Variable<1, TF> sample_density,
+    U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF density = 0;
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      TF3 xixj;
+      extract_displacement(sample_neighbors(p_i, neighbor_id), xixj);
+      density += displacement_cubic_kernel(xixj);
+    }
+    for (U neighbor_id = 0; neighbor_id < sample_num_pellet_neighbors(p_i);
+         ++neighbor_id) {
+      TF3 xixj;
+      extract_displacement(sample_pellet_neighbors(p_i, neighbor_id), xixj);
+      density += displacement_cubic_kernel(xixj);
+    }
+    sample_density(p_i) = density * cn<TF>().particle_mass;
+  });
+}
+
 // Viscosity_Standard
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_viscosity(
@@ -3146,7 +3172,7 @@ __global__ void divergence_solve_iteration(
     TF k_i = b_i * particle_dfsph_factor(p_i);
     particle_kappa_v(p_i) += k_i;
     TF3 x_i = particle_x(p_i);
-    TF3 dv{};
+    TF3 dv{};  // TODO: add 0?
     for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
@@ -3466,7 +3492,7 @@ __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
     TF dist = distance.signed_distance(vertex_local_wrt_j) * sign -
               cn<TF>().contact_tolerance;
     TF3 n = distance.gradient(vertex_local_wrt_j, static_cast<TF>(1e-3)) * sign;
-    n *= rsqrt(length_sqr(n));
+    n *= rsqrt(length_sqr(n));  // TODO
 
     TF3 cp = vertex_local_wrt_j - dist * n;
 
@@ -3780,6 +3806,36 @@ __global__ void compute_sample_velocity(
       TF3 velj = cross(rigid_omega(boundary_id), bx_j - rigid_x(boundary_id)) +
                  rigid_v(boundary_id);
       result += velj * boundary_kernel.w;
+    }
+    sample_v(p_i) = result;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_sample_velocity_with_pellets(
+    Variable<1, TF3> sample_x, Variable<1, TF> particle_density,
+    Variable<1, TF3> particle_v, Variable<2, TQ> sample_neighbors,
+    Variable<1, U> sample_num_neighbors, Variable<1, TF3> sample_v,
+    Variable<2, TQ> sample_pellet_neighbors,
+    Variable<1, U> sample_num_pellet_neighbors, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 result{0};
+    TF3 x_i = sample_x(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_neighbors(p_i, neighbor_id), xixj, p_j);
+      result += cn<TF>().particle_mass / particle_density(p_j) *
+                displacement_cubic_kernel(xixj) * particle_v(p_j);
+    }
+    for (U neighbor_id = 0; neighbor_id < sample_num_pellet_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_pellet_neighbors(p_i, neighbor_id), xixj, p_j);
+      result += cn<TF>().particle_vol * displacement_cubic_kernel(xixj) *
+                particle_v(p_j);
     }
     sample_v(p_i) = result;
   });
@@ -4814,6 +4870,23 @@ class Runner {
         },
         "compute_sample_velocity", compute_sample_velocity<TQ, TF3, TF>);
   }
+  void launch_sample_velocity_with_pellets(
+      Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
+      Variable<1, TF>& particle_density, Variable<1, TF3>& particle_v,
+      Variable<2, TQ>& sample_neighbors, Variable<1, U>& sample_num_neighbors,
+      Variable<1, TF3>& sample_v, Variable<2, TQ>& sample_pellet_neighbors,
+      Variable<1, U>& sample_num_pellet_neighbors, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          compute_sample_velocity_with_pellets<<<grid_size, block_size>>>(
+              sample_x, particle_density, particle_v, sample_neighbors,
+              sample_num_neighbors, sample_v, sample_pellet_neighbors,
+              sample_num_pellet_neighbors, num_samples);
+        },
+        "compute_sample_velocity_with_pellets",
+        compute_sample_velocity_with_pellets<TQ, TF3, TF>);
+  }
   void launch_sample_vorticity(
       Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
       Variable<1, TF>& particle_density, Variable<1, TF3>& particle_v,
@@ -4847,6 +4920,23 @@ class Runner {
               sample_boundary_kernel, num_samples);
         },
         "sample_position_density", sample_position_density<TQ, TF3, TF>);
+  }
+  void launch_sample_density_with_pellets(
+      Variable<1, TF3>& sample_x, Variable<2, TQ>& sample_neighbors,
+      Variable<1, U>& sample_num_neighbors,
+      Variable<2, TQ>& sample_pellet_neighbors,
+      Variable<1, U>& sample_num_pellet_neighbors,
+      Variable<1, TF>& sample_density, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          sample_position_density_with_pellets<<<grid_size, block_size>>>(
+              sample_x, sample_neighbors, sample_num_neighbors,
+              sample_pellet_neighbors, sample_num_pellet_neighbors,
+              sample_density, num_samples);
+        },
+        "sample_position_density_with_pellets",
+        sample_position_density_with_pellets<TQ, TF3, TF>);
   }
   void launch_collision_test(
       dg::Distance<TF3, TF> const& virtual_dist,

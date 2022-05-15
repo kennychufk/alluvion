@@ -1033,11 +1033,26 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("max_num_beads"), py::arg("num_samples"),
            py::arg("offset") = 0)
       .def("launch_compute_density", &TRunner::launch_compute_density)
+      .def("launch_compute_density_with_pellets",
+           &TRunner::launch_compute_density_with_pellets,
+           py::arg("particle_neighbors"), py::arg("particle_num_neighbors"),
+           py::arg("particle_boundary_neighbors"),
+           py::arg("particle_num_boundary_neighbors"),
+           py::arg("particle_density"), py::arg("num_particles"))
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
       .def("launch_sample_velocity", &TRunner::launch_sample_velocity)
+      .def("launch_sample_velocity_with_pellets",
+           &TRunner::launch_sample_velocity_with_pellets, py::arg("sample_x"),
+           py::arg("particle_x"), py::arg("particle_density"),
+           py::arg("particle_v"), py::arg("sample_neighbors"),
+           py::arg("sample_num_neighbors"), py::arg("sample_v"),
+           py::arg("sample_pellet_neighbors"),
+           py::arg("sample_num_pellet_neighbors"), py::arg("num_samples"))
       .def("launch_sample_vorticity", &TRunner::launch_sample_vorticity)
       .def("launch_sample_density", &TRunner::launch_sample_density)
+      .def("launch_sample_density_with_pellets",
+           &TRunner::launch_sample_density_with_pellets)
       .def_static("get_fluid_block_num_particles",
                   &TRunner::get_fluid_block_num_particles, py::arg("mode"),
                   py::arg("box_min"), py::arg("box_max"),
