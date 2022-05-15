@@ -72,6 +72,7 @@ class Store {
     var.ptr_ = nullptr;
     var.vbo_ = 0;
     var.res_ = nullptr;
+    update_resource_array();
   }
 
   template <unsigned int D, typename M>

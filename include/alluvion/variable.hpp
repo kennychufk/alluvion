@@ -215,6 +215,7 @@ class Variable {
   }
 
   constexpr __device__ M& operator()(U i) {
+    static_assert(D == 1);
     return *(static_cast<M*>(ptr_) + i);
   }
 
