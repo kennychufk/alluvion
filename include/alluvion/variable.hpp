@@ -2,6 +2,7 @@
 #define ALLUVION_VARIABLE_HPP
 
 #include <thrust/device_ptr.h>
+#include <thrust/fill.h>
 #include <thrust/functional.h>
 #include <thrust/transform.h>
 
@@ -99,6 +100,12 @@ class Variable {
   template <typename TMultiplier>
   void scale(TMultiplier multiplier) {
     scale(multiplier, get_linear_shape());
+  }
+  void fill(M value, U num_elements, U offset = 0) {
+    thrust::fill(
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
+        value);
   }
 
   void write_file(const char* filename, U shape_outermost = 0) const {

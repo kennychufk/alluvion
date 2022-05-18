@@ -16,6 +16,7 @@ struct SolverI : public Solver<TF> {
   using Base::dt;
   using Base::enable_surface_tension;
   using Base::enable_vorticity;
+  using Base::max_num_particles;
   using Base::num_particles;
   using Base::particle_radius;
   using Base::pile;
@@ -129,7 +130,7 @@ struct SolverI : public Solver<TF> {
                 *particle_neighbors, *particle_num_neighbors, *particle_a,
                 *particle_force, *particle_torque, *particle_boundary_neighbors,
                 *particle_num_boundary_neighbors, *pile.pellet_id_to_rigid_id_,
-                *pile.x_device_, num_particles);
+                *pile.x_device_, max_num_particles, num_particles);
           },
           "compute_viscosity_with_pellets",
           compute_viscosity_with_pellets<TQ, TF3, TF>);
@@ -282,7 +283,8 @@ struct SolverI : public Solver<TF> {
                 *particle_pressure_accel, *particle_neighbors,
                 *particle_num_neighbors, *particle_force, *particle_torque,
                 *particle_boundary_neighbors, *particle_num_boundary_neighbors,
-                *pile.pellet_id_to_rigid_id_, *pile.x_device_, num_particles);
+                *pile.pellet_id_to_rigid_id_, *pile.x_device_,
+                max_num_particles, num_particles);
           },
           "compute_pressure_accels_with_pellets",
           compute_pressure_accels_with_pellets<TQ, TF3, TF>);

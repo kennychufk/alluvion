@@ -439,8 +439,6 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
            py::arg("volume_grid_filename") = nullptr)
-      .def("build_grids", &TPile::build_grids)
-      .def("build_grid", &TPile::build_grid)
       .def("compute_sort_fluid_block_internal_all",
            &TPile::compute_sort_fluid_block_internal_all,
            py::arg("internal_encoded"), py::arg("box_min"), py::arg("box_max"),

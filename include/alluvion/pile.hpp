@@ -219,6 +219,7 @@ class Pile {
     store_.remove(*pellet_id_to_rigid_id_);
     pellet_id_to_rigid_id_.reset(store_.create<1, U>({num_collision_pellets_}));
     pellet_index_offset_list_.resize(get_size());
+    update_pellet_id_to_rigid_id();
 
     build_grid(boundary_id, distance_grid_filename, volume_grid_filename);
     return boundary_id;
@@ -278,6 +279,7 @@ class Pile {
     store_.remove(*pellet_id_to_rigid_id_);
     pellet_id_to_rigid_id_.reset(store_.create<1, U>({num_collision_pellets_}));
     pellet_index_offset_list_.resize(get_size());
+    update_pellet_id_to_rigid_id();
 
     build_grid(boundary_id, distance_grid_filename, volume_grid_filename);
     return boundary_id;
@@ -417,14 +419,6 @@ class Pile {
     TF margin = sign < 0 ? store_.get_cn<TF>().kernel_radius
                          : store_.get_cn<TF>().kernel_radius * 2;
 
-    pellet_index_offset_list_[i] =
-        i > 0 ? pellet_index_offset_list_[i - 1] +
-                    collision_vertex_list_[i - 1]->get_linear_shape()
-              : 0;
-    pellet_id_to_rigid_id_->set_same(
-        static_cast<int>(i), collision_vertex_list_[i]->get_linear_shape(),
-        pellet_index_offset_list_[i]);
-
     dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
     calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
                               domain_min, domain_max, num_nodes, cell_size);
@@ -547,10 +541,19 @@ class Pile {
       }
     }
   }
-  void build_grids() {
+  void update_pellet_id_to_rigid_id() {
     for (U i = 0; i < get_size(); ++i) {
-      build_grid(i);
+      update_pellet_id_to_rigid_id(i);
     }
+  }
+  void update_pellet_id_to_rigid_id(U i) {
+    pellet_index_offset_list_[i] =
+        i > 0 ? pellet_index_offset_list_[i - 1] +
+                    collision_vertex_list_[i - 1]->get_linear_shape()
+              : 0;
+    pellet_id_to_rigid_id_->fill(i,
+                                 collision_vertex_list_[i]->get_linear_shape(),
+                                 pellet_index_offset_list_[i]);
   }
   void compute_fluid_block_internal(U i, Variable<1, U>& internal_encoded,
                                     TF3 const& box_min, TF3 const& box_max,

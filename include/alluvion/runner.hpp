@@ -2104,7 +2104,7 @@ __global__ void compute_viscosity_with_pellets(
     Variable<2, TQ> particle_boundary_neighbors,
     Variable<1, U> particle_num_boundary_neighbors,
     Variable<1, U> pellet_id_to_rigid_id, Variable<1, TF3> rigid_x,
-    U num_particles) {
+    U max_num_beads, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 v_i = particle_v(p_i);
     TF3 x_i = particle_x(p_i);
@@ -2135,7 +2135,7 @@ __global__ void compute_viscosity_with_pellets(
       da += a;
 
       TF3 pellet_x = x_i - xixj;
-      U boundary_id = pellet_id_to_rigid_id(p_j - num_particles);
+      U boundary_id = pellet_id_to_rigid_id(p_j - max_num_beads);
       TF3 r_x = rigid_x(boundary_id);
       TF3 force = -cn<TF>().particle_mass * a;
       particle_force(boundary_id, p_i) += force;
@@ -2669,7 +2669,7 @@ __global__ void compute_pressure_accels_with_pellets(
     Variable<2, TQ> particle_boundary_neighbors,
     Variable<1, U> particle_num_boundary_neighbors,
     Variable<1, U> pellet_id_to_rigid_id, Variable<1, TF3> rigid_x,
-    U num_particles) {
+    U max_num_beads, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
     TF3 x_i = particle_x(p_i);
     TF density = particle_density(p_i);
@@ -2697,7 +2697,7 @@ __global__ void compute_pressure_accels_with_pellets(
       TF3 xixj;
       extract_pid(particle_boundary_neighbors(p_i, neighbor_id), xixj, p_j);
       TF3 x_j = x_i - xixj;
-      U boundary_id = pellet_id_to_rigid_id(p_j - num_particles);
+      U boundary_id = pellet_id_to_rigid_id(p_j - max_num_beads);
 
       TF densityj = cn<TF>().density0;
       TF densityj2 = densityj * densityj;
