@@ -234,7 +234,8 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
           .def("get_linear_shape", &VariableClass::get_linear_shape)
           .def("get_num_primitives", &VariableClass::get_num_primitives)
           .def("read_file", &VariableClass::read_file)
-          .def("write_file", &VariableClass::write_file)
+          .def("write_file", &VariableClass::write_file, py::arg("filename"),
+               py::arg("shape_outermost") = 0, py::arg("offset") = 0)
           .def("get_shape", &VariableClass::get_shape);
 
   if (typeid(PrimitiveType) != typeid(bool)) {

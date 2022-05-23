@@ -123,11 +123,20 @@ class Variable {
         value);
   }
 
-  void write_file(const char* filename, U shape_outermost = 0) const {
+  void write_file(const char* filename, U shape_outermost = 0,
+                  U offset = 0) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
+    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
+    U num_bytes = linear_shape * sizeof(M);
+    U byte_offset = offset * sizeof(M);
     if (shape_outermost > shape_[0]) {
       std::cerr << "Writing more than the outermost shape (" << shape_outermost
                 << ">" << shape_[0] << ")." << std::endl;
+      abort();
+    }
+    if (num_bytes + byte_offset > get_num_bytes()) {
+      std::cerr << "Writing more than allocated: " << (num_bytes + byte_offset)
+                << " " << get_num_bytes() << std::endl;
       abort();
     }
     if (shape_outermost == 0) shape_outermost = shape_[0];
@@ -143,10 +152,8 @@ class Variable {
                  sizeof(U));
     char type_label = numeric_type_to_label(get_type());
     stream.write(reinterpret_cast<const char*>(&type_label), sizeof(char));
-    U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
-    U num_bytes = linear_shape * sizeof(M);
     std::vector<M> host_copy(linear_shape);
-    get_bytes(host_copy.data(), num_bytes);
+    get_bytes(host_copy.data(), num_bytes, offset);
     stream.write(reinterpret_cast<const char*>(host_copy.data()), num_bytes);
   }
 
