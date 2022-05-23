@@ -737,7 +737,7 @@ class Pile {
     Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
     U num_vertices_i = vertices_i.get_linear_shape();
     for (U j = 0; j < get_size(); ++j) {
-      if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
+      if (i == j || (mass_[i] == 0 and mass_[j] == 0)) continue;
       runner_.launch_collision_test(
           *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
           *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
@@ -756,7 +756,7 @@ class Pile {
       Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
       U num_vertices_i = vertices_i.get_linear_shape();
       for (U j = 0; j < get_size(); ++j) {
-        if (i == j || (mass_[i] == 0 and mass_[i] == 0)) continue;
+        if (i == j || (mass_[i] == 0 and mass_[j] == 0)) continue;
         runner_.launch_collision_test(
             *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
             *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
