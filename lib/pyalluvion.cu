@@ -8,6 +8,7 @@
 
 #include "alluvion/constants.hpp"
 #include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/box_shell_distance.hpp"
 #include "alluvion/dg/capsule_distance.hpp"
 #include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
@@ -508,6 +509,25 @@ void declare_box_distance(py::module& m, const char* name) {
           },
           py::return_value_policy::reference, py::arg("widths"),
           py::arg("outset") = 0);
+}
+
+template <typename TF3, typename TF>
+void declare_box_shell_distance(py::module& m, const char* name) {
+  using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
+  std::string class_name = std::string("BoxShellDistance") + name;
+  py::class_<TBoxShellDistance, dg::Distance<TF3, TF>>(m, class_name.c_str())
+      .def(py::init<TF3, TF, TF>(), py::arg("widths"), py::arg("thickness"),
+           py::arg("outset") = 0)
+      .def_readonly("half_inner_widths", &TBoxShellDistance::half_inner_widths)
+      .def_readonly("half_outer_widths", &TBoxShellDistance::half_outer_widths)
+      .def_readonly("outset", &TBoxShellDistance::outset)
+      .def_static(
+          "create",
+          [](TF3 widths, TF thickness, TF outset) {
+            return new TBoxShellDistance(widths, thickness, outset);
+          },
+          py::return_value_policy::reference, py::arg("widths"),
+          py::arg("thickness"), py::arg("outset") = 0);
 }
 
 template <typename TF3, typename TF>
@@ -1245,6 +1265,8 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_sphere_distance<double3, double>(m_dg, "double");
   declare_box_distance<float3, float>(m_dg, "float");
   declare_box_distance<double3, double>(m_dg, "double");
+  declare_box_shell_distance<float3, float>(m_dg, "float");
+  declare_box_shell_distance<double3, double>(m_dg, "double");
   declare_cylinder_distance<float3, float>(m_dg, "float");
   declare_cylinder_distance<double3, double>(m_dg, "double");
   declare_infinite_cylinder_distance<float3, float>(m_dg, "float");

@@ -20,9 +20,10 @@ class Depot(Store):
                     getattr(_al, f"{classname}{numeric_type_str}"))
 
         float_typed_dg_classnames = [
-            'BoxDistance', 'CapsuleDistance', 'CylinderDistance', 'Distance',
-            'InfiniteCylinderDistance', 'InfiniteTubeDistance',
-            'SphereDistance', 'MeshDistance', 'TriangleMesh'
+            'BoxDistance', 'BoxShellDistance', 'CapsuleDistance',
+            'CylinderDistance', 'Distance', 'InfiniteCylinderDistance',
+            'InfiniteTubeDistance', 'SphereDistance', 'MeshDistance',
+            'TriangleMesh'
         ]
         for classname in float_typed_dg_classnames:
             setattr(self, classname,

@@ -21,6 +21,7 @@
 #include "alluvion/contact.hpp"
 #include "alluvion/data_type.hpp"
 #include "alluvion/dg/box_distance.hpp"
+#include "alluvion/dg/box_shell_distance.hpp"
 #include "alluvion/dg/capsule_distance.hpp"
 #include "alluvion/dg/cylinder_distance.hpp"
 #include "alluvion/dg/infinite_cylinder_distance.hpp"
@@ -4318,6 +4319,7 @@ class Runner {
       TF particle_radius, int mode, TF3 const& box_min, TF3 const& box_max) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -4346,6 +4348,17 @@ class Runner {
           },
           "compute_fluid_block_internal(BoxDistance)",
           compute_fluid_block_internal<TQ, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_block_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, particle_radius, mode, box_min, box_max);
+          },
+          "compute_fluid_block_internal(BoxShellDistance)",
+          compute_fluid_block_internal<TQ, TF3, TF, TBoxShellDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(
@@ -4416,6 +4429,7 @@ class Runner {
       TF radius, TF particle_radius, TF y_min, TF y_max) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -4444,6 +4458,17 @@ class Runner {
           },
           "compute_fluid_cylinder_internal(BoxDistance)",
           compute_fluid_cylinder_internal<TQ, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_fluid_cylinder_internal<<<grid_size, block_size>>>(
+                internal_encoded, *distance, sign, rigid_x, rigid_q,
+                num_positions, radius, particle_radius, y_min, y_max);
+          },
+          "compute_fluid_cylinder_internal(BoxShellDistance)",
+          compute_fluid_cylinder_internal<TQ, TF3, TF, TBoxShellDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(
@@ -4545,6 +4570,7 @@ class Runner {
       Variable<2, TQ>& particle_boundary_kernel, U num_particles) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -4573,6 +4599,19 @@ class Runner {
           },
           "compute_particle_boundary_analytic(BoxDistance)",
           compute_particle_boundary_analytic<0, TQ, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_particle_boundary_analytic<0><<<grid_size, block_size>>>(
+                volume_nodes, *distance, rigid_x, rigid_q, boundary_id,
+                domain_min, domain_max, resolution, cell_size, sign, particle_x,
+                particle_boundary, particle_boundary_kernel, num_particles);
+          },
+          "compute_particle_boundary_analytic(BoxShellDistance)",
+          compute_particle_boundary_analytic<0, TQ, TF3, TF,
+                                             TBoxShellDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(
@@ -5036,6 +5075,7 @@ class Runner {
       TF sign, TF cfl, U num_particles) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -5061,6 +5101,16 @@ class Runner {
           },
           "move_and_avoid_boundary(BoxDistance)",
           move_and_avoid_boundary<wrap, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            move_and_avoid_boundary<wrap><<<grid_size, block_size>>>(
+                particle_x, particle_dx, *distance, sign, cfl, num_particles);
+          },
+          "move_and_avoid_boundary(BoxShellDistance)",
+          move_and_avoid_boundary<wrap, TF3, TF, TBoxShellDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(
@@ -5128,6 +5178,7 @@ class Runner {
       TF sign, TF cohesion, TF adhesion, U num_particles) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -5158,6 +5209,19 @@ class Runner {
           },
           "compute_cohesion_adhesion_displacement(BoxDistance)",
           compute_cohesion_adhesion_displacement<TQ, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            compute_cohesion_adhesion_displacement<<<grid_size, block_size>>>(
+                particle_x, particle_density, particle_neighbors,
+                particle_num_neighbors, particle_dx, *distance, sign, cohesion,
+                adhesion, num_particles);
+          },
+          "compute_cohesion_adhesion_displacement(BoxShellDistance)",
+          compute_cohesion_adhesion_displacement<TQ, TF3, TF,
+                                                 TBoxShellDistance>);
     } else if (TSphereDistance const* distance =
                    dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
       launch(

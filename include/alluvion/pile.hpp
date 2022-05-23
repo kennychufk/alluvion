@@ -430,6 +430,7 @@ class Pile {
     }
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
@@ -478,6 +479,17 @@ class Pile {
             },
             "update_volume_field(BoxDistance)",
             update_volume_field<TF3, TF, TBoxDistance>);
+      } else if (TBoxShellDistance const* distance =
+                     dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+        runner_.launch(
+            num_nodes,
+            [&](U grid_size, U block_size) {
+              update_volume_field<<<grid_size, block_size>>>(
+                  *volume_grid, *distance, domain_min, resolution_list_[i],
+                  cell_size, num_nodes, sign_list_[i]);
+            },
+            "update_volume_field(BoxShellDistance)",
+            update_volume_field<TF3, TF, TBoxShellDistance>);
       } else if (TSphereDistance const* distance =
                      dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
         runner_.launch(

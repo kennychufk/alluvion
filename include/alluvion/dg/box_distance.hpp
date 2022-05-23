@@ -13,7 +13,7 @@ class BoxDistance : public Distance<TF3, TF> {
         outset(outset_arg),
         Distance<TF3, TF>(widths * TF{-0.5} - outset_arg,
                           widths * TF{0.5} + outset_arg,
-                          length(widths) + outset_arg) {}
+                          length(widths * TF{0.5}) + outset_arg) {}
   TF signedDistance(dg::Vector3r<TF> const& x) const override {
     TF3 diff = TF3{abs(x(0)), abs(x(1)), abs(x(2))} - half_widths;
     TF3 clipped_diff =
