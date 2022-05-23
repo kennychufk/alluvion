@@ -19,6 +19,13 @@
 #include "alluvion/pinned_variable.hpp"
 
 namespace alluvion {
+template <typename T>
+struct ShiftOperation {
+  ShiftOperation(T addend_arg) : addend(addend_arg) {}
+  __device__ void operator()(T& v) { v += addend; }
+  T addend;
+};
+
 template <U D, typename M>
 class Variable {
  public:
@@ -101,6 +108,14 @@ class Variable {
   void scale(TMultiplier multiplier) {
     scale(multiplier, get_linear_shape());
   }
+  void shift(M addend, U num_elements, U offset = 0) {
+    using namespace thrust::placeholders;
+    thrust::for_each(
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
+        ShiftOperation(addend));
+  }
+  void shift(M addend) { shift(addend, get_linear_shape()); }
   void fill(M value, U num_elements, U offset = 0) {
     thrust::fill(
         thrust::device_ptr<M>(static_cast<M*>(ptr_)) + offset,

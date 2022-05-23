@@ -224,6 +224,10 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
                py::overload_cast<M, U, U>(&VariableClass::template scale<M>),
                py::arg("multiplier"), py::arg("num_elements"),
                py::arg("offset") = 0)
+          .def("shift", py::overload_cast<M>(&VariableClass::shift))
+          .def("shift", py::overload_cast<M, U, U>(&VariableClass::shift),
+               py::arg("addend"), py::arg("num_elements"),
+               py::arg("offset") = 0)
           .def("get_type", &VariableClass::get_type)
           .def("get_num_primitives_per_element",
                &VariableClass::get_num_primitives_per_element)
