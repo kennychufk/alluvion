@@ -93,6 +93,7 @@ class Pile {
   std::vector<TF3> domain_max_list_;
   std::vector<U> grid_size_list_;
   std::vector<TF3> cell_size_list_;
+  std::vector<U2> identical_sequence_list_;
 
   const U max_num_pellets_;
   std::vector<MeshBuffer> mesh_buffer_list_;
@@ -104,7 +105,10 @@ class Pile {
 
   std::unique_ptr<Variable<1, TF3>> x_device_;
   std::unique_ptr<Variable<1, TF3>> v_device_;
+  std::unique_ptr<Variable<1, TQ>> q_device_;
   std::unique_ptr<Variable<1, TF3>> omega_device_;
+  std::unique_ptr<Variable<1, TF3>> mass_contact_device_;
+  std::unique_ptr<Variable<1, TF3>> inertia_device_;
   std::unique_ptr<Variable<1, TContact>> contacts_;
   std::unique_ptr<Variable<1, U>> num_contacts_;
   PinnedVariable<1, TContact> contacts_pinned_;
@@ -132,7 +136,10 @@ class Pile {
         pellet_id_to_rigid_id_(store.create<1, U>({0})),
         x_device_(store.create<1, TF3>({0})),
         v_device_(store.create<1, TF3>({0})),
+        q_device_(store.create<1, TQ>({0})),
         omega_device_(store.create<1, TF3>({0})),
+        mass_contact_device_(store.create<1, TF3>({0})),
+        inertia_device_(store.create<1, TF3>({0})),
         contacts_(store.create<1, TContact>({max_num_contacts})),
         num_contacts_(store.create<1, U>({1})),
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
@@ -159,6 +166,7 @@ class Pile {
 
     store_.remove(*x_device_);
     store_.remove(*v_device_);
+    store_.remove(*q_device_);
     store_.remove(*omega_device_);
     store_.remove(*contacts_);
     store_.remove(*num_contacts_);
@@ -567,6 +575,28 @@ class Pile {
                                  collision_vertex_list_[i]->get_linear_shape(),
                                  pellet_index_offset_list_[i]);
   }
+  void hint_identical_sequence(U begin_id, U end_id) {
+    identical_sequence_list_.push_back(U2{begin_id, end_id});
+  }
+  void compute_custom_beads_internal(U i, Variable<1, U>& internal_encoded,
+                                     Variable<1, TF3> const& bead_x) {
+    runner_.launch_compute_custom_beads_internal(
+        internal_encoded, bead_x, *distance_list_[i], *distance_grids_[i],
+        domain_min_list_[i], domain_max_list_[i], resolution_list_[i],
+        cell_size_list_[i], sign_list_[i], x_(i), q_(i),
+        internal_encoded.get_linear_shape());
+  }
+  U compute_sort_custom_beads_internal_all(Variable<1, U>& internal_encoded,
+                                           Variable<1, TF3> const& bead_x) {
+    internal_encoded.set_zero();
+    for (U i = 0; i < get_size(); ++i) {
+      compute_custom_beads_internal(i, internal_encoded, bead_x);
+    }
+    TRunner::sort(internal_encoded, internal_encoded.get_linear_shape());
+    return internal_encoded.get_linear_shape() -
+           TRunner::count(internal_encoded, UINT_MAX,
+                          internal_encoded.get_linear_shape());
+  }
   void compute_fluid_block_internal(U i, Variable<1, U>& internal_encoded,
                                     TF3 const& box_min, TF3 const& box_max,
                                     TF particle_radius, int mode) {
@@ -618,10 +648,24 @@ class Pile {
   void reallocate_kinematics_on_device() {
     store_.remove(*x_device_);
     store_.remove(*v_device_);
+    store_.remove(*q_device_);
     store_.remove(*omega_device_);
+    store_.remove(*mass_contact_device_);
+    store_.remove(*inertia_device_);
     x_device_.reset(store_.create<1, TF3>({get_size()}));
     v_device_.reset(store_.create<1, TF3>({get_size()}));
+    q_device_.reset(store_.create<1, TQ>({get_size()}));
     omega_device_.reset(store_.create<1, TF3>({get_size()}));
+    mass_contact_device_.reset(store_.create<1, TF3>({get_size()}));
+    inertia_device_.reset(store_.create<1, TF3>({get_size()}));
+
+    std::vector<TF3> mass_contact_host;
+    mass_contact_host.reserve(get_size());
+    for (U i = 0; i < get_size(); ++i) {
+      mass_contact_host.push_back(TF3{mass_[i], restitution_[i], friction_[i]});
+    }
+    mass_contact_device_->set_bytes(mass_contact_host.data());
+    inertia_device_->set_bytes(inertia_tensor_.data());
 
     store_.get_cni().num_boundaries = get_size();
   }
@@ -647,6 +691,7 @@ class Pile {
   void copy_kinematics_to_device() {
     x_device_->set_bytes(x_.ptr_);
     v_device_->set_bytes(v_.ptr_);
+    q_device_->set_bytes(q_.ptr_);
     omega_device_->set_bytes(omega_.ptr_);
   }
   void write_file(const char* filename, TF x_scale = 1, TF v_scale = 1,
@@ -750,21 +795,49 @@ class Pile {
     num_contacts_->get_bytes(num_contacts_pinned_.ptr_);
     return num_contacts_pinned_(0);
   }
-  U find_contacts() {
+  U find_contacts(Variable<1, TF3> const& particle_x, U max_num_beads) {
     num_contacts_->set_zero();
-    for (U i = 0; i < get_size(); ++i) {
-      Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
-      U num_vertices_i = vertices_i.get_linear_shape();
-      for (U j = 0; j < get_size(); ++j) {
-        if (i == j || (mass_[i] == 0 and mass_[j] == 0)) continue;
-        runner_.launch_collision_test(
-            *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
-            *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
-            v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j), v_(j),
-            q_(j), omega_(j), restitution_[i] * restitution_[j],
-            friction_[i] + friction_[j], domain_min_list_[j],
-            domain_max_list_[j], resolution_list_[j], cell_size_list_[j],
-            sign_list_[j], num_vertices_i);
+    if (volume_method_ == VolumeMethod::pellets) {
+      U index_to_identical_sequence_list = 0;
+      U j = 0;
+      while (j < get_size()) {
+        U j_begin = j;
+        U j_end = j + 1;
+        U2 identical_sequence{0};
+        if (index_to_identical_sequence_list <
+            identical_sequence_list_.size()) {
+          identical_sequence =
+              identical_sequence_list_[index_to_identical_sequence_list];
+        }
+        if (j == identical_sequence.x && j < identical_sequence.y) {
+          j_begin = identical_sequence.x;
+          j_end = identical_sequence.y;
+          index_to_identical_sequence_list++;
+        }
+        runner_.launch_collision_test_with_pellets(
+            *distance_list_[j], *distance_grids_[j], j_begin, j_end, particle_x,
+            *pellet_id_to_rigid_id_, *num_contacts_, *contacts_, *x_device_,
+            *v_device_, *q_device_, *omega_device_, *mass_contact_device_,
+            *inertia_device_, domain_min_list_[j], domain_max_list_[j],
+            resolution_list_[j], cell_size_list_[j], sign_list_[j],
+            max_num_beads, num_pellets_);
+        j = j_end;
+      }
+    } else {
+      for (U i = 0; i < get_size(); ++i) {
+        Variable<1, TF3>& vertices_i = *collision_vertex_list_[i];
+        U num_vertices_i = vertices_i.get_linear_shape();
+        for (U j = 0; j < get_size(); ++j) {
+          if (i == j || (mass_[i] == 0 and mass_[j] == 0)) continue;
+          runner_.launch_collision_test(
+              *distance_list_[j], *distance_grids_[j], i, j, vertices_i,
+              *num_contacts_, *contacts_, mass_[i], inertia_tensor_[i], x_(i),
+              v_(i), q_(i), omega_(i), mass_[j], inertia_tensor_[j], x_(j),
+              v_(j), q_(j), omega_(j), restitution_[i] * restitution_[j],
+              friction_[i] + friction_[j], domain_min_list_[j],
+              domain_max_list_[j], resolution_list_[j], cell_size_list_[j],
+              sign_list_[j], num_vertices_i);
+        }
       }
     }
     num_contacts_->get_bytes(num_contacts_pinned_.ptr_);

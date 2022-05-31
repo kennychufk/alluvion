@@ -941,6 +941,24 @@ __global__ void create_fluid_block(Variable<1, TF3> particle_x, U num_particles,
 }
 
 template <typename TF3, typename TF>
+__global__ void create_custom_beads_internal(
+    Variable<1, TF3> particle_x, Variable<1, TF3> ref_x,
+    Variable<1, U> internal_encoded_sorted, U num_particles, U offset) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    particle_x(offset + p_i) = ref_x(internal_encoded_sorted(p_i));
+  });
+}
+
+template <typename TF>
+__global__ void create_custom_beads_scalar_internal(
+    Variable<1, TF> particle_scalar, Variable<1, TF> ref_scalar,
+    Variable<1, U> internal_encoded_sorted, U num_particles, U offset) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    particle_scalar(offset + p_i) = ref_scalar(internal_encoded_sorted(p_i));
+  });
+}
+
+template <typename TF3, typename TF>
 __global__ void create_fluid_block_internal(
     Variable<1, TF3> particle_x, Variable<1, U> internal_encoded_sorted,
     U num_particles, U offset, TF particle_radius, int mode, TF3 box_min,
@@ -965,6 +983,49 @@ __global__ void compute_fluid_block_internal(Variable<1, U> internal_encoded,
   forThreadMappedToElement(num_positions, [&](U p_i) {
     TF3 x = index_to_position_in_fluid_block(p_i, mode, box_min, steps,
                                              particle_radius);
+
+    TF d = distance.signed_distance(rotate_using_quaternion(
+               x - rigid_x, quaternion_conjugate(rigid_q))) *
+           sign;
+    internal_encoded(p_i) =
+        (d < cn<TF>().kernel_radius or internal_encoded(p_i) == UINT_MAX)
+            ? UINT_MAX
+            : p_i;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_custom_beads_internal(Variable<1, U> internal_encoded,
+                                              Variable<1, TF3> bead_x,
+                                              Variable<1, TF> distance_nodes,
+                                              TF3 domain_min, TF3 domain_max,
+                                              U3 resolution, TF3 cell_size,
+                                              TF sign, TF3 rigid_x, TQ rigid_q,
+                                              U num_positions) {
+  forThreadMappedToElement(num_positions, [&](U p_i) {
+    TF3 x = bead_x(p_i);
+
+    TF distance =
+        interpolate_distance_without_intermediates(
+            &distance_nodes, domain_min, domain_max, resolution, cell_size,
+            rotate_using_quaternion(x - rigid_x,
+                                    quaternion_conjugate(rigid_q))) *
+        sign;
+    internal_encoded(p_i) =
+        (distance < cn<TF>().kernel_radius or internal_encoded(p_i) == UINT_MAX)
+            ? UINT_MAX
+            : p_i;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF, typename TDistance>
+__global__ void compute_custom_beads_internal(Variable<1, U> internal_encoded,
+                                              Variable<1, TF3> bead_x,
+                                              const TDistance distance, TF sign,
+                                              TF3 rigid_x, TQ rigid_q,
+                                              U num_positions) {
+  forThreadMappedToElement(num_positions, [&](U p_i) {
+    TF3 x = bead_x(p_i);
 
     TF d = distance.signed_distance(rotate_using_quaternion(
                x - rigid_x, quaternion_conjugate(rigid_q))) *
@@ -3469,6 +3530,213 @@ __global__ void integrate_velocity(Variable<1, TF3> particle_x,
 
 // rigid
 template <typename TQ, typename TF3, typename TF, typename TDistance>
+__global__ void collision_test_with_pellets(
+    U j_begin, U j_end, Variable<1, TF3> particle_x,
+    Variable<1, U> pellet_id_to_rigid_id,
+
+    Variable<1, U> num_contacts, Variable<1, Contact<TF3, TF>> contacts,
+    Variable<1, TF3> x, Variable<1, TF3> v, Variable<1, TQ> q,
+    Variable<1, TF3> omega, Variable<1, TF3> mass_contact,
+    Variable<1, TF3> inertia,
+
+    const TDistance distance, TF sign,
+
+    U max_num_beads, U num_pellets
+
+) {
+  forThreadMappedToElement(num_pellets, [&](U p_i0) {
+    U p_i = p_i0 + max_num_beads;
+    Contact<TF3, TF> contact;
+    U i = pellet_id_to_rigid_id(p_i0);
+    contact.cp_i = particle_x(p_i);
+    TF3 x_i = x(i);
+    for (U j = j_begin; j < j_end; ++j) {
+      TF3 x_j = x(j);
+      TQ q_i = q(i);
+      TQ q_j = q(j);
+      TF3 mass_contact_i = mass_contact(i);
+      TF3 mass_contact_j = mass_contact(j);
+
+      TF restitution = mass_contact_i.y * mass_contact_j.y;
+      TF friction = mass_contact_i.z + mass_contact_j.z;
+      TF3 vertex_local_wrt_j = rotate_using_quaternion(
+          contact.cp_i - x_j, quaternion_conjugate(q_j));
+
+      TF dist = distance.signed_distance(vertex_local_wrt_j) * sign -
+                cn<TF>().contact_tolerance;
+      TF3 n =
+          distance.gradient(vertex_local_wrt_j, static_cast<TF>(1e-3)) * sign;
+      n *= rsqrt(length_sqr(n));  // TODO
+
+      TF3 cp = vertex_local_wrt_j - dist * n;
+
+      if (dist < 0 && i != j &&
+          (mass_contact_i.x != 0 || mass_contact_j.x != 0)) {
+        U contact_insert_index = atomicAdd(&num_contacts(0), 1);
+        contact.i = i;
+        contact.j = j;
+        contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
+        contact.n = rotate_using_quaternion(n, q_j);
+
+        contact.friction = friction;
+
+        TF3 r_i = contact.cp_i - x_i;
+        TF3 r_j = contact.cp_j - x_j;
+
+        TF3 u_i = v(i) + cross(omega(i), r_i);
+        TF3 u_j = v(j) + cross(omega(j), r_j);
+
+        TF3 u_rel = u_i - u_j;
+        TF u_rel_n = dot(contact.n, u_rel);
+
+        contact.t = u_rel - u_rel_n * contact.n;
+        TF tl2 = length_sqr(contact.t);
+        if (tl2 > static_cast<TF>(1e-6)) {
+          contact.t = normalize(contact.t);
+        }
+
+        calculate_congruent_matrix(1 / inertia(i), q_i, &(contact.iiwi_diag),
+                                   &(contact.iiwi_off_diag));
+        calculate_congruent_matrix(1 / inertia(j), q_j, &(contact.iiwj_diag),
+                                   &(contact.iiwj_off_diag));
+
+        TF3 k_i_diag, k_i_off_diag;
+        TF3 k_j_diag, k_j_off_diag;
+        calculate_congruent_k(contact.cp_i - x_i, mass_contact_i.x,
+                              contact.iiwi_diag, contact.iiwi_off_diag,
+                              &k_i_diag, &k_i_off_diag);
+        calculate_congruent_k(contact.cp_j - x_j, mass_contact_j.x,
+                              contact.iiwj_diag, contact.iiwj_off_diag,
+                              &k_j_diag, &k_j_off_diag);
+        TF3 k_diag = k_i_diag + k_j_diag;
+        TF3 k_off_diag = k_i_off_diag + k_j_off_diag;
+
+        contact.nkninv =
+            1 / dot(contact.n, apply_congruent(contact.n, k_diag, k_off_diag));
+        contact.pmax =
+            1 / dot(contact.t, apply_congruent(contact.t, k_diag, k_off_diag)) *
+            dot(u_rel, contact.t);  // note: error-prone when the magnitude of
+                                    // tangent is small
+
+        TF goal_u_rel_n = 0;
+        if (u_rel_n < 0) {
+          goal_u_rel_n = -restitution * u_rel_n;
+        }
+
+        contact.goalu = goal_u_rel_n;
+        contact.impulse_sum = 0;
+        if (contact_insert_index < cni.max_num_contacts) {
+          contacts(contact_insert_index) = contact;
+        }
+      }
+    }
+  });
+}
+template <typename TQ, typename TF3, typename TF>
+__global__ void collision_test_with_pellets(
+    U j_begin, U j_end, Variable<1, TF3> particle_x,
+    Variable<1, U> pellet_id_to_rigid_id,
+
+    Variable<1, U> num_contacts, Variable<1, Contact<TF3, TF>> contacts,
+    Variable<1, TF3> x, Variable<1, TF3> v, Variable<1, TQ> q,
+    Variable<1, TF3> omega, Variable<1, TF3> mass_contact,
+    Variable<1, TF3> inertia,
+
+    Variable<1, TF> distance_nodes, TF3 domain_min, TF3 domain_max,
+    U3 resolution, TF3 cell_size, TF sign,
+
+    U max_num_beads, U num_pellets
+
+) {
+  forThreadMappedToElement(num_pellets, [&](U p_i0) {
+    U p_i = p_i0 + max_num_beads;
+    Contact<TF3, TF> contact;
+    U i = pellet_id_to_rigid_id(p_i0);
+    contact.cp_i = particle_x(p_i);
+    TF3 x_i = x(i);
+    for (U j = j_begin; j < j_end; ++j) {
+      TF3 x_j = x(j);
+      TQ q_i = q(i);
+      TQ q_j = q(j);
+      TF3 mass_contact_i = mass_contact(i);
+      TF3 mass_contact_j = mass_contact(j);
+
+      TF restitution = mass_contact_i.y * mass_contact_j.y;
+      TF friction = mass_contact_i.z + mass_contact_j.z;
+      TF3 vertex_local_wrt_j = rotate_using_quaternion(
+          contact.cp_i - x_j, quaternion_conjugate(q_j));
+
+      TF3 n;
+      TF dist = collision_find_dist_normal(
+          &distance_nodes, domain_min, domain_max, resolution, cell_size, sign,
+          cn<TF>().contact_tolerance, vertex_local_wrt_j, &n);
+      n *= rsqrt(length_sqr(n));  // TODO
+
+      TF3 cp = vertex_local_wrt_j - dist * n;
+      if (dist < 0 && i != j &&
+          (mass_contact_i.x != 0 || mass_contact_j.x != 0)) {
+        U contact_insert_index = atomicAdd(&num_contacts(0), 1);
+        contact.i = i;
+        contact.j = j;
+        contact.cp_j = rotate_using_quaternion(cp, q_j) + x_j;
+        contact.n = rotate_using_quaternion(n, q_j);
+
+        contact.friction = friction;
+
+        TF3 r_i = contact.cp_i - x_i;
+        TF3 r_j = contact.cp_j - x_j;
+
+        TF3 u_i = v(i) + cross(omega(i), r_i);
+        TF3 u_j = v(j) + cross(omega(j), r_j);
+
+        TF3 u_rel = u_i - u_j;
+        TF u_rel_n = dot(contact.n, u_rel);
+
+        contact.t = u_rel - u_rel_n * contact.n;
+        TF tl2 = length_sqr(contact.t);
+        if (tl2 > static_cast<TF>(1e-6)) {
+          contact.t = normalize(contact.t);
+        }
+
+        calculate_congruent_matrix(1 / inertia(i), q_i, &(contact.iiwi_diag),
+                                   &(contact.iiwi_off_diag));
+        calculate_congruent_matrix(1 / inertia(j), q_j, &(contact.iiwj_diag),
+                                   &(contact.iiwj_off_diag));
+
+        TF3 k_i_diag, k_i_off_diag;
+        TF3 k_j_diag, k_j_off_diag;
+        calculate_congruent_k(contact.cp_i - x_i, mass_contact_i.x,
+                              contact.iiwi_diag, contact.iiwi_off_diag,
+                              &k_i_diag, &k_i_off_diag);
+        calculate_congruent_k(contact.cp_j - x_j, mass_contact_j.x,
+                              contact.iiwj_diag, contact.iiwj_off_diag,
+                              &k_j_diag, &k_j_off_diag);
+        TF3 k_diag = k_i_diag + k_j_diag;
+        TF3 k_off_diag = k_i_off_diag + k_j_off_diag;
+
+        contact.nkninv =
+            1 / dot(contact.n, apply_congruent(contact.n, k_diag, k_off_diag));
+        contact.pmax =
+            1 / dot(contact.t, apply_congruent(contact.t, k_diag, k_off_diag)) *
+            dot(u_rel, contact.t);  // note: error-prone when the magnitude of
+                                    // tangent is small
+
+        TF goal_u_rel_n = 0;
+        if (u_rel_n < 0) {
+          goal_u_rel_n = -restitution * u_rel_n;
+        }
+
+        contact.goalu = goal_u_rel_n;
+        contact.impulse_sum = 0;
+        if (contact_insert_index < cni.max_num_contacts) {
+          contacts(contact_insert_index) = contact;
+        }
+      }
+    }
+  });
+}
+
+template <typename TQ, typename TF3, typename TF, typename TDistance>
 __global__ void collision_test(U i, U j, Variable<1, TF3> vertices_i,
                                Variable<1, U> num_contacts,
                                Variable<1, Contact<TF3, TF>> contacts,
@@ -4283,6 +4551,31 @@ class Runner {
         },
         "create_fluid_block", create_fluid_block<TF3, TF>);
   }
+  void launch_create_custom_beads_internal(
+      Variable<1, TF3>& particle_x, Variable<1, TF3> const& ref_x,
+      Variable<1, U>& internal_encoded_sorted, U num_particles, U offset) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          create_custom_beads_internal<TF3, TF><<<grid_size, block_size>>>(
+              particle_x, ref_x, internal_encoded_sorted, num_particles,
+              offset);
+        },
+        "create_custom_beads_internal", create_custom_beads_internal<TF3, TF>);
+  }
+  void launch_create_custom_beads_scalar_internal(
+      Variable<1, TF>& particle_scalar, Variable<1, TF> const& ref_scalar,
+      Variable<1, U>& internal_encoded_sorted, U num_particles, U offset) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          create_custom_beads_scalar_internal<TF><<<grid_size, block_size>>>(
+              particle_scalar, ref_scalar, internal_encoded_sorted,
+              num_particles, offset);
+        },
+        "create_custom_beads_scalar_internal",
+        create_custom_beads_scalar_internal<TF>);
+  }
   void launch_create_fluid_block_internal(
       Variable<1, TF3>& particle_x, Variable<1, U>& internal_encoded_sorted,
       U num_particles, U offset, TF particle_radius, int mode,
@@ -4309,6 +4602,117 @@ class Runner {
         },
         "create_fluid_cylinder_internal",
         create_fluid_cylinder_internal<TF3, TF>);
+  }
+  void launch_compute_custom_beads_internal(
+      Variable<1, U>& internal_encoded, Variable<1, TF3> const& bead_x,
+      dg::Distance<TF3, TF> const& virtual_dist,
+      Variable<1, TF> const& distance_nodes, TF3 const& domain_min,
+      TF3 const& domain_max, U3 const& resolution, TF3 const& cell_size,
+      TF sign, TF3 const& rigid_x, TQ const& rigid_q, U num_positions) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TBoxShellDistance = dg::BoxShellDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
+    using TInfiniteTubeDistance = dg::InfiniteTubeDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, distance_nodes, domain_min,
+                domain_max, resolution, cell_size, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal",
+          compute_custom_beads_internal<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(BoxDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TBoxDistance>);
+    } else if (TBoxShellDistance const* distance =
+                   dynamic_cast<TBoxShellDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(BoxShellDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TBoxShellDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(SphereDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(CylinderDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TCylinderDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(InfiniteCylinderDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF,
+                                        TInfiniteCylinderDistance>);
+    } else if (TInfiniteTubeDistance const* distance =
+                   dynamic_cast<TInfiniteTubeDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(InfiniteTubeDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TInfiniteTubeDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      launch(
+          num_positions,
+          [&](U grid_size, U block_size) {
+            compute_custom_beads_internal<<<grid_size, block_size>>>(
+                internal_encoded, bead_x, *distance, sign, rigid_x, rigid_q,
+                num_positions);
+          },
+          "compute_custom_beads_internal(CapsuleDistance)",
+          compute_custom_beads_internal<TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr
+          << "[compute_custom_beads_internal] Distance type not supported."
+          << std::endl;
+    }
   }
   void launch_compute_fluid_block_internal(
       Variable<1, U>& internal_encoded,
@@ -5064,6 +5468,94 @@ class Runner {
           collision_test<TQ, TF3, TF, TCapsuleDistance>);
     } else {
       std::cerr << "[collision_test] Distance type not supported." << std::endl;
+    }
+  }
+  void launch_collision_test_with_pellets(
+      dg::Distance<TF3, TF> const& virtual_dist,
+      Variable<1, TF> const& distance_nodes, U j_begin, U j_end,
+      Variable<1, TF3> const& particle_x,
+      Variable<1, U> const& pellet_id_to_rigid_id,
+
+      Variable<1, U>& num_contacts, Variable<1, Contact<TF3, TF>>& contacts,
+
+      Variable<1, TF3> const& x, Variable<1, TF3> const& v,
+      Variable<1, TQ> const& q, Variable<1, TF3> const& omega,
+      Variable<1, TF3> const& mass_contact, Variable<1, TF3> const& inertia,
+
+      TF3 const& domain_min, TF3 const& domain_max, U3 const& resolution,
+      TF3 const& cell_size, TF sign,
+
+      U max_num_beads, U num_pellets) {
+    using TMeshDistance = dg::MeshDistance<TF3, TF>;
+    using TBoxDistance = dg::BoxDistance<TF3, TF>;
+    using TSphereDistance = dg::SphereDistance<TF3, TF>;
+    using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
+    using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    // NOTE: InfiniteCylinderDistance and InfiniteTubeDistance omitted
+    if (TMeshDistance const* distance =
+            dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
+      launch(
+          num_pellets,
+          [&](U grid_size, U block_size) {
+            collision_test_with_pellets<<<grid_size, block_size>>>(
+                j_begin, j_end, particle_x, pellet_id_to_rigid_id, num_contacts,
+                contacts, x, v, q, omega, mass_contact, inertia, distance_nodes,
+                domain_min, domain_max, resolution, cell_size, sign,
+                max_num_beads, num_pellets);
+          },
+          "collision_test_with_pellets",
+          collision_test_with_pellets<TQ, TF3, TF>);
+    } else if (TBoxDistance const* distance =
+                   dynamic_cast<TBoxDistance const*>(&virtual_dist)) {
+      launch(
+          num_pellets,
+          [&](U grid_size, U block_size) {
+            collision_test_with_pellets<<<grid_size, block_size>>>(
+                j_begin, j_end, particle_x, pellet_id_to_rigid_id, num_contacts,
+                contacts, x, v, q, omega, mass_contact, inertia, *distance,
+                sign, max_num_beads, num_pellets);
+          },
+          "collision_test_with_pellets(BoxDistance)",
+          collision_test_with_pellets<TQ, TF3, TF, TBoxDistance>);
+    } else if (TSphereDistance const* distance =
+                   dynamic_cast<TSphereDistance const*>(&virtual_dist)) {
+      launch(
+          num_pellets,
+          [&](U grid_size, U block_size) {
+            collision_test_with_pellets<<<grid_size, block_size>>>(
+                j_begin, j_end, particle_x, pellet_id_to_rigid_id, num_contacts,
+                contacts, x, v, q, omega, mass_contact, inertia, *distance,
+                sign, max_num_beads, num_pellets);
+          },
+          "collision_test_with_pellets(SphereDistance)",
+          collision_test_with_pellets<TQ, TF3, TF, TSphereDistance>);
+    } else if (TCylinderDistance const* distance =
+                   dynamic_cast<TCylinderDistance const*>(&virtual_dist)) {
+      launch(
+          num_pellets,
+          [&](U grid_size, U block_size) {
+            collision_test_with_pellets<<<grid_size, block_size>>>(
+                j_begin, j_end, particle_x, pellet_id_to_rigid_id, num_contacts,
+                contacts, x, v, q, omega, mass_contact, inertia, *distance,
+                sign, max_num_beads, num_pellets);
+          },
+          "collision_test_with_pellets(CylinderDistance)",
+          collision_test_with_pellets<TQ, TF3, TF, TCylinderDistance>);
+    } else if (TCapsuleDistance const* distance =
+                   dynamic_cast<TCapsuleDistance const*>(&virtual_dist)) {
+      launch(
+          num_pellets,
+          [&](U grid_size, U block_size) {
+            collision_test_with_pellets<<<grid_size, block_size>>>(
+                j_begin, j_end, particle_x, pellet_id_to_rigid_id, num_contacts,
+                contacts, x, v, q, omega, mass_contact, inertia, *distance,
+                sign, max_num_beads, num_pellets);
+          },
+          "collision_test_with_pellets(CapsuleDistance)",
+          collision_test_with_pellets<TQ, TF3, TF, TCapsuleDistance>);
+    } else {
+      std::cerr << "[collision_test_with_pellets] Distance type not supported."
+                << std::endl;
     }
   }
   template <U wrap>

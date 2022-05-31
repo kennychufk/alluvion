@@ -17,6 +17,7 @@ struct SolverDf : public Solver<TF> {
   using Base::dt;
   using Base::enable_surface_tension;
   using Base::enable_vorticity;
+  using Base::max_num_particles;
   using Base::num_particles;
   using Base::particle_radius;
   using Base::pile;
@@ -350,7 +351,7 @@ struct SolverDf : public Solver<TF> {
     }
 
     pile.integrate_kinematics(dt);
-    pile.find_contacts();
+    pile.find_contacts(*particle_x, max_num_particles);
     pile.solve_contacts();
     t += dt;
   }

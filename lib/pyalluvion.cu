@@ -445,6 +445,9 @@ void declare_pile(py::module& m, const char* name) {
            py::arg("display_mesh") = Mesh(),
            py::arg("distance_grid_filename") = nullptr,
            py::arg("volume_grid_filename") = nullptr)
+      .def("compute_sort_custom_beads_internal_all",
+           &TPile::compute_sort_custom_beads_internal_all,
+           py::arg("internal_encoded"), py::arg("bead_x"))
       .def("compute_sort_fluid_block_internal_all",
            &TPile::compute_sort_fluid_block_internal_all,
            py::arg("internal_encoded"), py::arg("box_min"), py::arg("box_max"),
@@ -467,11 +470,14 @@ void declare_pile(py::module& m, const char* name) {
       .def_static("get_size_from_file", &TPile::get_size_from_file,
                   py::arg("filename"))
       .def("copy_kinematics_to_device", &TPile::copy_kinematics_to_device)
+      .def("hint_identical_sequence", &TPile::hint_identical_sequence,
+           py::arg("begin_id"), py::arg("end_id"))
       .def("integrate_kinematics", &TPile::integrate_kinematics)
       .def("calculate_cfl_v2", &TPile::calculate_cfl_v2)
       .def("find_contacts", py::overload_cast<U, U>(&TPile::find_contacts))
       .def("find_contacts", py::overload_cast<U>(&TPile::find_contacts))
-      .def("find_contacts", py::overload_cast<>(&TPile::find_contacts))
+      .def("find_contacts",
+           py::overload_cast<Variable<1, TF3> const&, U>(&TPile::find_contacts))
       .def("solve_contacts", &TPile::solve_contacts)
       .def("get_size", &TPile::get_size)
       .def("get_matrix", &TPile::get_matrix)
@@ -1013,6 +1019,15 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("particle_radius"), py::arg("mode"), py::arg("box_min"),
            py::arg("box_max"))
+      .def("launch_create_custom_beads_internal",
+           &TRunner::launch_create_custom_beads_internal, py::arg("particle_x"),
+           py::arg("ref_x"), py::arg("internal_encoded_sorted"),
+           py::arg("num_particles"), py::arg("offset"))
+      .def("launch_create_custom_beads_scalar_internal",
+           &TRunner::launch_create_custom_beads_scalar_internal,
+           py::arg("particle_scalar"), py::arg("ref_scalar"),
+           py::arg("internal_encoded_sorted"), py::arg("num_particles"),
+           py::arg("offset"))
       .def("launch_create_fluid_block_internal",
            &TRunner::launch_create_fluid_block_internal, py::arg("particle_x"),
            py::arg("internal_encoded_sorted"), py::arg("num_particles"),

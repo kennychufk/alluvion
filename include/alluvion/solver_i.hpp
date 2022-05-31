@@ -309,7 +309,7 @@ struct SolverI : public Solver<TF> {
     }
 
     pile.integrate_kinematics(dt);
-    pile.find_contacts();
+    pile.find_contacts(*particle_x, max_num_particles);
     pile.solve_contacts();
     t += dt;
     runner.record_elapsed_end("step(total)");
