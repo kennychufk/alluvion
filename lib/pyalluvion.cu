@@ -263,6 +263,10 @@ void declare_metrics(py::module& m,
       &Runner<TPrimitive>::template calculate_mse<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_mse_scalar",
+      &Runner<TPrimitive>::template calculate_mse_scalar<D, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mse_yz",
       &Runner<TPrimitive>::template calculate_mse_yz<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
@@ -1069,6 +1073,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("particle_density"), py::arg("num_particles"))
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF>)
       .def("launch_sample_fluid", &TRunner::template launch_sample_fluid<TF3>)
+      .def("launch_sample_fluid_density", &TRunner::launch_sample_fluid_density)
       .def("launch_sample_velocity", &TRunner::launch_sample_velocity)
       .def("launch_sample_velocity_with_pellets",
            &TRunner::launch_sample_velocity_with_pellets, py::arg("sample_x"),

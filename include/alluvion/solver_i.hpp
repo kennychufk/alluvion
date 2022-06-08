@@ -52,6 +52,7 @@ struct SolverI : public Solver<TF> {
           bool enable_vorticity_arg = false, bool graphical = false)
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
              enable_surface_tension_arg, enable_vorticity_arg, graphical),
+        particle_guiding(store_arg.create<1, TF3>({max_num_particles_arg})),
         particle_pressure(store_arg.create<1, TF>(
             {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_last_pressure(store_arg.create<1, TF>(
@@ -65,6 +66,7 @@ struct SolverI : public Solver<TF> {
         min_density_solve(2),
         max_density_solve(100) {}
   virtual ~SolverI() {
+    store.remove(*particle_guiding);
     store.remove(*particle_pressure);
     store.remove(*particle_last_pressure);
     store.remove(*particle_diag_adv_density);
@@ -164,12 +166,20 @@ struct SolverI : public Solver<TF> {
           num_particles,
           [&](U grid_size, U block_size) {
             drive_n_ellipse<<<grid_size, block_size>>>(
-                *particle_x, *particle_v, *particle_a, *(usher->focal_x),
+                *particle_x, *particle_v, *particle_guiding, *(usher->focal_x),
                 *(usher->focal_v), *(usher->focal_dist),
                 *(usher->usher_kernel_radius), *(usher->drive_strength),
                 usher->num_ushers, num_particles);
           },
           "drive_n_ellipse", drive_n_ellipse<TF3, TF>);
+      runner.launch(
+          num_particles,
+          [&](U grid_size, U block_size) {
+            filter_guiding<<<grid_size, block_size>>>(
+                *particle_guiding, *particle_a, *particle_density,
+                *particle_neighbors, *particle_num_neighbors, num_particles);
+          },
+          "filter_guiding", filter_guiding<TQ, TF3, TF>);
     }
     update_dt();
 
@@ -231,7 +241,8 @@ struct SolverI : public Solver<TF> {
             [&](U grid_size, U block_size) {
               extrapolate_pressure_to_pellet<<<grid_size, block_size>>>(
                   *particle_x, *particle_last_pressure, *particle_neighbors,
-                  *particle_num_neighbors, num_particles, pile.num_pellets_);
+                  *particle_num_neighbors, max_num_particles,
+                  pile.num_pellets_);
             },
             "extrapolate_pressure_to_pellet",
             extrapolate_pressure_to_pellet<TQ, TF3, TF>);
@@ -271,7 +282,7 @@ struct SolverI : public Solver<TF> {
           [&](U grid_size, U block_size) {
             extrapolate_pressure_to_pellet<<<grid_size, block_size>>>(
                 *particle_x, *particle_pressure, *particle_neighbors,
-                *particle_num_neighbors, num_particles, pile.num_pellets_);
+                *particle_num_neighbors, max_num_particles, pile.num_pellets_);
           },
           "extrapolate_pressure_to_pellet",
           extrapolate_pressure_to_pellet<TQ, TF3, TF>);
@@ -320,6 +331,7 @@ struct SolverI : public Solver<TF> {
     particle_pressure->set_zero();
   }
 
+  std::unique_ptr<Variable<1, TF3>> particle_guiding;
   std::unique_ptr<Variable<1, TF>> particle_pressure;
   std::unique_ptr<Variable<1, TF>> particle_last_pressure;
   std::unique_ptr<Variable<1, TF2>> particle_diag_adv_density;

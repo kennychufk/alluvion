@@ -705,6 +705,14 @@ inline __device__ TF3 wrap_y(TF3 v) {
   return v;
 }
 
+template <typename M>
+struct ScalarSquaredDifference {
+  __device__ M operator()(thrust::tuple<M, M> const& scalar_pair) {
+    M diff = thrust::get<0>(scalar_pair) - thrust::get<1>(scalar_pair);
+    return diff * diff;
+  }
+};
+
 template <typename M, typename TPrimitive>
 struct SquaredDifference {
   __device__ TPrimitive operator()(thrust::tuple<M, M> const& vector_pair) {
@@ -2450,9 +2458,9 @@ template <typename TQ, typename TF3, typename TF>
 __global__ void extrapolate_pressure_to_pellet(
     Variable<1, TF3> particle_x, Variable<1, TF> particle_pressure,
     Variable<2, TQ> particle_neighbors, Variable<1, U> particle_num_neighbors,
-    U num_fluid_particles, U num_pellets) {
+    U max_num_beads, U num_pellets) {
   forThreadMappedToElement(num_pellets, [&](U p_i0) {
-    U p_i = p_i0 + num_fluid_particles;
+    U p_i = p_i0 + max_num_beads;
     TF w_sum = 0;
     TF3 neighbor_center{0};
     U num_neighbors = particle_num_neighbors(p_i);
@@ -3992,7 +4000,7 @@ __global__ void transform_pellets(Variable<1, TF3> local_pellet_x,
 template <typename TF3, typename TF>
 __global__ void drive_n_ellipse(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF3> particle_a, Variable<2, TF3> focal_x,
+    Variable<1, TF3> particle_guiding, Variable<2, TF3> focal_x,
     Variable<2, TF3> focal_v, Variable<1, TF> focal_dist,
     Variable<1, TF> usher_kernel_radius, Variable<1, TF> drive_strength,
     U num_ushers, U num_particles) {
@@ -4002,25 +4010,34 @@ __global__ void drive_n_ellipse(
     TF3 da{0};
     for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
       TF3 fx0 = focal_x(usher_id, 0);
-      TF3 fx1 = focal_x(usher_id, 1);
-      TF3 fx2 = focal_x(usher_id, 2);
-      TF3 fv0 = focal_v(usher_id, 0);
-      TF3 fv1 = focal_v(usher_id, 1);
-      TF3 fv2 = focal_v(usher_id, 2);
       TF d0 = length(x_i - fx0);
-      TF d1 = length(x_i - fx1);
-      TF d2 = length(x_i - fx2);
-      TF d0d1 = d0 * d1;
-      TF d1d2 = d1 * d2;
-      TF d2d0 = d2 * d0;
-      TF denom = d0d1 + d1d2 + d2d0 +
-                 static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr;
-      TF3 drive_v = (d0d1 * fv2 + d1d2 * fv0 + d2d0 * fv1) / denom;
+      TF3 drive_v = focal_v(usher_id, 0);
 
       TF uh = usher_kernel_radius(usher_id);
-      da += drive_strength(usher_id) *
-            dist_gaussian_kernel(d0 + d1 + d2 - focal_dist(usher_id), uh) *
+      da += drive_strength(usher_id) * dist_gaussian_kernel(d0, uh) *
             (drive_v - v_i);
+    }
+    particle_guiding(p_i) = da;
+  });
+}
+
+template <typename TQ, typename TF3, typename TF>
+__global__ void filter_guiding(Variable<1, TF3> particle_guiding,
+                               Variable<1, TF3> particle_a,
+                               Variable<1, TF> particle_density,
+                               Variable<2, TQ> particle_neighbors,
+                               Variable<1, U> particle_num_neighbors,
+                               U num_particles) {
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    TF3 da = cn<TF>().cubic_kernel_zero * cn<TF>().particle_mass /
+             particle_density(p_i) * particle_guiding(p_i);
+    for (U neighbor_id = 0; neighbor_id < particle_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(particle_neighbors(p_i, neighbor_id), xixj, p_j);
+      da += displacement_cubic_kernel(xixj) * cn<TF>().particle_mass /
+            particle_density(p_j) * particle_guiding(p_j);
     }
     particle_a(p_i) += da;
   });
@@ -4035,7 +4052,6 @@ __global__ void sample_fluid(
     Variable<1, TQuantity> sample_quantity, U num_samples) {
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TQuantity result{0};
-    TF3 x_i = sample_x(p_i);
     for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
@@ -4045,6 +4061,24 @@ __global__ void sample_fluid(
                 displacement_cubic_kernel(xixj) * particle_quantity(p_j);
     }
     sample_quantity(p_i) = result;
+  });
+}
+
+template <typename TQ, typename TF>
+__global__ void sample_fluid_density(Variable<2, TQ> sample_neighbors,
+                                     Variable<1, U> sample_num_neighbors,
+                                     Variable<1, TF> sample_density,
+                                     U num_samples) {
+  typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF density = 0;
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      TF3 xixj;
+      extract_displacement(sample_neighbors(p_i, neighbor_id), xixj);
+      density += cn<TF>().particle_vol * displacement_cubic_kernel(xixj);
+    }
+    sample_density(p_i) = density * cn<TF>().density0;
   });
 }
 
@@ -4058,7 +4092,6 @@ __global__ void compute_sample_velocity(
     Variable<1, TF3> rigid_v, Variable<1, TF3> rigid_omega, U num_samples) {
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF3 result{0};
-    TF3 x_i = sample_x(p_i);
     for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
          ++neighbor_id) {
       U p_j;
@@ -4384,6 +4417,22 @@ class Runner {
     return thrust::transform_reduce(
                begin, end, SquaredDifference<M, TPrimitive>(),
                static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+           num_elements;
+  }
+
+  template <U D, typename M>
+  static M calculate_mse_scalar(Variable<D, M> v0, Variable<D, M> v1,
+                                U num_elements, U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(begin, end, ScalarSquaredDifference<M>(),
+                                    static_cast<M>(0), thrust::plus<M>()) /
            num_elements;
   }
 
@@ -5294,6 +5343,19 @@ class Runner {
               num_samples);
         },
         "sample_fluid", sample_fluid<TQ, TF3, TF, TQuantity>);
+  }
+  void launch_sample_fluid_density(Variable<2, TQ>& sample_neighbors,
+                                   Variable<1, U>& sample_num_neighbors,
+                                   Variable<1, TF>& sample_density,
+                                   U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          sample_fluid_density<<<grid_size, block_size>>>(
+              sample_neighbors, sample_num_neighbors, sample_density,
+              num_samples);
+        },
+        "sample_fluid_density", sample_fluid_density<TQ, TF>);
   }
   void launch_sample_velocity(
       Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
