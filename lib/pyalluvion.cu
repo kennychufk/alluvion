@@ -93,7 +93,41 @@ void declare_vector_operator(py::class_<TVector>& vector_class) {
 template <typename TVector2, typename TPrimitive>
 void declare_vector2(py::module& m, const char* name) {
   py::class_<TVector2> vector_class =
-      py::class_<TVector2>(m, name)
+      py::class_<TVector2>(m, name, py::buffer_protocol())
+          .def(py::init([](py::buffer b) {
+            py::buffer_info info = b.request();
+            if (info.ndim != 1)
+              throw std::runtime_error("Incompatible buffer dimension!");
+            if (info.shape[0] != 2)
+              throw std::runtime_error(
+                  "Incompatible dimension: expected a vector of 2!");
+            TVector2 result;
+            if (info.format == py::format_descriptor<float>::format()) {
+              float const* ptr = static_cast<float const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+            } else if (info.format == py::format_descriptor<double>::format()) {
+              double const* ptr = static_cast<double const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+            } else {
+              throw std::runtime_error(
+                  "Incompatible format: expected a float/double array!");
+            }
+            return result;
+          }))
+          .def_buffer([](TVector2& v) -> py::buffer_info {
+            return py::buffer_info(
+                &v,                 /* Pointer to buffer */
+                sizeof(TPrimitive), /* Size of one scalar */
+                py::format_descriptor<TPrimitive>::format(), /* Python
+                                                           struct-style format
+                                                           descriptor */
+                1,                   /* Number of dimensions */
+                {2},                 /* Buffer dimensions */
+                {sizeof(TPrimitive)} /* Strides (in bytes) for each index */
+            );
+          })
           .def(py::init<TPrimitive, TPrimitive>())
           .def_static("from_scalar",
                       [](const TPrimitive s) {
@@ -113,7 +147,43 @@ void declare_vector2(py::module& m, const char* name) {
 template <typename TVector3, typename TPrimitive>
 void declare_vector3(py::module& m, const char* name) {
   py::class_<TVector3> vector_class =
-      py::class_<TVector3>(m, name)
+      py::class_<TVector3>(m, name, py::buffer_protocol())
+          .def(py::init([](py::buffer b) {
+            py::buffer_info info = b.request();
+            if (info.ndim != 1)
+              throw std::runtime_error("Incompatible buffer dimension!");
+            if (info.shape[0] != 3)
+              throw std::runtime_error(
+                  "Incompatible dimension: expected a vector of 3!");
+            TVector3 result;
+            if (info.format == py::format_descriptor<float>::format()) {
+              float const* ptr = static_cast<float const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+              result.z = static_cast<TPrimitive>(ptr[2]);
+            } else if (info.format == py::format_descriptor<double>::format()) {
+              double const* ptr = static_cast<double const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+              result.z = static_cast<TPrimitive>(ptr[2]);
+            } else {
+              throw std::runtime_error(
+                  "Incompatible format: expected a float/double array!");
+            }
+            return result;
+          }))
+          .def_buffer([](TVector3& v) -> py::buffer_info {
+            return py::buffer_info(
+                &v,                 /* Pointer to buffer */
+                sizeof(TPrimitive), /* Size of one scalar */
+                py::format_descriptor<TPrimitive>::format(), /* Python
+                                                           struct-style format
+                                                           descriptor */
+                1,                   /* Number of dimensions */
+                {3},                 /* Buffer dimensions */
+                {sizeof(TPrimitive)} /* Strides (in bytes) for each index */
+            );
+          })
           .def(py::init<TPrimitive, TPrimitive, TPrimitive>())
           .def_static("from_scalar",
                       [](const TPrimitive s) {
@@ -133,7 +203,45 @@ void declare_vector3(py::module& m, const char* name) {
 template <typename TVector4, typename TPrimitive>
 void declare_vector4(py::module& m, const char* name) {
   py::class_<TVector4> vector_class =
-      py::class_<TVector4>(m, name)
+      py::class_<TVector4>(m, name, py::buffer_protocol())
+          .def(py::init([](py::buffer b) {
+            py::buffer_info info = b.request();
+            if (info.ndim != 1)
+              throw std::runtime_error("Incompatible buffer dimension!");
+            if (info.shape[0] != 4)
+              throw std::runtime_error(
+                  "Incompatible dimension: expected a vector of 4!");
+            TVector4 result;
+            if (info.format == py::format_descriptor<float>::format()) {
+              float const* ptr = static_cast<float const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+              result.z = static_cast<TPrimitive>(ptr[2]);
+              result.w = static_cast<TPrimitive>(ptr[3]);
+            } else if (info.format == py::format_descriptor<double>::format()) {
+              double const* ptr = static_cast<double const*>(info.ptr);
+              result.x = static_cast<TPrimitive>(ptr[0]);
+              result.y = static_cast<TPrimitive>(ptr[1]);
+              result.z = static_cast<TPrimitive>(ptr[2]);
+              result.w = static_cast<TPrimitive>(ptr[3]);
+            } else {
+              throw std::runtime_error(
+                  "Incompatible format: expected a float/double array!");
+            }
+            return result;
+          }))
+          .def_buffer([](TVector4& v) -> py::buffer_info {
+            return py::buffer_info(
+                &v,                 /* Pointer to buffer */
+                sizeof(TPrimitive), /* Size of one scalar */
+                py::format_descriptor<TPrimitive>::format(), /* Python
+                                                           struct-style format
+                                                           descriptor */
+                1,                   /* Number of dimensions */
+                {4},                 /* Buffer dimensions */
+                {sizeof(TPrimitive)} /* Strides (in bytes) for each index */
+            );
+          })
           .def(py::init<TPrimitive, TPrimitive, TPrimitive, TPrimitive>())
           .def_static("from_scalar",
                       [](const TPrimitive s) {

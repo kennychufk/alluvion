@@ -35,7 +35,7 @@ class Depot(Store):
         self.get_display_proxy = getattr(
             self, f"get_display_proxy{numeric_type_str}")
 
-        float_typed_vector_names = ['3', '4']
+        float_typed_vector_names = ['2', '3', '4']
         for name in float_typed_vector_names:
             setattr(self, f"f{name}", getattr(_al,
                                               f"{numeric_type_str}{name}"))
