@@ -16,9 +16,9 @@ struct Usher {
   using TPile = Pile<TF>;
 
  public:
-  std::unique_ptr<Variable<2, TF3>> focal_x;
-  std::unique_ptr<Variable<2, TF3>> focal_v;
-  std::unique_ptr<Variable<1, TF>> focal_dist;
+  std::unique_ptr<Variable<1, TF3>> focal_x;
+  std::unique_ptr<Variable<1, TF3>> focal_v;
+  std::unique_ptr<Variable<1, TF3>> direction;
   std::unique_ptr<Variable<1, TF>> usher_kernel_radius;
   std::unique_ptr<Variable<1, TF>> drive_strength;
 
@@ -28,9 +28,9 @@ struct Usher {
   Usher(Store& store_arg, TPile& pile_arg, U num_ushers_arg)
       : store(store_arg),
         num_ushers(num_ushers_arg),
-        focal_x(store_arg.create<2, TF3>({num_ushers_arg, 3})),
-        focal_v(store_arg.create<2, TF3>({num_ushers_arg, 3})),
-        focal_dist(store_arg.create<1, TF>({num_ushers_arg})),
+        focal_x(store_arg.create<1, TF3>({num_ushers_arg})),
+        focal_v(store_arg.create<1, TF3>({num_ushers_arg})),
+        direction(store_arg.create<1, TF3>({num_ushers_arg})),
         usher_kernel_radius(store_arg.create<1, TF>({num_ushers_arg})),
         drive_strength(store_arg.create<1, TF>({num_ushers_arg})) {
     reset();
@@ -38,14 +38,14 @@ struct Usher {
   virtual ~Usher() {
     store.remove(*focal_x);
     store.remove(*focal_v);
-    store.remove(*focal_dist);
+    store.remove(*direction);
     store.remove(*usher_kernel_radius);
     store.remove(*drive_strength);
   }
   void reset() {
     focal_x->set_zero();
     focal_v->set_zero();
-    focal_dist->set_zero();
+    direction->set_zero();
     usher_kernel_radius->set_same(
         64);  // a hack to set non-zero finite floating point values
               // (float: 3.0039215087890625;

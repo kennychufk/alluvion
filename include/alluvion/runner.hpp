@@ -4000,8 +4000,8 @@ __global__ void transform_pellets(Variable<1, TF3> local_pellet_x,
 template <typename TF3, typename TF>
 __global__ void drive_n_ellipse(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
-    Variable<1, TF3> particle_guiding, Variable<2, TF3> focal_x,
-    Variable<2, TF3> focal_v, Variable<1, TF> focal_dist,
+    Variable<1, TF3> particle_guiding, Variable<1, TF3> focal_x,
+    Variable<1, TF3> focal_v, Variable<1, TF3> direction,
     Variable<1, TF> usher_kernel_radius, Variable<1, TF> drive_strength,
     U num_ushers, U num_particles) {
   forThreadMappedToElement(num_particles, [&](U p_i) {
@@ -4009,13 +4009,16 @@ __global__ void drive_n_ellipse(
     const TF3 v_i = particle_v(p_i);
     TF3 da{0};
     for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
-      TF3 fx0 = focal_x(usher_id, 0);
-      TF d0 = length(x_i - fx0);
-      TF3 drive_v = focal_v(usher_id, 0);
+      TF3 fx0 = focal_x(usher_id);
+      TF3 displacement = x_i - fx0;
+      TF d0 = length(displacement);
+      TF3 drive_v = focal_v(usher_id);
+      TF directional_attenuation =
+          dot(displacement / d0, direction(usher_id)) + 1;
 
       TF uh = usher_kernel_radius(usher_id);
       da += drive_strength(usher_id) * dist_gaussian_kernel(d0, uh) *
-            (drive_v - v_i);
+            directional_attenuation * (drive_v - v_i);
     }
     particle_guiding(p_i) = da;
   });
@@ -4310,9 +4313,9 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse_masked(Variable<D, M> v0, Variable<D, M> v1,
-                                         Variable<D, U> mask, U num_elements,
-                                         U offset = 0) {
+  static TPrimitive calculate_se_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                        Variable<D, U> mask, U num_elements,
+                                        U offset = 0) {
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
         thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
@@ -4325,8 +4328,16 @@ class Runner {
                            thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
                                (offset + num_elements)));
     return thrust::transform_reduce(
-               begin, end, SquaredDifferenceMasked<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+        begin, end, SquaredDifferenceMasked<M, TPrimitive>(),
+        static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                         Variable<D, U> mask, U num_elements,
+                                         U offset = 0) {
+    return calculate_se_masked<D, M, TPrimitive>(v0, v1, mask, num_elements,
+                                                 offset) /
            sum(mask, num_elements);
   }
 
@@ -4352,10 +4363,9 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse_yz_masked(Variable<D, M> v0,
-                                            Variable<D, M> v1,
-                                            Variable<D, U> mask, U num_elements,
-                                            U offset = 0) {
+  static TPrimitive calculate_se_yz_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                           Variable<D, U> mask, U num_elements,
+                                           U offset = 0) {
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
         thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
@@ -4367,13 +4377,22 @@ class Runner {
                                (offset + num_elements),
                            thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
                                (offset + num_elements)));
+    return thrust::transform_reduce(
+        begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
+        static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_mse_yz_masked(Variable<D, M> v0,
+                                            Variable<D, M> v1,
+                                            Variable<D, U> mask, U num_elements,
+                                            U offset = 0) {
     U num_masked = sum(mask, num_elements);
     if (num_masked == 0) {
       return static_cast<TPrimitive>(0);
     }
-    return thrust::transform_reduce(
-               begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
+    return calculate_se_yz_masked<D, M, TPrimitive>(v0, v1, mask, num_elements,
+                                                    offset) /
            num_masked;
   }
 

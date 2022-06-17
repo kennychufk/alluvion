@@ -144,7 +144,7 @@ struct SolverIi : public Solver<TF> {
           [&](U grid_size, U block_size) {
             drive_n_ellipse<<<grid_size, block_size>>>(
                 *particle_x, *particle_v, *particle_a, *(usher->focal_x),
-                *(usher->focal_v), *(usher->focal_dist),
+                *(usher->focal_v), *(usher->direction),
                 *(usher->usher_kernel_radius), *(usher->drive_strength),
                 usher->num_ushers, num_particles);
           },

@@ -384,6 +384,11 @@ void declare_metrics(py::module& m,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_se_masked",
+      &Runner<TPrimitive>::template calculate_se_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mse_masked",
       &Runner<TPrimitive>::template calculate_mse_masked<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
@@ -391,6 +396,11 @@ void declare_metrics(py::module& m,
   runner_class->def_static(
       "calculate_mse_yz_masked",
       &Runner<TPrimitive>::template calculate_mse_yz_masked<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
+      "calculate_se_yz_masked",
+      &Runner<TPrimitive>::template calculate_se_yz_masked<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
@@ -1056,8 +1066,8 @@ void declare_usher(py::module& m, const char* name) {
       .def_property_readonly(
           "focal_v", [](TUsher const& usher) { return usher.focal_v.get(); })
       .def_property_readonly(
-          "focal_dist",
-          [](TUsher const& usher) { return usher.focal_dist.get(); })
+          "direction",
+          [](TUsher const& usher) { return usher.direction.get(); })
       .def_property_readonly(
           "usher_kernel_radius",
           [](TUsher const& usher) { return usher.usher_kernel_radius.get(); })
