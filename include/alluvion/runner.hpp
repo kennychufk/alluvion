@@ -1,5 +1,6 @@
 #ifndef ALLUVION_RUNNER_HPP
 #define ALLUVION_RUNNER_HPP
+#include <cooperative_groups.h>
 #include <thrust/count.h>
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
@@ -705,6 +706,11 @@ inline __device__ TF3 wrap_y(TF3 v) {
   return v;
 }
 
+template <typename TF>
+struct SqrtOperation {
+  __device__ TF operator()(TF const& v) { return sqrt(v); }
+};
+
 template <typename M>
 struct ScalarSquaredDifference {
   __device__ M operator()(thrust::tuple<M, M> const& scalar_pair) {
@@ -767,6 +773,25 @@ struct NormDifferenceYzMasked {
 template <typename M, typename TPrimitive>
 struct SquaredNorm {
   __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
+};
+
+template <typename TF>
+struct KLDivergence {
+  KLDivergence(U n_p, U n_q, TF q_lower_bound_arg)
+      : n_p_inv(static_cast<TF>(1) / n_p),
+        n_q_div_n_p(static_cast<TF>(n_q) / n_p),
+        q_lower_bound(q_lower_bound_arg) {}
+  __device__ TF operator()(thrust::tuple<U, U> const& freq_p_q) {
+    TF freq_p = static_cast<TF>(thrust::get<0>(freq_p_q));
+    TF freq_q = static_cast<TF>(thrust::get<1>(freq_p_q));
+    return freq_p == 0
+               ? 0
+               : freq_p * n_p_inv *
+                     log(freq_p / max(freq_q, q_lower_bound) * n_q_div_n_p);
+  }
+  TF n_p_inv;
+  TF n_q_div_n_p;
+  TF q_lower_bound;
 };
 
 template <typename TF>
@@ -4222,6 +4247,94 @@ __global__ void compute_boundary_mask(const TDistance distance, TF3 rigid_x,
   });
 }
 
+// histogram
+inline __device__ void add_byte(U* shared_warp_histogram, U quantized4) {
+  atomicAdd(shared_warp_histogram + quantized4, 1);
+}
+inline __device__ void add_word(U* shared_warp_histogram, U quantized4) {
+  add_byte(shared_warp_histogram, quantized4 & 0xFFU);
+  add_byte(shared_warp_histogram, (quantized4 >> 8) & 0xFFU);
+  add_byte(shared_warp_histogram, (quantized4 >> 16) & 0xFFU);
+  add_byte(shared_warp_histogram, (quantized4 >> 24) & 0xFFU);
+}
+template <typename TU>
+__global__ void histogram256(Variable<1, TU> partial_histogram,
+                             Variable<1, TU> quantized4s, TU n) {
+  cooperative_groups::thread_block cta =
+      cooperative_groups::this_thread_block();
+  __shared__ TU shared_histogram[kHistogram256ThreadblockMemory];
+  TU* shared_warp_histogram =
+      shared_histogram + (threadIdx.x >> kLog2WarpSize) * kHistogram256BinCount;
+#pragma unroll
+  for (TU i = 0;
+       i < (kHistogram256ThreadblockMemory / kHistogram256ThreadblockSize);
+       ++i) {
+    shared_histogram[threadIdx.x + i * kHistogram256ThreadblockSize] = 0;
+  }
+  cooperative_groups::sync(cta);
+  for (TU pos = blockIdx.x * blockDim.x + threadIdx.x; pos < ((n - 1) / 4 + 1);
+       pos += blockDim.x * gridDim.x) {
+    TU quantized4 = quantized4s(pos);
+    add_word(shared_warp_histogram, quantized4);
+  }
+  cooperative_groups::sync(cta);
+  for (TU bin = threadIdx.x; bin < kHistogram256BinCount;
+       bin += kHistogram256ThreadblockSize) {
+    TU sum = 0;
+    for (TU i = 0; i < kWarpCount; ++i) {
+      sum += shared_histogram[bin + i * kHistogram256BinCount] & 0xFFFFFFFFU;
+    }
+    partial_histogram(blockIdx.x * kHistogram256BinCount + bin) = sum;
+  }
+}
+
+template <typename TU>
+__global__ void merge_histogram256(Variable<1, TU> histogram,
+                                   Variable<1, TU> partial_histogram,
+                                   TU partial_histogram_size, TU n) {
+  cooperative_groups::thread_block cta =
+      cooperative_groups::this_thread_block();
+  TU sum = 0;
+  for (TU i = threadIdx.x; i < partial_histogram_size;
+       i += kMergeThreadblockSize) {
+    sum += partial_histogram(blockIdx.x + i * kHistogram256BinCount);
+  }
+  __shared__ TU data[kMergeThreadblockSize];
+  data[threadIdx.x] = sum;
+  for (TU stride = kMergeThreadblockSize / 2; stride > 0; stride >>= 1) {
+    cooperative_groups::sync(cta);
+    if (threadIdx.x < stride) {
+      data[threadIdx.x] += data[threadIdx.x + stride];
+    }
+  }
+  if (threadIdx.x == 0) {
+    histogram(blockIdx.x) =
+        data[0] - (blockIdx.x == 0 ? ((4 - (n % 4)) % 4) : 0);
+  }
+}
+template <typename TF>
+__global__ void quantize(Variable<1, TF> v, Variable<1, U> quantized4s,
+                         TF v_min, TF step_inverse, U n) {
+  forThreadMappedToElement((n - 1) / 4 + 1, [&](U row_id) {
+    U result = 0;
+    U i = row_id * 4;
+    result +=
+        ((__float2uint_rd((v(i++) - v_min) * step_inverse) & 0xFFU) << 24);
+    if (i < n) {
+      result +=
+          ((__float2uint_rd((v(i++) - v_min) * step_inverse) & 0xFFU) << 16);
+    }
+    if (i < n) {
+      result +=
+          ((__float2uint_rd((v(i++) - v_min) * step_inverse) & 0xFFU) << 8);
+    }
+    if (i < n) {
+      result += ((__float2uint_rd((v(i++) - v_min) * step_inverse) & 0xFFU));
+    }
+    quantized4s(row_id) = result;
+  });
+}
+
 // Graphical post-processing
 template <typename TF3, typename TF>
 __global__ void normalize_vector_magnitude(Variable<1, TF3> v,
@@ -4264,6 +4377,16 @@ class Runner {
     filename_stream << ".yaml";
     save_stat(filename_stream.str().c_str());
   }
+
+  template <U D, typename M>
+  static void sqrt_inplace(Variable<D, M> var, U num_elements, U offset = 0) {
+    thrust::transform(thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
+                      thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
+                          (offset + num_elements),
+                      thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
+                      SqrtOperation<M>());
+  }
+
   template <typename T, typename BinaryFunction>
   static T reduce(void* ptr, U num_elements, T init, BinaryFunction binary_op,
                   U offset = 0) {
@@ -4484,6 +4607,20 @@ class Runner {
            num_elements;
   }
 
+  static TF calculate_kl_divergence(Variable<1, U> histogram_p,
+                                    Variable<1, U> histogram_q, U n_p, U n_q,
+                                    TF q_lower_bound, U num_bins) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<U>(static_cast<U*>(histogram_p.ptr_)),
+        thrust::device_ptr<U>(static_cast<U*>(histogram_q.ptr_))));
+    auto end = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<U>(static_cast<U*>(histogram_p.ptr_)) + (num_bins),
+        thrust::device_ptr<U>(static_cast<U*>(histogram_q.ptr_)) + (num_bins)));
+    return thrust::transform_reduce(begin, end,
+                                    KLDivergence(n_p, n_q, q_lower_bound),
+                                    static_cast<TF>(0), thrust::plus<TF>());
+  }
+
   template <class Lambda>
   static void launch(U n, U desired_block_size, Lambda f) {
     if (n == 0) return;
@@ -4559,9 +4696,11 @@ class Runner {
     if (!optimal_block_size_dict_.empty()) {
       if (optimal_block_size_dict_.find(name) ==
           optimal_block_size_dict_.end()) {
-        std::cerr << "Optimal block size for " << name << " not found"
-                  << std::endl;
-        abort();
+        std::stringstream error_stringstream;
+        std::string error_string = error_stringstream.str();
+        error_stringstream << "Optimal block size for " << name << " not found";
+        std::cerr << error_string << std::endl;
+        throw std::runtime_error(error_string);
       }
       block_size = optimal_block_size_dict_[name];
     }
@@ -5461,6 +5600,25 @@ class Runner {
         },
         "sample_position_density_with_pellets",
         sample_position_density_with_pellets<TQ, TF3, TF>);
+  }
+  void launch_histogram256(Variable<1, U> partial_histogram,
+                           Variable<1, U> histogram, Variable<1, U> quantized4s,
+                           Variable<1, TF> const& v, TF v_min, TF v_max, U n) {
+    TF step_inverse = static_cast<TF>(
+        256.0 / (static_cast<double>(v_max) - static_cast<double>(v_min)));
+    launch(
+        n,
+        [&](U grid_size, U block_size) {
+          quantize<<<grid_size, block_size>>>(v, quantized4s, v_min,
+                                              step_inverse, n);
+        },
+        "quantize", quantize<TF>);
+    histogram256<<<kPartialHistogram256Count, kHistogram256ThreadblockSize>>>(
+        partial_histogram, quantized4s, n);
+    Allocator::abort_if_error(cudaGetLastError());
+    merge_histogram256<<<kHistogram256BinCount, kMergeThreadblockSize>>>(
+        histogram, partial_histogram, kPartialHistogram256Count, n);
+    Allocator::abort_if_error(cudaGetLastError());
   }
   void launch_collision_test(
       dg::Distance<TF3, TF> const& virtual_dist,

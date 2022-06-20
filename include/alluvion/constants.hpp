@@ -25,6 +25,17 @@ constexpr T kHcpStep1 =
     T(1.63299316185545206546485604980392759464396498710444675228846e+00L);
 
 constexpr U kMaxNumCellsToSearch = 128;
+constexpr U kWarpCount = 6;
+constexpr U kLog2WarpSize = 5;
+constexpr U kWarpSize = 1 << kLog2WarpSize;  //  32
+constexpr U kHistogram256BinCount = 256;
+constexpr U kHistogram256ThreadblockSize = kWarpCount * kWarpSize;
+constexpr U kHistogram256ThreadblockMemory = kWarpCount * kHistogram256BinCount;
+constexpr U kUintNumBits = 32;
+constexpr U kMergeThreadblockSize = 256;
+constexpr U kPartialHistogram256Count = 240;
+constexpr U kPartialHistogram256Size =
+    kPartialHistogram256Count * kHistogram256BinCount;
 
 template <U MaxNumCellsToSearch>
 struct Consti {

@@ -34,9 +34,9 @@ void Allocator::get_device_properties(cudaDeviceProp* prop, int device) {
 
 void Allocator::abort_if_error(cudaError_t err) {
   if (err != cudaSuccess) {
-    std::cerr << "CUDA API returns the error: " << cudaGetErrorString(err)
-              << std::endl;
-    abort();
+    const char* error_string = cudaGetErrorString(err);
+    std::cerr << "CUDA API returns the error: " << error_string << std::endl;
+    throw std::runtime_error(error_string);
   }
 };
 }  // namespace alluvion

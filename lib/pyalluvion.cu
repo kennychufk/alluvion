@@ -412,6 +412,11 @@ void declare_metrics(py::module& m,
       "calculate_mean_squared",
       &Runner<TPrimitive>::template calculate_mean_squared<D, M, TPrimitive>,
       py::arg("var"), py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
+      "calculate_kl_divergence", &Runner<TPrimitive>::calculate_kl_divergence,
+      py::arg("histogram_p"), py::arg("histogram_q"), py::arg("n_p"),
+      py::arg("n_q"), py::arg("q_lower_bound") = static_cast<TPrimitive>(1e-6),
+      py::arg("num_bins") = kHistogram256BinCount);
 }
 
 template <unsigned int D, typename M>
@@ -1204,6 +1209,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_sample_density", &TRunner::launch_sample_density)
       .def("launch_sample_density_with_pellets",
            &TRunner::launch_sample_density_with_pellets)
+      .def("launch_histogram256", &TRunner::launch_histogram256)
       .def_static("get_fluid_block_num_particles",
                   &TRunner::get_fluid_block_num_particles, py::arg("mode"),
                   py::arg("box_min"), py::arg("box_max"),
@@ -1212,6 +1218,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
                   &TRunner::get_fluid_cylinder_num_particles, py::arg("radius"),
                   py::arg("y_min"), py::arg("y_max"),
                   py::arg("particle_radius"))
+      .def_static("sqrt_inplace", &TRunner::template sqrt_inplace<1, TF>,
+                  py::arg("var"), py::arg("n"), py::arg("offset") = 0)
       .def_static("min", &TRunner::template min<1, TF>, py::arg("var"),
                   py::arg("n"), py::arg("offset") = 0)
       .def_static("max", &TRunner::template max<1, TF>, py::arg("var"),
@@ -1412,4 +1420,7 @@ PYBIND11_MODULE(_alluvion, m) {
   declare_mesh_distance<double3, double>(m_dg, "double");
   declare_triangle_mesh<float>(m_dg, "float");
   declare_triangle_mesh<double>(m_dg, "double");
+
+  m.attr("kHistogram256BinCount") = py::int_(kHistogram256BinCount);
+  m.attr("kPartialHistogram256Size") = py::int_(kPartialHistogram256Size);
 }
