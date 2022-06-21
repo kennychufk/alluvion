@@ -1991,6 +1991,31 @@ __global__ void compute_particle_boundary(
   });
 }
 
+template <typename TQ>
+__global__ void compute_particle_boundary_with_pellets(
+    Variable<1, TQ> particle_boundary_kernel_combined,
+    Variable<2, TQ> sample_pellet_neighbors,
+    Variable<1, U> sample_num_pellet_neighbors, U num_particles) {
+  typedef std::conditional_t<std::is_same_v<TQ, float4>, float3, double3> TF3;
+  typedef std::conditional_t<std::is_same_v<TQ, float4>, float, double> TF;
+  forThreadMappedToElement(num_particles, [&](U p_i) {
+    TF3 boundary_kernel_grad{0};
+    TF boundary_kernel = 0;
+    for (U neighbor_id = 0; neighbor_id < sample_num_pellet_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_pellet_neighbors(p_i, neighbor_id), xixj, p_j);
+      boundary_kernel += displacement_cubic_kernel(xixj);
+      boundary_kernel_grad += displacement_cubic_kernel_grad(xixj);
+    }
+    particle_boundary_kernel_combined(p_i) =
+        cn<TF>().particle_vol * TQ{boundary_kernel_grad.x,
+                                   boundary_kernel_grad.y,
+                                   boundary_kernel_grad.z, boundary_kernel};
+  });
+}
+
 template <typename TQ, typename TF>
 __global__ void compute_density(Variable<2, TQ> particle_neighbors,
                                 Variable<1, U> particle_num_neighbors,
@@ -4207,6 +4232,40 @@ __global__ void compute_sample_vorticity(
   });
 }
 
+template <typename TQ, typename TF3, typename TF>
+__global__ void compute_sample_vorticity_with_pellets(
+    Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
+    Variable<1, TF> particle_density, Variable<1, TF3> particle_v,
+    Variable<2, TQ> sample_neighbors, Variable<1, U> sample_num_neighbors,
+    Variable<1, TF3> sample_v, Variable<1, TF3> sample_vorticity,
+    Variable<2, TQ> sample_pellet_neighbors,
+    Variable<1, U> sample_num_pellet_neighbors, U num_samples) {
+  forThreadMappedToElement(num_samples, [&](U p_i) {
+    TF3 result{0};
+    TF3 x_i = sample_x(p_i);
+    TF3 v_i = sample_v(p_i);
+    for (U neighbor_id = 0; neighbor_id < sample_num_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_neighbors(p_i, neighbor_id), xixj, p_j);
+      result +=
+          cn<TF>().particle_mass / particle_density(p_j) *
+          cross(particle_v(p_j) - v_i, displacement_cubic_kernel_grad(xixj));
+    }
+    for (U neighbor_id = 0; neighbor_id < sample_num_pellet_neighbors(p_i);
+         ++neighbor_id) {
+      U p_j;
+      TF3 xixj;
+      extract_pid(sample_pellet_neighbors(p_i, neighbor_id), xixj, p_j);
+      result +=
+          cn<TF>().particle_vol *
+          cross(particle_v(p_j) - v_i, displacement_cubic_kernel_grad(xixj));
+    }
+    sample_vorticity(p_i) = result;
+  });
+}
+
 template <typename TF>
 __global__ void compute_density_mask(Variable<1, TF> sample_density,
                                      Variable<1, U> mask, U num_samples) {
@@ -5292,6 +5351,20 @@ class Runner {
                 << std::endl;
     }
   }
+  void launch_compute_particle_boundary_with_pellets(
+      Variable<1, TQ>& particle_boundary_kernel_combined,
+      Variable<2, TQ>& sample_pellet_neighbors,
+      Variable<1, U>& sample_num_pellet_neighbors, U num_particles) {
+    launch(
+        num_particles,
+        [&](U grid_size, U block_size) {
+          compute_particle_boundary_with_pellets<<<grid_size, block_size>>>(
+              particle_boundary_kernel_combined, sample_pellet_neighbors,
+              sample_num_pellet_neighbors, num_particles);
+        },
+        "compute_particle_boundary_with_pellets",
+        compute_particle_boundary_with_pellets<TQ>);
+  }
   void launch_compute_density_mask(Variable<1, TF> const& sample_density,
                                    Variable<1, U>& mask, U num_samples) {
     launch(
@@ -5568,6 +5641,25 @@ class Runner {
               rigid_x, rigid_v, rigid_omega, num_samples);
         },
         "compute_sample_vorticity", compute_sample_vorticity<TQ, TF3, TF>);
+  }
+  void launch_sample_vorticity_with_pellets(
+      Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,
+      Variable<1, TF>& particle_density, Variable<1, TF3>& particle_v,
+      Variable<2, TQ>& sample_neighbors, Variable<1, U>& sample_num_neighbors,
+      Variable<1, TF3>& sample_v, Variable<1, TF3>& sample_vorticity,
+      Variable<2, TQ>& sample_pellet_neighbors,
+      Variable<1, U>& sample_num_pellet_neighbors, U num_samples) {
+    launch(
+        num_samples,
+        [&](U grid_size, U block_size) {
+          compute_sample_vorticity_with_pellets<<<grid_size, block_size>>>(
+              sample_x, particle_x, particle_density, particle_v,
+              sample_neighbors, sample_num_neighbors, sample_v,
+              sample_vorticity, sample_pellet_neighbors,
+              sample_num_pellet_neighbors, num_samples);
+        },
+        "compute_sample_vorticity_with_pellets",
+        compute_sample_vorticity_with_pellets<TQ, TF3, TF>);
   }
   void launch_sample_density(Variable<1, TF3>& sample_x,
                              Variable<2, TQ>& sample_neighbors,

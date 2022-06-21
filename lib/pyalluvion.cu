@@ -1161,6 +1161,11 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("particle_radius"), py::arg("y_min"), py::arg("y_max"))
       .def("launch_compute_particle_boundary",
            &TRunner::launch_compute_particle_boundary)
+      .def("launch_compute_particle_boundary_with_pellets",
+           &TRunner::launch_compute_particle_boundary_with_pellets,
+           py::arg("particle_boundary_kernel_combined"),
+           py::arg("sample_pellet_neighbors"),
+           py::arg("sample_num_pellet_neighbors"), py::arg("num_particles"))
       .def("launch_compute_density_mask", &TRunner::launch_compute_density_mask)
       .def("launch_compute_boundary_mask",
            &TRunner::launch_compute_boundary_mask)
@@ -1206,6 +1211,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("sample_pellet_neighbors"),
            py::arg("sample_num_pellet_neighbors"), py::arg("num_samples"))
       .def("launch_sample_vorticity", &TRunner::launch_sample_vorticity)
+      .def("launch_sample_vorticity_with_pellets",
+           &TRunner::launch_sample_vorticity_with_pellets)
       .def("launch_sample_density", &TRunner::launch_sample_density)
       .def("launch_sample_density_with_pellets",
            &TRunner::launch_sample_density_with_pellets)
@@ -1267,6 +1274,8 @@ PYBIND11_MODULE(_alluvion, m) {
                                      "1Dfloat2");
   declare_variable<1, float3, float>(m, store_class, &runner_float, nullptr,
                                      "1Dfloat3");
+  declare_variable<1, float4, float>(m, store_class, &runner_float, nullptr,
+                                     "1Dfloat4");
   declare_variable<2, float, bool>(m, store_class, &runner_float, nullptr,
                                    "2Dfloat");
   declare_variable<2, float3, float>(m, store_class, &runner_float, nullptr,
