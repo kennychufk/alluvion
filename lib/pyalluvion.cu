@@ -1057,6 +1057,7 @@ void declare_solver_pellet(py::module& m, const char* name) {
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("cn") = nullptr,
            py::arg("cni") = nullptr, py::arg("graphical") = false)
+      .def_readwrite("cfl_factor", &TSolverPellet::cfl_factor)
       .def_readwrite("cohesion", &TSolverPellet::cohesion)
       .def_readwrite("adhesion", &TSolverPellet::adhesion)
       .def_property_readonly("particle_dfsph_factor",

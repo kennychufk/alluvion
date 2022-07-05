@@ -2481,8 +2481,11 @@ __global__ void compute_cohesion_adhesion_displacement(
 
     TF dist = distance.signed_distance(x_i) * sign - cn<TF>().contact_tolerance;
     TF3 normal = distance.gradient(x_i, static_cast<TF>(1e-3)) * sign;
-    dx -= adhesion * cn<TF>().particle_mass / density_i *
-          dist_cubic_kernel(dist) * (dist * normalize(normal));
+    TF normal_norm_sqr = length_sqr(normal);
+    if (normal_norm_sqr >= static_cast<TF>(1e-7)) {
+      dx -= adhesion * cn<TF>().particle_mass / density_i *
+            dist_cubic_kernel(dist) * (dist * normalize(normal));
+    }
     particle_dx(p_i) = dx;
   });
 }

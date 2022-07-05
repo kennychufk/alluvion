@@ -47,6 +47,7 @@ struct SolverPellet : public Solver<TF> {
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, 0, false,
              false, cn, cni, graphical),
         particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
+        cfl_factor(0.25),
         cohesion(4),
         adhesion(2) {}
   virtual ~SolverPellet() { store.remove(*particle_dfsph_factor); }
@@ -96,7 +97,6 @@ struct SolverPellet : public Solver<TF> {
         "pellet_divergence_solve_iteration",
         pellet_divergence_solve_iteration<TQ, TF3, TF>);
     TF particle_max_v2 = TRunner::max(*particle_cfl_v2, num_particles);
-    TF cfl_factor = 0.25;  // TODO: make a member variable
     TF cfl = min(cfl_factor * static_cast<TF>(0.4) * particle_radius * 2 *
                      rsqrt(particle_max_v2),
                  static_cast<TF>(1));
@@ -118,6 +118,7 @@ struct SolverPellet : public Solver<TF> {
   std::unique_ptr<Variable<1, TF>> particle_dfsph_factor;
   TF cohesion;
   TF adhesion;
+  TF cfl_factor;
 };
 }  // namespace alluvion
 
