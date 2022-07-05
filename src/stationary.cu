@@ -25,39 +25,84 @@ int main(void) {
   DisplayProxy<F> display_proxy(display);
   Runner<F> runner;
 
-  F scale_factor = 0.1;
+  F scale_factor = 1;
   F particle_radius = 0.25 * scale_factor;
   F kernel_radius = particle_radius * 4;
   F density0 = 1.0 / (scale_factor * scale_factor * scale_factor);
   F particle_mass = 0.1;
   F dt = 2e-3;
   F3 gravity = {0._F, -98.1_F * scale_factor, 0._F};
-  store.get_cn<F>().set_kernel_radius(kernel_radius);
-  store.get_cn<F>().set_particle_attr(particle_radius, particle_mass, density0);
-  store.get_cn<F>().gravity = gravity;
-  store.get_cn<F>().viscosity = 0.002 * scale_factor * scale_factor;
-  store.get_cn<F>().boundary_viscosity = 0.0063 * scale_factor * scale_factor;
+  auto cn_cni = store.create_cn<F>();
+  Const<F> cn = std::get<0>(cn_cni);
+  ConstiN cni = std::get<1>(cn_cni);
+  cn.set_kernel_radius(kernel_radius);
+  cn.set_particle_attr(particle_radius, particle_mass, density0);
+  cn.gravity = gravity;
+  cn.viscosity = 0.002 * scale_factor * scale_factor;
+  cn.boundary_viscosity = 0.0063 * scale_factor * scale_factor;
 
   // rigids
   U max_num_contacts = 512;
-  Pile<F> pile(store, runner, max_num_contacts, VolumeMethod::pellets, 70000);
-  Mesh cube_particle_mesh;
-  cube_particle_mesh.set_obj(
-      "/home/kennychufk/workspace/cppWs/alluvion/"
-      "box-40-30-15-shell-particles.obj");
-  cube_particle_mesh.scale(scale_factor);
-  // cube_particle_mesh.set_box(float3{40, 30, 15}, 5);
-  // cube_particle_mesh.scale(scale_factor);
+  const char* pellet_filename =
+      "/home/kennychufk/workspace/pythonWs/alluvion-optim/"
+      "box-40-30-15-shell.alu";
+  U box_num_pellets = std::get<0>(Store::get_alu_info(pellet_filename))[0];
+  const char* sphere_pellet_filename =
+      "/home/kennychufk/workspace/pythonWs/alluvion-optim/sphere-3.alu";
+  U sphere_num_pellets =
+      std::get<0>(Store::get_alu_info(sphere_pellet_filename))[0];
+  const char* cylinder_pellet_filename =
+      "/home/kennychufk/workspace/pythonWs/alluvion-optim/cylinder-3-7.alu";
+  U cylinder_num_pellets =
+      std::get<0>(Store::get_alu_info(cylinder_pellet_filename))[0];
+
+  Pile<F> pile(store, runner, max_num_contacts, VolumeMethod::pellets,
+               box_num_pellets + sphere_num_pellets + cylinder_num_pellets, &cn,
+               &cni);
+
+  std::unique_ptr<Variable<1, F3>> pellet_x(
+      store.create<1, F3>({box_num_pellets}));
+  pellet_x->read_file(pellet_filename);
+  pellet_x->scale(scale_factor);
   pile.add(new BoxDistance<F3, F>(scale_factor * F3{40, 30, 15}),
-           U3{80, 60, 30}, -1._F, cube_particle_mesh, 0._F, 1, 0, F3{1, 1, 1},
+           U3{80, 60, 30}, -1._F, *pellet_x, 0._F, 1, 0, F3{1, 1, 1},
            F3{0, 15 * scale_factor, 0}, Q{0, 0, 0, 1}, Mesh());
-  // SphereDistance<F3, F> sphere_distance(sphere_radius);
-  // pile.add(&sphere_distance, U3{50, 50, 50}, 1._F, 0, sphere_mesh, 3.2_F,
-  // 0.4,
-  //          0, F3{1, 1, 1}, F3{0, 0.4, -0}, Q{0, 0, 0, 1}, sphere_mesh);
+  store.remove(*pellet_x);
+
+  F sphere_radius = 3 * scale_factor;
+  Mesh sphere_mesh;
+  sphere_mesh.set_uv_sphere(sphere_radius, 20, 20);
+  std::unique_ptr<Variable<1, F3>> sphere_pellet_x(
+      store.create<1, F3>({sphere_num_pellets}));
+  sphere_pellet_x->read_file(sphere_pellet_filename);
+  sphere_pellet_x->scale(scale_factor);
+  pile.add(new SphereDistance<F3, F>(sphere_radius), U3{32, 32, 32}, 1._F,
+           *sphere_pellet_x, 50._F * scale_factor * scale_factor * scale_factor,
+           0.4, 0, F3{1, 1, 1}, F3{0, 16, -0} * scale_factor, Q{0, 0, 0, 1},
+           sphere_mesh);
+  store.remove(*sphere_pellet_x);
+
+  F cylinder_radius = 3 * scale_factor;
+  F cylinder_height = 7 * scale_factor;
+  Mesh cylinder_mesh;
+  cylinder_mesh.set_cylinder(cylinder_radius, cylinder_height, 20, 20);
+  std::unique_ptr<Variable<1, F3>> cylinder_pellet_x(
+      store.create<1, F3>({cylinder_num_pellets}));
+  cylinder_pellet_x->read_file(cylinder_pellet_filename);
+  cylinder_pellet_x->scale(scale_factor);
+  pile.add(new CylinderDistance<F3, F>(cylinder_radius, cylinder_height),
+           U3{30, 35, 30}, 1._F, *cylinder_pellet_x,
+           30._F * scale_factor * scale_factor * scale_factor, 0.4, 0.5,
+           F3{10, 10, 10}, F3{8, 16, -0} * scale_factor, Q{0, 0, 0, 1},
+           cylinder_mesh);
+  store.remove(*cylinder_pellet_x);
+
   pile.reallocate_kinematics_on_device();
   pile.set_gravity(gravity);
-  store.get_cn<F>().contact_tolerance = particle_radius;
+  cn.contact_tolerance = particle_radius;
+
+  std::cout << "num of pellets = " << sphere_num_pellets << " "
+            << box_num_pellets << " = " << pile.num_pellets_ << std::endl;
 
   // particles
   int block_mode = 0;
@@ -69,12 +114,13 @@ int main(void) {
   // grid
   U3 grid_res{128, 128, 128};
   I3 grid_offset{-64, -64, -64};
-  store.get_cni().grid_res = grid_res;
-  store.get_cni().grid_offset = grid_offset;
-  store.get_cni().max_num_particles_per_cell = 64;
-  store.get_cni().max_num_neighbors_per_particle = 64;
+  cni.grid_res = grid_res;
+  cni.grid_offset = grid_offset;
+  cni.max_num_particles_per_cell = 64;
+  cni.max_num_neighbors_per_particle = 64;
 
-  SolverI<F> solver(runner, pile, store, num_particles, 0, false, false, true);
+  SolverI<F> solver(runner, pile, store, num_particles, 0, false, false, &cn,
+                    &cni, true);
   std::unique_ptr<Variable<1, F>> particle_normalized_attr(
       store.create_graphical<1, F>({num_particles}));
   solver.num_particles = num_particles;
@@ -82,9 +128,21 @@ int main(void) {
   solver.max_dt = 0.005;
   solver.min_dt = 0.0;
   solver.cfl = 0.2;
-  solver.min_density_solve = 20;
+  solver.min_density_solve = 2;
   solver.max_density_solve = 20;
   solver.particle_radius = particle_radius;
+
+  std::cout << "particle_force shape ";
+  for (U shape_item : solver.particle_force->shape_) {
+    std::cout << shape_item << " ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "pellet_id_to_rigid_id_ shape ";
+  for (U shape_item : pile.pellet_id_to_rigid_id_->shape_) {
+    std::cout << shape_item << " ";
+  }
+  std::cout << std::endl;
 
   store.map_graphical_pointers();
   runner.launch_create_fluid_block(*solver.particle_x, num_particles, 0,

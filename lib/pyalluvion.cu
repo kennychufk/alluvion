@@ -475,10 +475,12 @@ void declare_pile(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Pile") + name;
   py::class_<TPile>(m, class_name.c_str())
-      .def(py::init<Store&, TRunner&, U, VolumeMethod, U>(), py::arg("store"),
-           py::arg("runner"), py::arg("max_num_contacts"),
+      .def(py::init<Store&, TRunner&, U, VolumeMethod, U, Const<TF>*,
+                    ConstiN*>(),
+           py::arg("store"), py::arg("runner"), py::arg("max_num_contacts"),
            py::arg("volume_method") = VolumeMethod::volume_map,
-           py::arg("max_num_pellets") = 10000)
+           py::arg("max_num_pellets") = 10000, py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr)
       .def_readwrite("mass", &TPile::mass_)
       .def_readwrite("x", &TPile::x_)
       .def_readwrite("v", &TPile::v_)
@@ -787,11 +789,13 @@ void declare_solver(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("Solver") + name;
   py::class_<TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool,
+                    Const<TF> const*, ConstiN const*, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
-           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+           py::arg("enable_vorticity") = false, py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr, py::arg("graphical") = false)
       .def_readonly("max_num_particles", &TSolver::max_num_particles)
       .def_readonly("particle_max_v2", &TSolver::particle_max_v2)
       .def_readonly("pile_max_v2", &TSolver::pile_max_v2)
@@ -896,11 +900,13 @@ void declare_solver_df(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverDf") + name;
   py::class_<TSolverDf, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool,
+                    Const<TF> const*, ConstiN const*, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
-           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+           py::arg("enable_vorticity") = false, py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr, py::arg("graphical") = false)
       .def_readonly("num_divergence_solve", &TSolverDf::num_divergence_solve)
       .def_readonly("num_density_solve", &TSolverDf::num_density_solve)
       .def_readonly("mean_density_change", &TSolverDf::mean_density_change)
@@ -944,11 +950,13 @@ void declare_solver_ii(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverIi") + name;
   py::class_<TSolverIi, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool,
+                    Const<TF> const*, ConstiN const*, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
-           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+           py::arg("enable_vorticity") = false, py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverIi::num_density_solve)
       .def_readonly("mean_density_error", &TSolverIi::mean_density_error)
       .def_readwrite("density_error_tolerance",
@@ -998,11 +1006,13 @@ void declare_solver_i(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverI") + name;
   py::class_<TSolverI, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool, bool>(),
+      .def(py::init<TRunner&, TPile&, Store&, U, U, bool, bool,
+                    Const<TF> const*, ConstiN const*, bool>(),
            py::arg("runner"), py::arg("pile"), py::arg("store"),
            py::arg("max_num_particles"), py::arg("num_ushers") = 0,
            py::arg("enable_surface_tension") = false,
-           py::arg("enable_vorticity") = false, py::arg("graphical") = false)
+           py::arg("enable_vorticity") = false, py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr, py::arg("graphical") = false)
       .def_readonly("num_density_solve", &TSolverI::num_density_solve)
       .def_readonly("mean_density_error", &TSolverI::mean_density_error)
       .def_readwrite("density_error_tolerance",
@@ -1042,9 +1052,11 @@ void declare_solver_pellet(py::module& m, const char* name) {
   using TRunner = Runner<TF>;
   std::string class_name = std::string("SolverPellet") + name;
   py::class_<TSolverPellet, TSolver>(m, class_name.c_str())
-      .def(py::init<TRunner&, TPile&, Store&, U, bool>(), py::arg("runner"),
-           py::arg("pile"), py::arg("store"), py::arg("max_num_particles"),
-           py::arg("graphical") = false)
+      .def(py::init<TRunner&, TPile&, Store&, U, Const<TF> const*,
+                    ConstiN const*, bool>(),
+           py::arg("runner"), py::arg("pile"), py::arg("store"),
+           py::arg("max_num_particles"), py::arg("cn") = nullptr,
+           py::arg("cni") = nullptr, py::arg("graphical") = false)
       .def_readwrite("cohesion", &TSolverPellet::cohesion)
       .def_readwrite("adhesion", &TSolverPellet::adhesion)
       .def_property_readonly("particle_dfsph_factor",
@@ -1132,6 +1144,7 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def(py::init<>())
       .def_readonly("launch_stat_dict", &TRunner::launch_stat_dict_)
       .def_readonly("custom_elapsed_dict", &TRunner::custom_elapsed_dict_)
+      .def("launch_print_cn", &TRunner::launch_print_cn)
       .def("launch_create_fluid_block", &TRunner::launch_create_fluid_block,
            py::arg("particle_x"), py::arg("num_particles"), py::arg("offset"),
            py::arg("particle_radius"), py::arg("mode"), py::arg("box_min"),
@@ -1259,6 +1272,12 @@ PYBIND11_MODULE(_alluvion, m) {
           .def_property_readonly("cnfloat", &Store::template get_cn<float>)
           .def_property_readonly("cndouble", &Store::template get_cn<double>)
           .def_property_readonly("cni", &Store::template get_cni)
+          .def("create_cnfloat", &Store::template create_cn<float>)
+          .def("create_cndouble", &Store::template create_cn<double>)
+          .def("copy_cn_externalfloat",
+               &Store::template copy_cn_external<float>)
+          .def("copy_cn_externaldouble",
+               &Store::template copy_cn_external<double>)
           .def("copy_cnfloat", &Store::template copy_cn<float>)
           .def("copy_cndouble", &Store::template copy_cn<double>)
           .def("map_graphical_pointers", &Store::map_graphical_pointers)

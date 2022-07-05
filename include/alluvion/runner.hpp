@@ -843,6 +843,47 @@ constexpr __device__ TF3 index_to_position_in_fluid_cylinder(U p_i, TF radius,
   return TF3{r * cos(theta), y_min + (l + 1) * diameter, r * sin(theta)};
 }
 
+template <typename TF>
+__global__ void print_cn() {
+  printf("kernel_radius = %f\n", cn<TF>().kernel_radius);
+  printf("kernel_radius_sqr = %f\n", cn<TF>().kernel_radius_sqr);
+  printf("cubic_kernel_k = %f\n", cn<TF>().cubic_kernel_k);
+  printf("cubic_kernel_l = %f\n", cn<TF>().cubic_kernel_l);
+  printf("cubic_kernel_zero = %f\n", cn<TF>().cubic_kernel_zero);
+  printf("adhesion_kernel_k = %f\n", cn<TF>().adhesion_kernel_k);
+  printf("cohesion_kernel_k = %f\n", cn<TF>().cohesion_kernel_k);
+  printf("cohesion_kernel_c = %f\n", cn<TF>().cohesion_kernel_c);
+  printf("particle_radius = %f\n", cn<TF>().particle_radius);
+  printf("particle_vol = %f\n", cn<TF>().particle_vol);
+  printf("particle_mass = %f\n", cn<TF>().particle_mass);
+  printf("density0 = %f\n", cn<TF>().density0);
+  printf("viscosity = %f\n", cn<TF>().viscosity);
+  printf("boundary_viscosity = %f\n", cn<TF>().boundary_viscosity);
+  printf("vorticity_coeff = %f\n", cn<TF>().vorticity_coeff);
+  printf("boundary_vorticity_coeff = %f\n", cn<TF>().boundary_vorticity_coeff);
+  printf("inertia_inverse = %f\n", cn<TF>().inertia_inverse);
+  printf("viscosity_omega = %f\n", cn<TF>().viscosity_omega);
+  printf("surface_tension_coeff = %f\n", cn<TF>().surface_tension_coeff);
+  printf("surface_tension_boundary_coeff = %f\n",
+         cn<TF>().surface_tension_boundary_coeff);
+  printf("gravity = (%f, %f, %f)\n", cn<TF>().gravity.x, cn<TF>().gravity.y,
+         cn<TF>().gravity.z);
+  printf("boundary_epsilon = %f\n", cn<TF>().boundary_epsilon);
+  printf("dfsph_factor_epsilon = %f\n", cn<TF>().dfsph_factor_epsilon);
+  printf("contact_tolerance = %f\n", cn<TF>().contact_tolerance);
+  printf("wrap_length = %f\n", cn<TF>().wrap_length);
+  printf("wrap_min = %f\n", cn<TF>().wrap_min);
+  printf("wrap_max = %f\n", cn<TF>().wrap_max);
+  printf("max_num_particles_per_cell = %u\n", cni.max_num_particles_per_cell);
+  printf("grid_res = (%u, %u, %u)\n", cni.grid_res.x, cni.grid_res.y,
+         cni.grid_res.z);
+  printf("grid_offset = (%d, %d, %d)\n", cni.grid_offset.x, cni.grid_offset.y,
+         cni.grid_offset.z);
+  printf("max_num_neighbors_per_particle = %u\n",
+         cni.max_num_neighbors_per_particle);
+  printf("num_boundaries = %u\n", cni.num_boundaries);
+  printf("max_num_contacts = %u\n", cni.max_num_contacts);
+}
 template <typename TF3, typename TF>
 __global__ void create_fluid_cylinder(Variable<1, TF3> particle_x,
                                       U num_particles, U offset, TF radius,
@@ -4047,6 +4088,43 @@ __global__ void transform_pellets(Variable<1, TF3> local_pellet_x,
 }
 
 // fluid control
+//
+// template <typename TF3, typename TF>
+// __global__ void drive_n_ellipse(
+//     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
+//     Variable<1, TF3> particle_a, Variable<2, TF3> focal_x,
+//     Variable<2, TF3> focal_v, Variable<1, TF> focal_dist,
+//     Variable<1, TF> usher_kernel_radius, Variable<1, TF> drive_strength,
+//     U num_ushers, U num_particles) {
+//   forThreadMappedToElement(num_particles, [&](U p_i) {
+//     const TF3 x_i = particle_x(p_i);
+//     const TF3 v_i = particle_v(p_i);
+//     TF3 da{0};
+//     for (U usher_id = 0; usher_id < num_ushers; ++usher_id) {
+//       TF3 fx0 = focal_x(usher_id, 0);
+//       TF3 fx1 = focal_x(usher_id, 1);
+//       TF3 fx2 = focal_x(usher_id, 2);
+//       TF3 fv0 = focal_v(usher_id, 0);
+//       TF3 fv1 = focal_v(usher_id, 1);
+//       TF3 fv2 = focal_v(usher_id, 2);
+//       TF d0 = length(x_i - fx0);
+//       TF d1 = length(x_i - fx1);
+//       TF d2 = length(x_i - fx2);
+//       TF d0d1 = d0 * d1;
+//       TF d1d2 = d1 * d2;
+//       TF d2d0 = d2 * d0;
+//       TF denom = d0d1 + d1d2 + d2d0 +
+//                  static_cast<TF>(0.01) * cn<TF>().kernel_radius_sqr;
+//       TF3 drive_v = (d0d1 * fv2 + d1d2 * fv0 + d2d0 * fv1) / denom;
+//
+//       TF uh = usher_kernel_radius(usher_id);
+//       da += drive_strength(usher_id) *
+//             dist_gaussian_kernel(d0 + d1 + d2 - focal_dist(usher_id), uh) *
+//             (drive_v - v_i);
+//     }
+//     particle_a(p_i) += da;
+//   });
+// }
 template <typename TF3, typename TF>
 __global__ void drive_n_ellipse(
     Variable<1, TF3> particle_x, Variable<1, TF3> particle_v,
@@ -4805,6 +4883,14 @@ class Runner {
       optimal_block_size_dict_[function_name] = std::stoul(elapsed_str.c_str());
     }
   };
+  void launch_print_cn() {
+    launch(
+        1,
+        [&](U grid_size, U block_size) {
+          print_cn<TF><<<grid_size, block_size>>>();
+        },
+        "print_cn", print_cn<TF>);
+  }
   void launch_create_fluid_block(Variable<1, TF3>& particle_x, U num_particles,
                                  U offset, TF particle_radius, int mode,
                                  TF3 const& box_min, TF3 const& box_max) {

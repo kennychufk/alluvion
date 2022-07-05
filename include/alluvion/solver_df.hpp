@@ -48,9 +48,11 @@ struct SolverDf : public Solver<TF> {
   SolverDf(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
            U max_num_particles_arg, U num_ushers = 0,
            bool enable_surface_tension_arg = false,
-           bool enable_vorticity_arg = false, bool graphical = false)
+           bool enable_vorticity_arg = false, Const<TF> const* cn = nullptr,
+           ConstiN const* cni = nullptr, bool graphical = false)
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, num_ushers,
-             enable_surface_tension_arg, enable_vorticity_arg, graphical),
+             enable_surface_tension_arg, enable_vorticity_arg, cn, cni,
+             graphical),
         particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa(store_arg.create<1, TF>({max_num_particles_arg})),
         particle_kappa_v(store_arg.create<1, TF>({max_num_particles_arg})),

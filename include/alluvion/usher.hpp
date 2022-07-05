@@ -1,8 +1,6 @@
 #ifndef ALLUVION_USHER_HPP
 #define ALLUVION_USHER_HPP
 
-#include <cstring>
-
 #include "alluvion/pile.hpp"
 #include "alluvion/runner.hpp"
 #include "alluvion/store.hpp"

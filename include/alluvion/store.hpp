@@ -134,6 +134,23 @@ class Store {
   ConstiN& get_cni() { return cni_; }
 
   template <typename TF>
+  std::pair<Const<TF>, ConstiN> create_cn() {
+    return std::make_pair(Const<TF>(), ConstiN());
+  }
+
+  template <typename TF>
+  void copy_cn_external(Const<TF> const& cn_arg, ConstiN const& cni_arg) {
+    Allocator::abort_if_error(
+        cudaMemcpyToSymbol(cni, &cni_arg, sizeof(cni_), 0, cudaMemcpyDefault));
+    if constexpr (std::is_same_v<TF, float>)
+      Allocator::abort_if_error(
+          cudaMemcpyToSymbol(cnf, &cn_arg, sizeof(cnf_), 0, cudaMemcpyDefault));
+    else
+      Allocator::abort_if_error(
+          cudaMemcpyToSymbol(cnd, &cn_arg, sizeof(cnd_), 0, cudaMemcpyDefault));
+  }
+
+  template <typename TF>
   void copy_cn() {
     Allocator::abort_if_error(
         cudaMemcpyToSymbol(cni, &cni_, sizeof(cni_), 0, cudaMemcpyDefault));

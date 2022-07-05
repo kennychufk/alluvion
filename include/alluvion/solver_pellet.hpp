@@ -42,9 +42,10 @@ struct SolverPellet : public Solver<TF> {
   // NOTE: pile should use VolumeMethod::pellets but contains no pellets and
   // contains one object only
   SolverPellet(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
-               U max_num_particles_arg, bool graphical = false)
+               U max_num_particles_arg, Const<TF> const* cn = nullptr,
+               ConstiN const* cni = nullptr, bool graphical = false)
       : Base(runner_arg, pile_arg, store_arg, max_num_particles_arg, 0, false,
-             false, graphical),
+             false, cn, cni, graphical),
         particle_dfsph_factor(store_arg.create<1, TF>({max_num_particles_arg})),
         cohesion(4),
         adhesion(2) {}

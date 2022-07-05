@@ -14,7 +14,8 @@ struct Solver {
   Solver(TRunner& runner_arg, TPile& pile_arg, Store& store_arg,
          U max_num_particles_arg, U num_ushers = 0,
          bool enable_surface_tension_arg = false,
-         bool enable_vorticity_arg = false, bool graphical = false)
+         bool enable_vorticity_arg = false, Const<TF> const* cn = nullptr,
+         ConstiN const* cni = nullptr, bool graphical = false)
       : max_num_particles(max_num_particles_arg),
         store(store_arg),
         runner(runner_arg),
@@ -23,7 +24,8 @@ struct Solver {
         initial_dt(0),
         dt(0),
         t(0),
-        particle_radius(store_arg.get_cn<TF>().particle_radius),
+        particle_radius(cn == nullptr ? store_arg.get_cn<TF>().particle_radius
+                                      : cn->particle_radius),
         next_emission_t(-1),
         particle_x(
             graphical ? store_arg.create_graphical<1, TF3>(
@@ -53,27 +55,42 @@ struct Solver {
             enable_vorticity_arg
                 ? store_arg.create<1, TF3>({max_num_particles_arg})
                 : new Variable<1, TF3>()),
-        pid(store_arg.create<4, TQ>(
-            {store_arg.get_cni().grid_res.x, store_arg.get_cni().grid_res.y,
-             store_arg.get_cni().grid_res.z,
-             store_arg.get_cni().max_num_particles_per_cell})),
-        pid_length(store_arg.create<3, U>({store_arg.get_cni().grid_res.x,
-                                           store_arg.get_cni().grid_res.y,
-                                           store_arg.get_cni().grid_res.z})),
+        pid(cni == nullptr
+                ? store_arg.create<4, TQ>(
+                      {store_arg.get_cni().grid_res.x,
+                       store_arg.get_cni().grid_res.y,
+                       store_arg.get_cni().grid_res.z,
+                       store_arg.get_cni().max_num_particles_per_cell})
+                : store_arg.create<4, TQ>({cni->grid_res.x, cni->grid_res.y,
+                                           cni->grid_res.z,
+                                           cni->max_num_particles_per_cell})),
+        pid_length(
+            cni == nullptr
+                ? store_arg.create<3, U>({store_arg.get_cni().grid_res.x,
+                                          store_arg.get_cni().grid_res.y,
+                                          store_arg.get_cni().grid_res.z})
+                : store_arg.create<3, U>(
+                      {cni->grid_res.x, cni->grid_res.y, cni->grid_res.z})),
         particle_neighbors(store_arg.create<2, TQ>(
             {max_num_particles_arg + pile_arg.max_num_pellets_,
-             store_arg.get_cni().max_num_neighbors_per_particle})),
+             cni == nullptr ? store_arg.get_cni().max_num_neighbors_per_particle
+                            : cni->max_num_neighbors_per_particle})),
         particle_num_neighbors(store_arg.create<1, U>(
             {max_num_particles_arg + pile_arg.max_num_pellets_})),
         particle_boundary_neighbors(store_arg.create<2, TQ>(
             {max_num_particles_arg + pile_arg.max_num_pellets_,
-             store_arg.get_cni().max_num_neighbors_per_particle})),
+             cni == nullptr ? store_arg.get_cni().max_num_neighbors_per_particle
+                            : cni->max_num_neighbors_per_particle})),
         particle_num_boundary_neighbors(store_arg.create<1, U>(
             {max_num_particles_arg + pile_arg.max_num_pellets_})),
         grid_anomaly(store_arg.create<1, U>({3})),
         enable_surface_tension(enable_surface_tension_arg),
         enable_vorticity(enable_vorticity_arg) {
-    store.copy_cn<TF>();
+    if (cn == nullptr) {
+      store.copy_cn<TF>();
+    } else {
+      store.copy_cn_external(*cn, *cni);
+    }
   }
   virtual ~Solver() {
     if (GraphicalVariable<1, TF3>* graphical_particle_x =

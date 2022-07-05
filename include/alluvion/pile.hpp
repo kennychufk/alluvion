@@ -117,11 +117,15 @@ class Pile {
 
   Store& store_;
   TRunner& runner_;
+  // TODO: use shared pointer
+  Const<TF> const* cn_;
+  ConstiN* cni_;
 
   // NOTE: require defined kernel_radius in store's host-side Const<TF>
   Pile(Store& store, TRunner& runner, U max_num_contacts,
        VolumeMethod volume_method = VolumeMethod::volume_map,
-       U max_num_pellets_arg = 10000)
+       U max_num_pellets_arg = 10000, Const<TF>* cn = nullptr,
+       ConstiN* cni = nullptr)
       : store_(store),
         runner_(runner),
         x_(store.create_pinned<1, TF3>({0})),
@@ -143,10 +147,22 @@ class Pile {
         contacts_(store.create<1, TContact>({max_num_contacts})),
         num_contacts_(store.create<1, U>({1})),
         contacts_pinned_(store.create_pinned<1, TContact>({max_num_contacts})),
-        num_contacts_pinned_(store.create_pinned<1, U>({1})) {
-    store.get_cni().max_num_contacts = max_num_contacts;
-    store.get_cn<TF>().set_cubic_discretization_constants();
-    store.copy_cn<TF>();
+        num_contacts_pinned_(store.create_pinned<1, U>({1})),
+        cn_(cn == nullptr ? &store.get_cn<TF>() : cn),
+        cni_(cni == nullptr ? &store.get_cni() : cni) {
+    if (cn == nullptr) {
+      cn = &(store.get_cn<TF>());
+    }
+    if (cni == nullptr) {
+      cni = &(store.get_cni());
+    }
+    cni->max_num_contacts = max_num_contacts;
+    cn->set_cubic_discretization_constants();
+    if (cn == nullptr) {
+      store.copy_cn<TF>();
+    } else {
+      store.copy_cn_external(*cn, *cni);
+    }
   }
 
   virtual ~Pile() {
@@ -416,8 +432,7 @@ class Pile {
     TF3& domain_min = domain_min_list_[i];
     TF3& domain_max = domain_max_list_[i];
     TF& sign = sign_list_[i];
-    TF margin = sign < 0 ? store_.get_cn<TF>().kernel_radius
-                         : store_.get_cn<TF>().kernel_radius * 2;
+    TF margin = sign < 0 ? cn_->kernel_radius : cn_->kernel_radius * 2;
 
     dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
     calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
@@ -648,7 +663,7 @@ class Pile {
     mass_contact_device_->set_bytes(mass_contact_host.data());
     inertia_device_->set_bytes(inertia_tensor_.data());
 
-    store_.get_cni().num_boundaries = get_size();
+    cni_->num_boundaries = get_size();
   }
   void reallocate_kinematics_on_pinned() {
     PinnedVariable<1, TF3> x_new = store_.create_pinned<1, TF3>({get_size()});
@@ -826,10 +841,10 @@ class Pile {
   }
   void solve_contacts() {
     U num_contacts = num_contacts_pinned_(0);
-    if (num_contacts > store_.get_cni().max_num_contacts) {
-      std::cerr << "No. of contacts exceeds "
-                << store_.get_cni().max_num_contacts << "." << std::endl;
-      num_contacts = store_.get_cni().max_num_contacts;
+    if (num_contacts > cni_->max_num_contacts) {
+      std::cerr << "No. of contacts exceeds " << cni_->max_num_contacts << "."
+                << std::endl;
+      num_contacts = cni_->max_num_contacts;
     }
     contacts_->get_bytes(contacts_pinned_.ptr_,
                          num_contacts * sizeof(TContact));

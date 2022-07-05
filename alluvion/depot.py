@@ -31,7 +31,10 @@ class Depot(Store):
 
         # cannot use setattr
         self.cn = getattr(self, f"cn{numeric_type_str}")
+        self.create_cn = getattr(self, f"create_cn{numeric_type_str}")
         self.copy_cn = getattr(self, f"copy_cn{numeric_type_str}")
+        self.copy_cn_external = getattr(self,
+                                        f"copy_cn_external{numeric_type_str}")
         self.get_display_proxy = getattr(
             self, f"get_display_proxy{numeric_type_str}")
 
