@@ -4836,13 +4836,9 @@ class Runner {
     if (!optimal_block_size_dict_.empty()) {
       if (optimal_block_size_dict_.find(name) ==
           optimal_block_size_dict_.end()) {
-        std::stringstream error_stringstream;
-        std::string error_string = error_stringstream.str();
-        error_stringstream << "Optimal block size for " << name << " not found";
-        std::cerr << error_string << std::endl;
-        throw std::runtime_error(error_string);
+      } else {
+        block_size = optimal_block_size_dict_[name];
       }
-      block_size = optimal_block_size_dict_[name];
     }
     if (block_size >
         attr.maxThreadsPerBlock) {  // max. block size can be smaller than 1024
