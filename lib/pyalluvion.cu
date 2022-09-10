@@ -314,8 +314,7 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
           .def("set_from",
                py::overload_cast<VariableClass const&, U, U>(
                    &VariableClass::set_from),
-               py::arg("src"), py::arg("num_elements") = -1,
-               py::arg("offset") = 0)
+               py::arg("src"), py::arg("num_elements"), py::arg("offset") = 0)
           .def(
               "set_from",
               py::overload_cast<VariableClass const&>(&VariableClass::set_from),
@@ -323,8 +322,7 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
           .def("set_zero", &VariableClass::set_zero)
           .def("set_same",
                py::overload_cast<int, U, U>(&VariableClass::set_same),
-               py::arg("value"), py::arg("num_elements") = -1,
-               py::arg("offset") = 0)
+               py::arg("value"), py::arg("num_elements"), py::arg("offset") = 0)
           .def("set_same", py::overload_cast<int>(&VariableClass::set_same),
                py::arg("value"))
           .def("scale", py::overload_cast<M>(&VariableClass::template scale<M>))
@@ -336,6 +334,10 @@ void declare_variable(py::module& m, py::class_<Store>& store_class,
           .def("shift", py::overload_cast<M, U, U>(&VariableClass::shift),
                py::arg("addend"), py::arg("num_elements"),
                py::arg("offset") = 0)
+          .def("fill", py::overload_cast<M, U, U>(&VariableClass::fill),
+               py::arg("value"), py::arg("num_elements"), py::arg("offset") = 0)
+          .def("fill", py::overload_cast<M>(&VariableClass::fill),
+               py::arg("value"))
           .def("get_type", &VariableClass::get_type)
           .def("get_num_primitives_per_element",
                &VariableClass::get_num_primitives_per_element)
@@ -883,6 +885,7 @@ void declare_solver(py::module& m, const char* name) {
       .def("reset_solving_var", &TSolver::reset_solving_var)
       .def("reset_t", &TSolver::reset_t)
       .def("compute_all_boundaries", &TSolver::compute_all_boundaries)
+      .def("transform_all_pellets", &TSolver::transform_all_pellets)
       .def("sample_all_boundaries", &TSolver::sample_all_boundaries)
       .def("update_particle_neighbors",
            &TSolver::template update_particle_neighbors<0>)

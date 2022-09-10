@@ -122,7 +122,7 @@ class Variable {
         thrust::device_ptr<M>(static_cast<M*>(ptr_)) + (offset + num_elements),
         value);
   }
-
+  void fill(M value) { fill(value, get_linear_shape()); }
   void write_file(const char* filename, U shape_outermost = 0,
                   U offset = 0) const {
     std::ofstream stream(filename, std::ios::binary | std::ios::trunc);
