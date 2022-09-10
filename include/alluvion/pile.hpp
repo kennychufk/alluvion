@@ -980,7 +980,7 @@ class Pile {
   }
 
   void compute_mask(U i, TF distance_threshold,
-                    Variable<1, TF3> const& sample_x, Variable<1, U>& mask,
+                    Variable<1, TF3> const& sample_x, Variable<1, TF>& mask,
                     U num_samples) {
     for_rigid(
         i,

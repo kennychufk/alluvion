@@ -4362,7 +4362,7 @@ __global__ void compute_boundary_mask(Variable<1, TF> distance_nodes,
                                       TF3 cell_size, TF sign,
                                       Variable<1, TF3> sample_x,
                                       TF distance_threshold,
-                                      Variable<1, U> mask, U num_samples) {
+                                      Variable<1, TF> mask, U num_samples) {
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF d = interpolate_distance_without_intermediates(
                &distance_nodes, domain_min, domain_max, resolution, cell_size,
@@ -4378,7 +4378,7 @@ __global__ void compute_boundary_mask(const TDistance distance, TF3 rigid_x,
                                       TQ rigid_q, TF sign,
                                       Variable<1, TF3> sample_x,
                                       TF distance_threshold,
-                                      Variable<1, U> mask, U num_samples) {
+                                      Variable<1, TF> mask, U num_samples) {
   forThreadMappedToElement(num_samples, [&](U p_i) {
     TF d = distance.signed_distance(rotate_using_quaternion(
                sample_x(p_i) - rigid_x, quaternion_conjugate(rigid_q))) *
@@ -5467,8 +5467,8 @@ class Runner {
                                     TF3 const& domain_max, U3 const& resolution,
                                     TF3 const& cell_size, TF sign,
                                     Variable<1, TF3> const& sample_x,
-                                    TF distance_threshold, Variable<1, U>& mask,
-                                    U num_samples) {
+                                    TF distance_threshold,
+                                    Variable<1, TF>& mask, U num_samples) {
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
