@@ -16,6 +16,7 @@ namespace alluvion {
 enum class VolumeMethod { volume_map, pellets };
 
 template <typename TF>
+// TODO: different Pile classes for volume_map & pellets
 class Pile {
  private:
   typedef std::conditional_t<std::is_same_v<TF, float>, float3, double3> TF3;
@@ -36,12 +37,37 @@ class Pile {
     return new dg::MeshDistance<TF3, TF>(
         dg::TriangleMesh<TF>(dg_vertices, dg_faces));
   }
-  static void calculate_grid_attributes(dg::Distance<TF3, TF> const& distance,
-                                        U3 const& resolution, TF margin,
-                                        TF3& domain_min, TF3& domain_max,
-                                        U& grid_size, TF3& cell_size) {
+  static void calculate_domain_and_resolution(
+      dg::Distance<TF3, TF> const& distance, TF margin, TF cell_width, TF sign,
+      Const<TF> const& cn, TF3& domain_min, TF3& domain_max, U3& resolution) {
+    if (std::isinf(margin)) {
+      margin = sign < 0 ? cn.kernel_radius : cn.kernel_radius * 2;
+    }
     domain_min = distance.get_aabb_min() - margin;
     domain_max = distance.get_aabb_max() + margin;
+
+    // automatic derivation of resolution in case of 0
+    if (resolution.x == 0 || resolution.y == 0 || resolution.z == 0) {
+      TF3 domain_extent = domain_max - domain_min;
+      if (cell_width == 0) {
+        cell_width = cn.particle_radius;
+      }
+      resolution.x = (resolution.x == 0)
+                         ? static_cast<U>(domain_extent.x / cell_width)
+                         : resolution.x;
+      resolution.y = (resolution.y == 0)
+                         ? static_cast<U>(domain_extent.y / cell_width)
+                         : resolution.y;
+      resolution.z = (resolution.z == 0)
+                         ? static_cast<U>(domain_extent.z / cell_width)
+                         : resolution.z;
+    }
+  }
+  static void calculate_grid_attributes(dg::Distance<TF3, TF> const& distance,
+                                        U3 const& resolution,
+                                        TF3 const& domain_min,
+                                        TF3 const& domain_max, U& grid_size,
+                                        TF3& cell_size) {
     cell_size = (domain_max - domain_min) / resolution;
     U nv = (resolution.x + 1) * (resolution.y + 1) * (resolution.z + 1);
     U ne_x = (resolution.x + 0) * (resolution.y + 1) * (resolution.z + 1);
@@ -51,8 +77,8 @@ class Pile {
     grid_size = nv + 2 * ne;
   }
   static std::vector<TF> construct_distance_grid(
-      dg::Distance<TF3, TF> const& distance, U3 const& resolution, TF margin,
-      TF sign, TF3 const& domain_min, TF3 const& domain_max) {
+      dg::Distance<TF3, TF> const& distance, U3 const& resolution, TF sign,
+      TF3 const& domain_min, TF3 const& domain_max) {
     dg::CubicLagrangeDiscreteGrid grid_host(
         dg::AlignedBox3r<TF>(
             dg::Vector3r<TF>(domain_min.x, domain_min.y, domain_min.z),
@@ -188,10 +214,12 @@ class Pile {
     store_.remove(*num_contacts_);
   }
 
-  U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
-        Variable<1, TF3> const& pellets, TF mass, TF restitution, TF friction,
-        TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-        Mesh const& display_mesh) {
+  U add(dg::Distance<TF3, TF>* distance, U3 resolution = U3{0},
+        TF cell_width = 0, TF margin = std::numeric_limits<TF>::infinity(),
+        TF sign = 1, Variable<1, TF3> const& pellets = Variable<1, TF3>(),
+        TF mass = 0, TF restitution = 1, TF friction = 0,
+        TF3 const& inertia_tensor = TF3{1, 1, 1}, TF3 const& x = TF3{0},
+        TQ const& q = TQ{0, 0, 0, 1}, Mesh const& display_mesh = Mesh()) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
     friction_.push_back(friction);
@@ -201,15 +229,18 @@ class Pile {
     force_.push_back(TF3{0, 0, 0});
     torque_.push_back(TF3{0, 0, 0});
 
+    TF3 domain_min, domain_max;
+    calculate_domain_and_resolution(*distance, margin, cell_width, sign, *cn_,
+                                    domain_min, domain_max, resolution);
     distance_list_.emplace_back(distance);
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
+    domain_min_list_.push_back(domain_min);
+    domain_max_list_.push_back(domain_max);
 
     // placeholders
     distance_grids_.emplace_back(store_.create<1, TF>({0}));
     volume_grids_.emplace_back(store_.create<1, TF>({0}));
-    domain_min_list_.push_back(TF3{0, 0, 0});
-    domain_max_list_.push_back(TF3{0, 0, 0});
     grid_size_list_.push_back(0);
     cell_size_list_.push_back(TF3{0, 0, 0});
 
@@ -247,10 +278,12 @@ class Pile {
     build_grid(boundary_id);
     return boundary_id;
   }
-  U add(dg::Distance<TF3, TF>* distance, U3 const& resolution, TF sign,
-        Mesh const& collision_mesh, TF mass, TF restitution, TF friction,
-        TF3 const& inertia_tensor, TF3 const& x, TQ const& q,
-        Mesh const& display_mesh) {
+  U add(dg::Distance<TF3, TF>* distance, U3 resolution = U3{0},
+        TF cell_width = 0, TF margin = std::numeric_limits<TF>::infinity(),
+        TF sign = 1, Mesh const& collision_mesh = Mesh(), TF mass = 0,
+        TF restitution = 1, TF friction = 0,
+        TF3 const& inertia_tensor = TF3{1, 1, 1}, TF3 const& x = TF3{0},
+        TQ const& q = TQ{0, 0, 0, 1}, Mesh const& display_mesh = Mesh()) {
     mass_.push_back(mass);
     restitution_.push_back(restitution);
     friction_.push_back(friction);
@@ -260,15 +293,18 @@ class Pile {
     force_.push_back(TF3{0, 0, 0});
     torque_.push_back(TF3{0, 0, 0});
 
+    TF3 domain_min, domain_max;
+    calculate_domain_and_resolution(*distance, margin, cell_width, sign, *cn_,
+                                    domain_min, domain_max, resolution);
     distance_list_.emplace_back(distance);
     resolution_list_.push_back(resolution);
     sign_list_.push_back(sign);
+    domain_min_list_.push_back(domain_min);
+    domain_max_list_.push_back(domain_max);
 
     // placeholders
     distance_grids_.emplace_back(store_.create<1, TF>({0}));
     volume_grids_.emplace_back(store_.create<1, TF>({0}));
-    domain_min_list_.push_back(TF3{0, 0, 0});
-    domain_max_list_.push_back(TF3{0, 0, 0});
     grid_size_list_.push_back(0);
     cell_size_list_.push_back(TF3{0, 0, 0});
 
@@ -306,10 +342,14 @@ class Pile {
     build_grid(boundary_id);
     return boundary_id;
   }
-  void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
-               TF sign, Variable<1, TF3> const& pellets, TF mass,
-               TF restitution, TF friction, TF3 const& inertia_tensor,
-               TF3 const& x, TQ const& q, Mesh const& display_mesh) {
+  void replace(U i, dg::Distance<TF3, TF>* distance, U3 resolution = U3{0},
+               TF cell_width = 0,
+               TF margin = std::numeric_limits<TF>::infinity(), TF sign = 1,
+               Variable<1, TF3> const& pellets = Variable<1, TF3>(),
+               TF mass = 0, TF restitution = 1, TF friction = 0,
+               TF3 const& inertia_tensor = TF3{1, 1, 1}, TF3 const& x = TF3{0},
+               TQ const& q = TQ{0, 0, 0, 1},
+               Mesh const& display_mesh = Mesh()) {
     mass_[i] = mass;
     restitution_[i] = restitution;
     friction_[i] = friction;
@@ -319,6 +359,10 @@ class Pile {
     force_[i] = TF3{0, 0, 0};
     torque_[i] = TF3{0, 0, 0};
 
+    TF3 domain_min, domain_max;
+    calculate_domain_and_resolution(*distance, margin, cell_width, sign, *cn_,
+                                    domain_min_list_[i], domain_max_list_[i],
+                                    resolution);
     distance_list_[i].reset(distance);
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;
@@ -328,8 +372,6 @@ class Pile {
     distance_grids_[i].reset(store_.create<1, TF>({0}));
     store_.remove(*volume_grids_[i]);
     volume_grids_[i].reset(store_.create<1, TF>({0}));
-    domain_min_list_[i] = TF3{0, 0, 0};
-    domain_max_list_[i] = TF3{0, 0, 0};
     grid_size_list_[i] = 0;
     cell_size_list_[i] = TF3{0, 0, 0};
 
@@ -366,10 +408,14 @@ class Pile {
 
     build_grid(i);
   }
-  void replace(U i, dg::Distance<TF3, TF>* distance, U3 const& resolution,
-               TF sign, Mesh const& collision_mesh, TF mass, TF restitution,
-               TF friction, TF3 const& inertia_tensor, TF3 const& x,
-               TQ const& q, Mesh const& display_mesh) {
+  void replace(U i, dg::Distance<TF3, TF>* distance, U3 resolution = U3{0},
+               TF cell_width = 0,
+               TF margin = std::numeric_limits<TF>::infinity(), TF sign = 1,
+               Mesh const& collision_mesh = Mesh(), TF mass = 0,
+               TF restitution = 1, TF friction = 0,
+               TF3 const& inertia_tensor = TF3{1, 1, 1}, TF3 const& x = TF3{0},
+               TQ const& q = TQ{0, 0, 0, 1},
+               Mesh const& display_mesh = Mesh()) {
     mass_[i] = mass;
     restitution_[i] = restitution;
     friction_[i] = friction;
@@ -379,6 +425,10 @@ class Pile {
     force_[i] = TF3{0, 0, 0};
     torque_[i] = TF3{0, 0, 0};
 
+    TF3 domain_min, domain_max;
+    calculate_domain_and_resolution(*distance, margin, cell_width, sign, *cn_,
+                                    domain_min_list_[i], domain_max_list_[i],
+                                    resolution);
     distance_list_[i].reset(distance);
     resolution_list_[i] = resolution;
     sign_list_[i] = sign;
@@ -388,8 +438,6 @@ class Pile {
     distance_grids_[i].reset(store_.create<1, TF>({0}));
     store_.remove(*volume_grids_[i]);
     volume_grids_[i].reset(store_.create<1, TF>({0}));
-    domain_min_list_[i] = TF3{0, 0, 0};
-    domain_max_list_[i] = TF3{0, 0, 0};
     grid_size_list_[i] = 0;
     cell_size_list_[i] = TF3{0, 0, 0};
 
@@ -432,11 +480,10 @@ class Pile {
     TF3& domain_min = domain_min_list_[i];
     TF3& domain_max = domain_max_list_[i];
     TF& sign = sign_list_[i];
-    TF margin = sign < 0 ? cn_->kernel_radius : cn_->kernel_radius * 2;
 
     dg::Distance<TF3, TF> const& virtual_dist = *distance_list_[i];
-    calculate_grid_attributes(virtual_dist, resolution_list_[i], margin,
-                              domain_min, domain_max, num_nodes, cell_size);
+    calculate_grid_attributes(virtual_dist, resolution_list_[i], domain_min,
+                              domain_max, num_nodes, cell_size);
 
     using TMeshDistance = dg::MeshDistance<TF3, TF>;
     using TBoxDistance = dg::BoxDistance<TF3, TF>;
@@ -452,7 +499,7 @@ class Pile {
       Variable<1, TF>* distance_grid = store_.create<1, TF>({num_nodes});
       distance_grids_[i].reset(distance_grid);
       std::vector<TF> nodes_host =
-          construct_distance_grid(virtual_dist, resolution_list_[i], margin,
+          construct_distance_grid(virtual_dist, resolution_list_[i],
                                   sign_list_[i], domain_min, domain_max);
       distance_grid->set_bytes(nodes_host.data());
     }

@@ -65,8 +65,9 @@ int main(void) {
   pellet_x->read_file(pellet_filename);
   pellet_x->scale(scale_factor);
   pile.add(new BoxDistance<F3, F>(scale_factor * F3{40, 30, 15}),
-           U3{80, 60, 30}, -1._F, *pellet_x, 0._F, 1, 0, F3{1, 1, 1},
-           F3{0, 15 * scale_factor, 0}, Q{0, 0, 0, 1}, Mesh());
+           U3{80, 60, 30}, 0, std::numeric_limits<F>::infinity(), -1._F,
+           *pellet_x, 0._F, 1, 0, F3{1, 1, 1}, F3{0, 15 * scale_factor, 0},
+           Q{0, 0, 0, 1}, Mesh());
   store.remove(*pellet_x);
 
   F sphere_radius = 3 * scale_factor;
@@ -76,9 +77,10 @@ int main(void) {
       store.create<1, F3>({sphere_num_pellets}));
   sphere_pellet_x->read_file(sphere_pellet_filename);
   sphere_pellet_x->scale(scale_factor);
-  pile.add(new SphereDistance<F3, F>(sphere_radius), U3{32, 32, 32}, 1._F,
-           *sphere_pellet_x, 50._F * scale_factor * scale_factor * scale_factor,
-           0.4, 0, F3{1, 1, 1}, F3{0, 16, -0} * scale_factor, Q{0, 0, 0, 1},
+  pile.add(new SphereDistance<F3, F>(sphere_radius), U3{32, 32, 32}, 0,
+           std::numeric_limits<F>::infinity(), 1._F, *sphere_pellet_x,
+           50._F * scale_factor * scale_factor * scale_factor, 0.4, 0,
+           F3{1, 1, 1}, F3{0, 16, -0} * scale_factor, Q{0, 0, 0, 1},
            sphere_mesh);
   store.remove(*sphere_pellet_x);
 
@@ -91,7 +93,8 @@ int main(void) {
   cylinder_pellet_x->read_file(cylinder_pellet_filename);
   cylinder_pellet_x->scale(scale_factor);
   pile.add(new CylinderDistance<F3, F>(cylinder_radius, cylinder_height),
-           U3{30, 35, 30}, 1._F, *cylinder_pellet_x,
+           U3{30, 35, 30}, 0, std::numeric_limits<F>::infinity(), 1._F,
+           *cylinder_pellet_x,
            30._F * scale_factor * scale_factor * scale_factor, 0.4, 0.5,
            F3{10, 10, 10}, F3{8, 16, -0} * scale_factor, Q{0, 0, 0, 1},
            cylinder_mesh);
