@@ -745,6 +745,16 @@ struct SquaredDifferenceMasked {
 };
 
 template <typename M, typename TPrimitive>
+struct SquaredDifferenceWeighted {
+  __device__ TPrimitive
+  operator()(thrust::tuple<M, M, TPrimitive, TPrimitive> const& vvww) {
+    M diff = thrust::get<0>(vvww) - thrust::get<1>(vvww);
+    TPrimitive weight = max(thrust::get<2>(vvww), thrust::get<3>(vvww));
+    return weight * length_sqr(diff);
+  }
+};
+
+template <typename M, typename TPrimitive>
 struct NormDifferenceMasked {
   __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
     M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
@@ -4592,6 +4602,32 @@ class Runner {
                                (offset + num_elements)));
     return thrust::transform_reduce(
         begin, end, SquaredDifferenceMasked<M, TPrimitive>(),
+        static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
+  }
+
+  template <U D, typename M, typename TPrimitive>
+  static TPrimitive calculate_se_weighted(Variable<D, M> v0, Variable<D, M> v1,
+                                          Variable<D, TPrimitive> weight0,
+                                          Variable<D, TPrimitive> weight1,
+                                          U num_elements, U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(weight0.ptr_)) +
+            offset,
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(weight1.ptr_)) +
+            offset));
+    auto end = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(weight0.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(weight1.ptr_)) +
+            (offset + num_elements)));
+    return thrust::transform_reduce(
+        begin, end, SquaredDifferenceWeighted<M, TPrimitive>(),
         static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
   }
 

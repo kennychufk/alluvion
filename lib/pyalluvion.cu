@@ -391,6 +391,11 @@ void declare_metrics(py::module& m,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_se_weighted",
+      &Runner<TPrimitive>::template calculate_se_weighted<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("weight0"), py::arg("weight1"),
+      py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_mse_masked",
       &Runner<TPrimitive>::template calculate_mse_masked<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
