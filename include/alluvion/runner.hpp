@@ -711,39 +711,6 @@ struct SqrtOperation {
   __device__ TF operator()(TF const& v) { return sqrt(v); }
 };
 
-template <typename M>
-struct ScalarSquaredDifference {
-  __device__ M operator()(thrust::tuple<M, M> const& scalar_pair) {
-    M diff = thrust::get<0>(scalar_pair) - thrust::get<1>(scalar_pair);
-    return diff * diff;
-  }
-};
-
-template <typename M, typename TPrimitive>
-struct SquaredDifference {
-  __device__ TPrimitive operator()(thrust::tuple<M, M> const& vector_pair) {
-    M diff = thrust::get<0>(vector_pair) - thrust::get<1>(vector_pair);
-    return length_sqr(diff);
-  }
-};
-
-template <typename M, typename TPrimitive>
-struct SquaredDifferenceYz {
-  __device__ TPrimitive operator()(thrust::tuple<M, M> const& vector_pair) {
-    M diff = thrust::get<0>(vector_pair) - thrust::get<1>(vector_pair);
-    return diff.y * diff.y + diff.z * diff.z;
-  }
-};
-
-template <typename M, typename TPrimitive>
-struct SquaredDifferenceMasked {
-  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
-    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return thrust::get<2>(vvm) == 1 ? length_sqr(diff)
-                                    : static_cast<TPrimitive>(0);
-  }
-};
-
 template <typename M, typename TPrimitive>
 struct SquaredDifferenceWeighted {
   __device__ TPrimitive operator()(thrust::tuple<M, M, TPrimitive> const& vvw) {
@@ -753,34 +720,11 @@ struct SquaredDifferenceWeighted {
 };
 
 template <typename M, typename TPrimitive>
-struct NormDifferenceMasked {
-  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
-    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return thrust::get<2>(vvm) == 1 ? length(diff) : static_cast<TPrimitive>(0);
+struct SquaredDifferenceYzWeighted {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, TPrimitive> const& vvw) {
+    M diff = thrust::get<0>(vvw) - thrust::get<1>(vvw);
+    return thrust::get<2>(vvw) * (diff.y * diff.y + diff.z * diff.z);
   }
-};
-
-template <typename M, typename TPrimitive>
-struct SquaredDifferenceYzMasked {
-  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
-    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return thrust::get<2>(vvm) == 1 ? (diff.y * diff.y + diff.z * diff.z)
-                                    : static_cast<TPrimitive>(0);
-  }
-};
-
-template <typename M, typename TPrimitive>
-struct NormDifferenceYzMasked {
-  __device__ TPrimitive operator()(thrust::tuple<M, M, U> const& vvm) {
-    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
-    return thrust::get<2>(vvm) == 1 ? sqrt(diff.y * diff.y + diff.z * diff.z)
-                                    : static_cast<TPrimitive>(0);
-  }
-};
-
-template <typename M, typename TPrimitive>
-struct SquaredNorm {
-  __device__ TPrimitive operator()(M const& v) { return length_sqr(v); }
 };
 
 template <typename TF>
@@ -4584,26 +4528,6 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_se_masked(Variable<D, M> v0, Variable<D, M> v1,
-                                        Variable<D, U> mask, U num_elements,
-                                        U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
-        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
-                               (offset + num_elements)));
-    return thrust::transform_reduce(
-        begin, end, SquaredDifferenceMasked<M, TPrimitive>(),
-        static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
-  }
-
-  template <U D, typename M, typename TPrimitive>
   static TPrimitive calculate_se_weighted(Variable<D, M> v0, Variable<D, M> v1,
                                           Variable<D, TPrimitive> weight0,
                                           U num_elements, U offset = 0) {
@@ -4625,155 +4549,25 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse_masked(Variable<D, M> v0, Variable<D, M> v1,
-                                         Variable<D, U> mask, U num_elements,
-                                         U offset = 0) {
-    return calculate_se_masked<D, M, TPrimitive>(v0, v1, mask, num_elements,
-                                                 offset) /
-           sum(mask, num_elements);
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mae_masked(Variable<D, M> v0, Variable<D, M> v1,
-                                         Variable<D, U> mask, U num_elements,
-                                         U offset = 0) {
+  static TPrimitive calculate_se_yz_weighted(Variable<D, M> v0,
+                                             Variable<D, M> v1,
+                                             Variable<D, TPrimitive> mask,
+                                             U num_elements, U offset = 0) {
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
         thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
-        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
-                               (offset + num_elements)));
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(mask.ptr_)) +
+            offset));
+    auto end = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(mask.ptr_)) +
+            (offset + num_elements)));
     return thrust::transform_reduce(
-               begin, end, NormDifferenceMasked<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
-           sum(mask, num_elements);
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_se_yz_masked(Variable<D, M> v0, Variable<D, M> v1,
-                                           Variable<D, U> mask, U num_elements,
-                                           U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
-        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
-                               (offset + num_elements)));
-    return thrust::transform_reduce(
-        begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
+        begin, end, SquaredDifferenceYzWeighted<M, TPrimitive>(),
         static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse_yz_masked(Variable<D, M> v0,
-                                            Variable<D, M> v1,
-                                            Variable<D, U> mask, U num_elements,
-                                            U offset = 0) {
-    U num_masked = sum(mask, num_elements);
-    if (num_masked == 0) {
-      return static_cast<TPrimitive>(0);
-    }
-    return calculate_se_yz_masked<D, M, TPrimitive>(v0, v1, mask, num_elements,
-                                                    offset) /
-           num_masked;
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mae_yz_masked(Variable<D, M> v0,
-                                            Variable<D, M> v1,
-                                            Variable<D, U> mask, U num_elements,
-                                            U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
-        thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<U>(static_cast<U*>(mask.ptr_)) +
-                               (offset + num_elements)));
-    U num_masked = sum(mask, num_elements);
-    if (num_masked == 0) {
-      return static_cast<TPrimitive>(0);
-    }
-    return thrust::transform_reduce(
-               begin, end, NormDifferenceYzMasked<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
-           num_masked;
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse(Variable<D, M> v0, Variable<D, M> v1,
-                                  U num_elements, U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements)));
-    return thrust::transform_reduce(
-               begin, end, SquaredDifference<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
-           num_elements;
-  }
-
-  template <U D, typename M>
-  static M calculate_mse_scalar(Variable<D, M> v0, Variable<D, M> v1,
-                                U num_elements, U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements)));
-    return thrust::transform_reduce(begin, end, ScalarSquaredDifference<M>(),
-                                    static_cast<M>(0), thrust::plus<M>()) /
-           num_elements;
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mse_yz(Variable<D, M> v0, Variable<D, M> v1,
-                                     U num_elements, U offset = 0) {
-    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
-        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
-        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
-    auto end = thrust::make_zip_iterator(
-        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
-                               (offset + num_elements),
-                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
-                               (offset + num_elements)));
-    return thrust::transform_reduce(
-               begin, end, SquaredDifferenceYz<M, TPrimitive>(),
-               static_cast<TPrimitive>(0), thrust::plus<TPrimitive>()) /
-           num_elements;
-  }
-
-  template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_mean_squared(Variable<D, M> var, U num_elements,
-                                           U offset = 0) {
-    return thrust::transform_reduce(
-               thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
-               thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) +
-                   (offset + num_elements),
-               SquaredNorm<M, TPrimitive>(), static_cast<TPrimitive>(0),
-               thrust::plus<TPrimitive>()) /
-           num_elements;
   }
 
   static TF calculate_kl_divergence(Variable<1, U> histogram_p,

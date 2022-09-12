@@ -369,56 +369,15 @@ template <unsigned int D, typename M, typename TPrimitive>
 void declare_metrics(py::module& m,
                      py::class_<Runner<TPrimitive>>* runner_class) {
   runner_class->def_static(
-      "calculate_mse",
-      &Runner<TPrimitive>::template calculate_mse<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mse_scalar",
-      &Runner<TPrimitive>::template calculate_mse_scalar<D, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mse_yz",
-      &Runner<TPrimitive>::template calculate_mse_yz<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mae_masked",
-      &Runner<TPrimitive>::template calculate_mae_masked<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
-      py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_se_masked",
-      &Runner<TPrimitive>::template calculate_se_masked<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
-      py::arg("offset") = 0);
-  runner_class->def_static(
       "calculate_se_weighted",
       &Runner<TPrimitive>::template calculate_se_weighted<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("weight0"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
-      "calculate_mse_masked",
-      &Runner<TPrimitive>::template calculate_mse_masked<D, M, TPrimitive>,
+      "calculate_se_yz_weighted",
+      &Runner<TPrimitive>::template calculate_se_yz_weighted<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
       py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mse_yz_masked",
-      &Runner<TPrimitive>::template calculate_mse_yz_masked<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
-      py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_se_yz_masked",
-      &Runner<TPrimitive>::template calculate_se_yz_masked<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
-      py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mae_yz_masked",
-      &Runner<TPrimitive>::template calculate_mae_yz_masked<D, M, TPrimitive>,
-      py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
-      py::arg("offset") = 0);
-  runner_class->def_static(
-      "calculate_mean_squared",
-      &Runner<TPrimitive>::template calculate_mean_squared<D, M, TPrimitive>,
-      py::arg("var"), py::arg("n"), py::arg("offset") = 0);
   runner_class->def_static(
       "calculate_kl_divergence", &Runner<TPrimitive>::calculate_kl_divergence,
       py::arg("histogram_p"), py::arg("histogram_q"), py::arg("n_p"),
