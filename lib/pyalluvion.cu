@@ -843,6 +843,15 @@ void declare_solver(py::module& m, const char* name) {
                              [](TSolver const& solver) {
                                return solver.particle_num_neighbors.get();
                              })
+      .def_property_readonly("particle_boundary_neighbors",
+                             [](TSolver const& solver) {
+                               return solver.particle_boundary_neighbors.get();
+                             })
+      .def_property_readonly(
+          "particle_num_boundary_neighbors",
+          [](TSolver const& solver) {
+            return solver.particle_num_boundary_neighbors.get();
+          })
       .def_property_readonly(
           "grid_anomaly",
           [](TSolver const& solver) { return solver.grid_anomaly.get(); })
