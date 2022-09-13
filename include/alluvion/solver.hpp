@@ -217,7 +217,7 @@ struct Solver {
                 transform_pellets<<<grid_size, block_size>>>(
                     local_pellet_x, *particle_x, *particle_v, rigid_x, rigid_v,
                     rigid_q, rigid_omega, num_rigid_particles,
-                    num_particles + pellet_index_offset);
+                    max_num_particles + pellet_index_offset);
               },
               "transform_pellets", transform_pellets<TQ, TF3>);
         });
