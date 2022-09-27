@@ -5730,6 +5730,7 @@ class Runner {
     using TSphereDistance = dg::SphereDistance<TF3, TF>;
     using TCylinderDistance = dg::CylinderDistance<TF3, TF>;
     using TCapsuleDistance = dg::CapsuleDistance<TF3, TF>;
+    using TInfiniteCylinderDistance = dg::InfiniteCylinderDistance<TF3, TF>;
     // NOTE: InfiniteCylinderDistance and InfiniteTubeDistance omitted
     if (TMeshDistance const* distance =
             dynamic_cast<TMeshDistance const*>(&virtual_dist)) {
@@ -5792,6 +5793,10 @@ class Runner {
           },
           "collision_test_with_pellets(CapsuleDistance)",
           collision_test_with_pellets<TQ, TF3, TF, TCapsuleDistance>);
+    } else if (TInfiniteCylinderDistance const* distance =
+                   dynamic_cast<TInfiniteCylinderDistance const*>(
+                       &virtual_dist)) {
+      // NOTE: remain silent
     } else {
       std::cerr << "[collision_test_with_pellets] Distance type not supported."
                 << std::endl;

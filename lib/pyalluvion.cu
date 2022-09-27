@@ -1295,6 +1295,8 @@ PYBIND11_MODULE(_alluvion, m) {
                                        "1Ddouble2");
   declare_variable<1, double3, double>(m, store_class, nullptr, &runner_double,
                                        "1Ddouble3");
+  declare_variable<1, double4, double>(m, store_class, nullptr, &runner_double,
+                                       "1Ddouble4");
   declare_variable<2, double, bool>(m, store_class, nullptr, &runner_double,
                                     "2Ddouble");
   declare_variable<2, double3, double>(m, store_class, nullptr, &runner_double,
