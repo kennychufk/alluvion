@@ -1,3 +1,4 @@
+#include <sstream>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -48,6 +49,11 @@ std::tuple<std::vector<U>, U, char> Store::get_alu_info(const char* filename) {
   U& num_primitives_per_element = std::get<1>(result);
   char& type_label = std::get<2>(result);
   std::ifstream stream(filename, std::ios::binary);
+  if (!stream.is_open()) {
+    std::stringstream error_sstream;
+    error_sstream << "Failed to open alu file: " << filename;
+    throw std::runtime_error(error_sstream.str());
+  }
   while (true) {
     U shape_item;
     stream.read(reinterpret_cast<char*>(&shape_item), sizeof(U));
