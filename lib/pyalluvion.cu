@@ -1225,6 +1225,16 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
                   py::arg("particle_radius"))
       .def_static("sqrt_inplace", &TRunner::template sqrt_inplace<1, TF>,
                   py::arg("var"), py::arg("n"), py::arg("offset") = 0)
+      .def_static(
+          "max_inplace",
+          py::overload_cast<Variable<1, TF>&, Variable<1, TF> const&, U, U>(
+              &TRunner::template max_inplace<1, TF>),
+          py::arg("target"), py::arg("other"), py::arg("n"),
+          py::arg("offset") = 0)
+      .def_static("max_inplace",
+                  py::overload_cast<Variable<1, TF>&, Variable<1, TF> const&>(
+                      &TRunner::template max_inplace<1, TF>),
+                  py::arg("target"), py::arg("other"))
       .def_static("min", &TRunner::template min<1, TF>, py::arg("var"),
                   py::arg("n"), py::arg("offset") = 0)
       .def_static("max", &TRunner::template max<1, TF>, py::arg("var"),

@@ -4527,6 +4527,22 @@ class Runner {
         value);
   }
 
+  template <U D, typename M>
+  static void max_inplace(Variable<D, M>& target, Variable<D, M> const& other,
+                          U num_elements, U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<M>(static_cast<M*>(other.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(other.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<M>(static_cast<M*>(target.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(target.ptr_)) + offset,
+        thrust::maximum<M>());
+  }
+  template <U D, typename M>
+  static void max_inplace(Variable<D, M>& target, Variable<D, M> const& other) {
+    max_inplace(target, other, target.get_linear_shape());
+  }
+
   template <U D, typename M, typename TPrimitive>
   static TPrimitive calculate_se_weighted(Variable<D, M> v0, Variable<D, M> v1,
                                           Variable<D, TPrimitive> weight0,
