@@ -1215,6 +1215,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
       .def("launch_sample_density_with_pellets",
            &TRunner::launch_sample_density_with_pellets)
       .def("launch_histogram256", &TRunner::launch_histogram256)
+      .def("launch_histogram256_with_mask",
+           &TRunner::launch_histogram256_with_mask)
       .def_static("get_fluid_block_num_particles",
                   &TRunner::get_fluid_block_num_particles, py::arg("mode"),
                   py::arg("box_min"), py::arg("box_max"),

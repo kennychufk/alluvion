@@ -4349,6 +4349,21 @@ inline __device__ void add_word(U* shared_warp_histogram, U quantized4) {
   add_byte(shared_warp_histogram, (quantized4 >> 16) & 0xFFU);
   add_byte(shared_warp_histogram, (quantized4 >> 24) & 0xFFU);
 }
+inline __device__ void add_word_with_mask(U* shared_warp_histogram,
+                                          U quantized4, U mask4) {
+  if (mask4 & 0x01U) {
+    add_byte(shared_warp_histogram, quantized4 & 0xFFU);
+  }
+  if (mask4 & 0x02U) {
+    add_byte(shared_warp_histogram, (quantized4 >> 8) & 0xFFU);
+  }
+  if (mask4 & 0x04U) {
+    add_byte(shared_warp_histogram, (quantized4 >> 16) & 0xFFU);
+  }
+  if (mask4 & 0x08U) {
+    add_byte(shared_warp_histogram, (quantized4 >> 24) & 0xFFU);
+  }
+}
 template <typename TU>
 __global__ void histogram256(Variable<1, TU> partial_histogram,
                              Variable<1, TU> quantized4s, TU n) {
@@ -4368,6 +4383,43 @@ __global__ void histogram256(Variable<1, TU> partial_histogram,
        pos += blockDim.x * gridDim.x) {
     TU quantized4 = quantized4s(pos);
     add_word(shared_warp_histogram, quantized4);
+  }
+  cooperative_groups::sync(cta);
+  for (TU bin = threadIdx.x; bin < kHistogram256BinCount;
+       bin += kHistogram256ThreadblockSize) {
+    TU sum = 0;
+    for (TU i = 0; i < kWarpCount; ++i) {
+      sum += shared_histogram[bin + i * kHistogram256BinCount] & 0xFFFFFFFFU;
+    }
+    partial_histogram(blockIdx.x * kHistogram256BinCount + bin) = sum;
+  }
+}
+
+template <typename TU, typename TF>
+__global__ void histogram256_with_mask(Variable<1, TU> partial_histogram,
+                                       Variable<1, TU> quantized4s,
+                                       Variable<1, TF> mask, TU n) {
+  cooperative_groups::thread_block cta =
+      cooperative_groups::this_thread_block();
+  __shared__ TU shared_histogram[kHistogram256ThreadblockMemory];
+  TU* shared_warp_histogram =
+      shared_histogram + (threadIdx.x >> kLog2WarpSize) * kHistogram256BinCount;
+#pragma unroll
+  for (TU i = 0;
+       i < (kHistogram256ThreadblockMemory / kHistogram256ThreadblockSize);
+       ++i) {
+    shared_histogram[threadIdx.x + i * kHistogram256ThreadblockSize] = 0;
+  }
+  cooperative_groups::sync(cta);
+  for (TU pos = blockIdx.x * blockDim.x + threadIdx.x; pos < ((n - 1) / 4 + 1);
+       pos += blockDim.x * gridDim.x) {
+    TU mask4 = 0;
+    mask4 += ((mask(pos * 4) == 1) << 3);
+    mask4 += ((pos * 4 + 1 < n) ? (mask(pos * 4 + 1) == 1) : 1) << 2;
+    mask4 += ((pos * 4 + 2 < n) ? (mask(pos * 4 + 2) == 1) : 1) << 1;
+    mask4 += ((pos * 4 + 3 < n) ? (mask(pos * 4 + 3) == 1) : 1);
+    TU quantized4 = quantized4s(pos);
+    add_word_with_mask(shared_warp_histogram, quantized4, mask4);
   }
   cooperative_groups::sync(cta);
   for (TU bin = threadIdx.x; bin < kHistogram256BinCount;
@@ -5631,6 +5683,29 @@ class Runner {
         "quantize", quantize<TF>);
     histogram256<<<kPartialHistogram256Count, kHistogram256ThreadblockSize>>>(
         partial_histogram, quantized4s, n);
+    Allocator::abort_if_error(cudaGetLastError());
+    merge_histogram256<<<kHistogram256BinCount, kMergeThreadblockSize>>>(
+        histogram, partial_histogram, kPartialHistogram256Count, n);
+    Allocator::abort_if_error(cudaGetLastError());
+  }
+  void launch_histogram256_with_mask(Variable<1, U> partial_histogram,
+                                     Variable<1, U> histogram,
+                                     Variable<1, U> quantized4s,
+                                     Variable<1, TF> mask,
+                                     Variable<1, TF> const& v, TF v_min,
+                                     TF v_max, U n) {
+    TF step_inverse = static_cast<TF>(
+        256.0 / (static_cast<double>(v_max) - static_cast<double>(v_min)));
+    launch(
+        n,
+        [&](U grid_size, U block_size) {
+          quantize<<<grid_size, block_size>>>(v, quantized4s, v_min,
+                                              step_inverse, n);
+        },
+        "quantize", quantize<TF>);
+    histogram256_with_mask<<<kPartialHistogram256Count,
+                             kHistogram256ThreadblockSize>>>(
+        partial_histogram, quantized4s, mask, n);
     Allocator::abort_if_error(cudaGetLastError());
     merge_histogram256<<<kHistogram256BinCount, kMergeThreadblockSize>>>(
         histogram, partial_histogram, kPartialHistogram256Count, n);
