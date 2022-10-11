@@ -746,6 +746,26 @@ struct KLDivergence {
   TF q_lower_bound;
 };
 
+template <typename TF3, typename TF>
+struct NormXz {
+  __device__ TF operator()(TF3 const& v) { return sqrt(v.x * v.x + v.z * v.z); }
+};
+
+template <typename TF3, typename TF>
+struct ExtractX {
+  __device__ TF operator()(TF3 const& v) { return v.x; }
+};
+
+template <typename TF3, typename TF>
+struct ExtractY {
+  __device__ TF operator()(TF3 const& v) { return v.y; }
+};
+
+template <typename TF3, typename TF>
+struct ExtractZ {
+  __device__ TF operator()(TF3 const& v) { return v.z; }
+};
+
 template <typename TF>
 __device__ __host__ inline void get_fluid_cylinder_attr(
     TF& radius, TF y_min, TF y_max, TF particle_radius, U& sqrt_n, U& n,
@@ -4529,6 +4549,50 @@ class Runner {
                           (offset + num_elements),
                       thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
                       SqrtOperation<M>());
+  }
+
+  template <U D>
+  static void norm_xz(Variable<D, TF3> v, Variable<D, TF> s, U num_elements,
+                      U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) + offset,
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TF>(static_cast<TF*>(s.ptr_)) + offset,
+        NormXz<TF3, TF>());
+  }
+
+  template <U D>
+  static void extract_x(Variable<D, TF3> v, Variable<D, TF> s, U num_elements,
+                        U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) + offset,
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TF>(static_cast<TF*>(s.ptr_)) + offset,
+        ExtractX<TF3, TF>());
+  }
+
+  template <U D>
+  static void extract_y(Variable<D, TF3> v, Variable<D, TF> s, U num_elements,
+                        U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) + offset,
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TF>(static_cast<TF*>(s.ptr_)) + offset,
+        ExtractY<TF3, TF>());
+  }
+
+  template <U D>
+  static void extract_z(Variable<D, TF3> v, Variable<D, TF> s, U num_elements,
+                        U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) + offset,
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TF>(static_cast<TF*>(s.ptr_)) + offset,
+        ExtractZ<TF3, TF>());
   }
 
   template <typename T, typename BinaryFunction>
