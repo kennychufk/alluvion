@@ -266,7 +266,11 @@ class Pile {
     if (volume_method_ == VolumeMethod::pellets) {
       num_pellets_ += collision_vertices_var->get_linear_shape();
       if (num_pellets_ > max_num_pellets_) {
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Cannot add pellets because the new pellet count "
+                      << num_pellets_ << " exceeds the limit "
+                      << max_num_pellets_;
+        throw std::runtime_error(error_sstream.str());
       }
     }
     num_collision_pellets_ += collision_vertices_var->get_linear_shape();
@@ -330,7 +334,11 @@ class Pile {
     if (volume_method_ == VolumeMethod::pellets) {
       num_pellets_ += collision_vertices_var->get_linear_shape();
       if (num_pellets_ > max_num_pellets_) {
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Cannot add pellets because the new pellet count "
+                      << num_pellets_ << " exceeds the limit "
+                      << max_num_pellets_;
+        throw std::runtime_error(error_sstream.str());
       }
     }
     num_collision_pellets_ += collision_vertices_var->get_linear_shape();
@@ -399,7 +407,11 @@ class Pile {
     if (volume_method_ == VolumeMethod::pellets) {
       num_pellets_ += collision_vertices_var->get_linear_shape();
       if (num_pellets_ > max_num_pellets_) {
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Cannot add pellets because the new pellet count "
+                      << num_pellets_ << " exceeds the limit "
+                      << max_num_pellets_;
+        throw std::runtime_error(error_sstream.str());
       }
     }
     num_collision_pellets_ += collision_vertices_var->get_linear_shape();
@@ -465,7 +477,11 @@ class Pile {
     if (volume_method_ == VolumeMethod::pellets) {
       num_pellets_ += collision_vertices_var->get_linear_shape();
       if (num_pellets_ > max_num_pellets_) {
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Cannot add pellets because the new pellet count "
+                      << num_pellets_ << " exceeds the limit "
+                      << max_num_pellets_;
+        throw std::runtime_error(error_sstream.str());
       }
     }
     num_collision_pellets_ += collision_vertices_var->get_linear_shape();
@@ -599,8 +615,9 @@ class Pile {
             "update_volume_field(CapsuleDistance)",
             update_volume_field<TF3, TF, TCapsuleDistance>);
       } else {
-        std::cerr << "[update_volume_field] Distance type not supported."
-                  << std::endl;
+        std::stringstream error_sstream;
+        error_sstream << "[update_volume_field] Distance type not supported.";
+        std::cerr << error_sstream.str() << std::endl;
       }
     }
   }
@@ -889,8 +906,10 @@ class Pile {
   void solve_contacts() {
     U num_contacts = num_contacts_pinned_(0);
     if (num_contacts > cni_->max_num_contacts) {
-      std::cerr << "No. of contacts exceeds " << cni_->max_num_contacts << "."
-                << std::endl;
+      std::stringstream error_sstream;
+      error_sstream << "No. of contacts exceeds " << cni_->max_num_contacts
+                    << ".";
+      std::cerr << error_sstream.str() << std::endl;
       num_contacts = cni_->max_num_contacts;
     }
     contacts_->get_bytes(contacts_pinned_.ptr_,

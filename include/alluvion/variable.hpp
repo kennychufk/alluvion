@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <sstream>
 #include <vector>
 
 #include "alluvion/allocator.hpp"
@@ -60,8 +61,9 @@ class Variable {
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "retrieving more than allocated" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "retrieving more than allocated" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     Allocator::copy(dst, static_cast<char*>(ptr_) + byte_offset, num_bytes);
   }
@@ -70,9 +72,11 @@ class Variable {
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
-                << " " << get_num_bytes() << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "setting more than allocated: "
+                    << (num_bytes + byte_offset) << " " << get_num_bytes()
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }
@@ -89,9 +93,11 @@ class Variable {
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
-                << " " << get_num_bytes() << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "setting more than allocated: "
+                    << (num_bytes + byte_offset) << " " << get_num_bytes()
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     Allocator::set(static_cast<char*>(ptr_) + byte_offset, num_bytes, value);
   }
@@ -130,14 +136,17 @@ class Variable {
     U num_bytes = linear_shape * sizeof(M);
     U byte_offset = offset * sizeof(M);
     if (shape_outermost > shape_[0]) {
-      std::cerr << "Writing more than the outermost shape (" << shape_outermost
-                << ">" << shape_[0] << ")." << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Writing more than the outermost shape ("
+                    << shape_outermost << ">" << shape_[0] << ")." << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "Writing more than allocated: " << (num_bytes + byte_offset)
-                << " " << get_num_bytes() << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Writing more than allocated: "
+                    << (num_bytes + byte_offset) << " " << get_num_bytes()
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (shape_outermost == 0) shape_outermost = shape_[0];
     for (U i = 0; i < D; ++i) {
@@ -159,43 +168,57 @@ class Variable {
 
   U read_file(const char* filename) {
     std::ifstream stream(filename, std::ios::binary);
+    if (!stream.is_open()) {
+      std::stringstream error_sstream;
+      error_sstream << "Failed to open alu file: " << filename;
+      throw std::runtime_error(error_sstream.str());
+    }
     U shape_outermost;
     for (U i = 0; i < D; ++i) {
       U shape_item;
       stream.read(reinterpret_cast<char*>(&shape_item), sizeof(U));
       if (shape_item == 0) {
-        std::cerr << "Shape mismatch when reading " << filename << std::endl;
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Shape mismatch when reading " << filename
+                      << std::endl;
+        throw std::runtime_error(error_sstream.str());
       }
       if (i == 0) {
         shape_outermost = shape_item;
         if (shape_outermost > shape_[0]) {
-          std::cerr << "Reading more than the outermost shape ("
-                    << shape_outermost << ">" << shape_[0] << ")." << std::endl;
-          abort();
+          std::stringstream error_sstream;
+          error_sstream << "Reading more than the outermost shape ("
+                        << shape_outermost << ">" << shape_[0]
+                        << "): " << filename << "." << std::endl;
+          throw std::runtime_error(error_sstream.str());
         }
       } else if (shape_[i] != shape_item) {
-        std::cerr << "Shape mistmatch for shape item " << i << "(" << shape_[i]
-                  << "!=" << shape_item << ")." << std::endl;
-        abort();
+        std::stringstream error_sstream;
+        error_sstream << "Shape mistmatch for shape item " << i << "("
+                      << shape_[i] << "!=" << shape_item << "): " << filename
+                      << "." << std::endl;
+        throw std::runtime_error(error_sstream.str());
       }
     }
     U end_of_shape;
     stream.read(reinterpret_cast<char*>(&end_of_shape), sizeof(U));
     if (end_of_shape != 0) {
-      std::cerr << "Dimension mismatch when reading " << filename << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Dimension mismatch when reading " << filename
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     U linear_shape = get_linear_shape() / shape_[0] * shape_outermost;
     U num_primitives_per_element;
     stream.read(reinterpret_cast<char*>(&num_primitives_per_element),
                 sizeof(U));
     if (num_primitives_per_element != get_num_primitives_per_element()) {
-      std::cerr << "Num primitives per unit mismatch when reading " << filename
-                << "(" << num_primitives_per_element
-                << "!=" << get_num_primitives_per_element() << ")."
-                << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Num primitives per unit mismatch when reading "
+                    << filename << "(" << num_primitives_per_element
+                    << "!=" << get_num_primitives_per_element() << ")."
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     char type_label;
     stream.read(reinterpret_cast<char*>(&type_label), sizeof(char));
@@ -228,8 +251,10 @@ class Variable {
         host_buffer_primitive_pointer[i] = static_cast<float>(source_buffer[i]);
       }
     } else {
-      std::cerr << "Data type mismatch when reading " << filename << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Data type mismatch when reading " << filename
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     set_bytes(host_buffer.data(), num_bytes);
     return shape_outermost;

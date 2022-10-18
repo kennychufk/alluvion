@@ -22,9 +22,10 @@ CompleteFramebuffer::CompleteFramebuffer(GLsizei width, GLsizei height)
   glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                             GL_RENDERBUFFER, depth_stencil_rbo_);
   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete."
-              << std::endl;
-    abort();
+    std::stringstream error_sstream;
+    error_sstream << "ERROR::FRAMEBUFFER:: Framebuffer is not complete."
+                  << std::endl;
+    throw std::runtime_error(error_sstream.str());
   }
   glBindTexture(GL_TEXTURE_2D, 0);
   glBindRenderbuffer(GL_RENDERBUFFER, 0);

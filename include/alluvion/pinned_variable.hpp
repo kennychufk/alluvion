@@ -38,8 +38,9 @@ class PinnedVariable {
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "retrieving more than allocated" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "retrieving more than allocated" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     Allocator::copy(dst, static_cast<char*>(ptr_) + byte_offset, num_bytes);
   }
@@ -48,9 +49,11 @@ class PinnedVariable {
     if (num_bytes == 0) return;
     U byte_offset = offset * sizeof(M);
     if (num_bytes + byte_offset > get_num_bytes()) {
-      std::cerr << "setting more than allocated: " << (num_bytes + byte_offset)
-                << " " << get_num_bytes() << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "setting more than allocated: "
+                    << (num_bytes + byte_offset) << " " << get_num_bytes()
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     Allocator::copy(static_cast<char*>(ptr_) + byte_offset, src, num_bytes);
   }

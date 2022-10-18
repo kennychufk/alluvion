@@ -408,20 +408,22 @@ void declare_pinned_variable(py::module& m, const char* name) {
       .def("__getitem__",
            [](PinnedVariableClass& variable, U key) {
              if (key >= variable.get_linear_shape()) {
-               std::cerr << "PinnedVariable: index out of range (" << key
-                         << " >= " << variable.get_linear_shape() << ")"
-                         << std::endl;
-               abort();
+               std::stringstream error_sstream;
+               error_sstream << "PinnedVariable: index out of range (" << key
+                             << " >= " << variable.get_linear_shape() << ")"
+                             << std::endl;
+               throw std::runtime_error(error_sstream.str());
              }
              return variable(key);
            })
       .def("__setitem__",
            [](PinnedVariableClass& variable, U key, M const& v) {
              if (key >= variable.get_linear_shape()) {
-               std::cerr << "PinnedVariable: index out of range (" << key
-                         << " >= " << variable.get_linear_shape() << ")"
-                         << std::endl;
-               abort();
+               std::stringstream error_sstream;
+               error_sstream << "PinnedVariable: index out of range (" << key
+                             << " >= " << variable.get_linear_shape() << ")"
+                             << std::endl;
+               throw std::runtime_error(error_sstream.str());
              }
              variable(key) = v;
            })

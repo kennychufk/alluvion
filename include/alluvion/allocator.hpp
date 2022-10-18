@@ -2,6 +2,7 @@
 #define ALLUVION_ALLOCATOR_HPP
 
 #include <iostream>
+#include <sstream>
 
 #include "alluvion/data_type.hpp"
 namespace alluvion {
@@ -12,8 +13,9 @@ class Allocator {
   template <typename M>
   static void allocate(void** ptr, unsigned int num_elements) {
     if (*ptr != nullptr) {
-      std::cerr << "[Allocator] Pointer is dirty" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "[Allocator] Pointer is dirty" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (num_elements == 0) {
       return;
@@ -23,8 +25,9 @@ class Allocator {
   template <typename M>
   static void allocate_pinned(void** ptr, unsigned int num_elements) {
     if (*ptr != nullptr) {
-      std::cerr << "[Allocator] Pointer is dirty" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "[Allocator] Pointer is dirty" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (num_elements == 0) {
       return;

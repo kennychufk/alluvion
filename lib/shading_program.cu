@@ -59,10 +59,12 @@ ShadingProgram::ShadingProgram(
                                  0);
         } else {
           // not yet implemented
-          std::cerr << "Binding GL_ARRAY_BUFFER of type other than GL_FLOAT "
-                       "and GL_DOUBLE is not yet implemented"
-                    << std::endl;
-          abort();
+          std::stringstream error_sstream;
+          error_sstream
+              << "Binding GL_ARRAY_BUFFER of type other than GL_FLOAT "
+                 "and GL_DOUBLE is not yet implemented"
+              << std::endl;
+          throw std::runtime_error(error_sstream.str());
         }
       }
       glBindBuffer(GL_ARRAY_BUFFER, 0);

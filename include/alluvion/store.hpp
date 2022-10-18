@@ -112,8 +112,9 @@ class Store {
   GraphicalVariable<D, M>* create_graphical(
       std::array<unsigned int, D> const& shape) {
     if (!display_) {
-      std::cerr << "Display not created" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "Display not created" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     GraphicalVariable<D, M>* var = new GraphicalVariable<D, M>(shape);
     graphical_resource_dict_.emplace(

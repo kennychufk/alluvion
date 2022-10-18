@@ -7,6 +7,7 @@
 
 #include <array>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 #include "alluvion/allocator.hpp"
@@ -19,12 +20,15 @@ class GraphicalAllocator {
   static void allocate(GLuint* vbo, cudaGraphicsResource** res,
                        unsigned int num_elements) {
     if (*vbo != 0) {
-      std::cerr << "[GraphicalAllocator] Buffer object is dirty" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "[GraphicalAllocator] Buffer object is dirty"
+                    << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (*res != nullptr) {
-      std::cerr << "[GraphicalAllocator] Resource is dirty" << std::endl;
-      abort();
+      std::stringstream error_sstream;
+      error_sstream << "[GraphicalAllocator] Resource is dirty" << std::endl;
+      throw std::runtime_error(error_sstream.str());
     }
     if (num_elements == 0) {
       return;
