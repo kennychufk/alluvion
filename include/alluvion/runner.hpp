@@ -720,10 +720,11 @@ struct SquaredDifferenceWeighted {
 };
 
 template <typename M, typename TPrimitive>
-struct SquaredDifferenceYzWeighted {
-  __device__ TPrimitive operator()(thrust::tuple<M, M, TPrimitive> const& vvw) {
-    M diff = thrust::get<0>(vvw) - thrust::get<1>(vvw);
-    return thrust::get<2>(vvw) * (diff.y * diff.y + diff.z * diff.z);
+struct SquaredDifferenceYzMasked {
+  __device__ TPrimitive operator()(thrust::tuple<M, M, TPrimitive> const& vvm) {
+    M diff = thrust::get<0>(vvm) - thrust::get<1>(vvm);
+    return thrust::get<2>(vvm) == 1 ? (diff.y * diff.y + diff.z * diff.z)
+                                    : static_cast<TPrimitive>(0);
   }
 };
 
@@ -4681,10 +4682,9 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
-  static TPrimitive calculate_se_yz_weighted(Variable<D, M> v0,
-                                             Variable<D, M> v1,
-                                             Variable<D, TPrimitive> mask,
-                                             U num_elements, U offset = 0) {
+  static TPrimitive calculate_se_yz_masked(Variable<D, M> v0, Variable<D, M> v1,
+                                           Variable<D, TPrimitive> mask,
+                                           U num_elements, U offset = 0) {
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
         thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset,
@@ -4698,7 +4698,7 @@ class Runner {
         thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(mask.ptr_)) +
             (offset + num_elements)));
     return thrust::transform_reduce(
-        begin, end, SquaredDifferenceYzWeighted<M, TPrimitive>(),
+        begin, end, SquaredDifferenceYzMasked<M, TPrimitive>(),
         static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
   }
 
