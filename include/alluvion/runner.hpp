@@ -753,6 +753,11 @@ struct NormXz {
 };
 
 template <typename TF3, typename TF>
+struct Norm {
+  __device__ TF operator()(TF3 const& v) { return length(v); }
+};
+
+template <typename TF3, typename TF>
 struct ExtractX {
   __device__ TF operator()(TF3 const& v) { return v.x; }
 };
@@ -4550,6 +4555,17 @@ class Runner {
                           (offset + num_elements),
                       thrust::device_ptr<M>(static_cast<M*>(var.ptr_)) + offset,
                       SqrtOperation<M>());
+  }
+
+  template <U D>
+  static void norm(Variable<D, TF3> v, Variable<D, TF> s, U num_elements,
+                   U offset = 0) {
+    thrust::transform(
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) + offset,
+        thrust::device_ptr<TF3>(static_cast<TF3*>(v.ptr_)) +
+            (offset + num_elements),
+        thrust::device_ptr<TF>(static_cast<TF*>(s.ptr_)) + offset,
+        Norm<TF3, TF>());
   }
 
   template <U D>

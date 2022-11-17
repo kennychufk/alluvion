@@ -1229,6 +1229,8 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
                   py::arg("particle_radius"))
       .def_static("sqrt_inplace", &TRunner::template sqrt_inplace<1, TF>,
                   py::arg("var"), py::arg("n"), py::arg("offset") = 0)
+      .def_static("norm", &TRunner::template norm<1>, py::arg("v"),
+                  py::arg("s"), py::arg("n"), py::arg("offset") = 0)
       .def_static("norm_xz", &TRunner::template norm_xz<1>, py::arg("v"),
                   py::arg("s"), py::arg("n"), py::arg("offset") = 0)
       .def_static("extract_x", &TRunner::template extract_x<1>, py::arg("v"),
