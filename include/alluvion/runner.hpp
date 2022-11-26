@@ -712,10 +712,24 @@ struct SqrtOperation {
 };
 
 template <typename M, typename TPrimitive>
+struct SquaredDifference {
+  __device__ TPrimitive operator()(thrust::tuple<M, M> const& vv) {
+    return length_sqr(thrust::get<0>(vv) - thrust::get<1>(vv));
+  }
+};
+
+template <typename M, typename TPrimitive>
 struct SquaredDifferenceWeighted {
   __device__ TPrimitive operator()(thrust::tuple<M, M, TPrimitive> const& vvw) {
     M diff = thrust::get<0>(vvw) - thrust::get<1>(vvw);
     return thrust::get<2>(vvw) * length_sqr(diff);
+  }
+};
+
+template <typename M>
+struct Product {
+  __device__ M operator()(thrust::tuple<M, M> const& vv) {
+    return thrust::get<0>(vv) * thrust::get<1>(vv);
   }
 };
 
@@ -4255,6 +4269,23 @@ __global__ void compute_sample_velocity_with_pellets(
   });
 }
 
+template <typename TF3, typename TF>
+__global__ void compute_distance_mask_multiple(Variable<1, TF3> grid_x,
+                                               Variable<1, TF3> buoy_x,
+                                               Variable<2, TF> mask,
+                                               TF distance_threshold,
+                                               U num_grid_points, U num_buoys) {
+  forThreadMappedToElement(num_grid_points, [&](U p_i) {
+    TF3 result{0};
+    TF3 x_i = grid_x(p_i);
+    TF distance_threshold_sqr = distance_threshold * distance_threshold;
+    for (U buoy_id = 0; buoy_id < num_buoys; ++buoy_id) {
+      mask(buoy_id, p_i) = static_cast<TF>(length_sqr(buoy_x(buoy_id) - x_i) <=
+                                           distance_threshold_sqr);
+    }
+  });
+}
+
 template <typename TQ, typename TF3, typename TF>
 __global__ void compute_sample_vorticity(
     Variable<1, TF3> sample_x, Variable<1, TF3> particle_x,
@@ -4677,6 +4708,25 @@ class Runner {
   }
 
   template <U D, typename M, typename TPrimitive>
+  static void calculate_se(Variable<D, M> v0, Variable<D, M> v1,
+                           Variable<D, TPrimitive> se, U num_elements,
+                           U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements)));
+    thrust::transform(
+        begin, end,
+        thrust::device_ptr<TPrimitive>(static_cast<TPrimitive*>(se.ptr_)) +
+            offset,
+        SquaredDifference<M, TPrimitive>());
+  }
+
+  template <U D, typename M, typename TPrimitive>
   static TPrimitive calculate_se_weighted(Variable<D, M> v0, Variable<D, M> v1,
                                           Variable<D, TPrimitive> weight0,
                                           U num_elements, U offset = 0) {
@@ -4695,6 +4745,38 @@ class Runner {
     return thrust::transform_reduce(
         begin, end, SquaredDifferenceWeighted<M, TPrimitive>(),
         static_cast<TPrimitive>(0), thrust::plus<TPrimitive>());
+  }
+
+  // TODO: rename to sum_se_weighted
+  template <U D, typename M>
+  static M sum_products(Variable<D, M> v0, Variable<D, M> v1, U num_elements,
+                        U offset = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset + num_elements)));
+    return thrust::transform_reduce(begin, end, Product<M>(), M{0},
+                                    thrust::plus<M>());
+  }
+
+  template <U D1, U D2, typename M>
+  static M sum_products_different_offsets(Variable<D1, M> v0,
+                                          Variable<D2, M> v1, U num_elements,
+                                          U offset0 = 0, U offset1 = 0) {
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+        thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) + offset0,
+        thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) + offset1));
+    auto end = thrust::make_zip_iterator(
+        thrust::make_tuple(thrust::device_ptr<M>(static_cast<M*>(v0.ptr_)) +
+                               (offset0 + num_elements),
+                           thrust::device_ptr<M>(static_cast<M*>(v1.ptr_)) +
+                               (offset1 + num_elements)));
+    return thrust::transform_reduce(begin, end, Product<M>(), M{0},
+                                    thrust::plus<M>());
   }
 
   template <U D, typename M, typename TPrimitive>
@@ -5678,6 +5760,21 @@ class Runner {
         },
         "compute_sample_velocity_with_pellets",
         compute_sample_velocity_with_pellets<TQ, TF3, TF>);
+  }
+  void launch_compute_distance_mask_multiple(Variable<1, TF3>& grid_x,
+                                             Variable<1, TF3>& buoy_x,
+                                             Variable<2, TF>& mask,
+                                             TF distance_threshold,
+                                             U num_grid_points, U num_buoys) {
+    launch(
+        num_grid_points,
+        [&](U grid_size, U block_size) {
+          compute_distance_mask_multiple<<<grid_size, block_size>>>(
+              grid_x, buoy_x, mask, distance_threshold, num_grid_points,
+              num_buoys);
+        },
+        "compute_distance_mask_multiple",
+        compute_distance_mask_multiple<TF3, TF>);
   }
   void launch_sample_vorticity(
       Variable<1, TF3>& sample_x, Variable<1, TF3>& particle_x,

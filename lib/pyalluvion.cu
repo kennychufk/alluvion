@@ -374,6 +374,11 @@ void declare_metrics(py::module& m,
       py::arg("v0"), py::arg("v1"), py::arg("weight0"), py::arg("n"),
       py::arg("offset") = 0);
   runner_class->def_static(
+      "calculate_se",
+      &Runner<TPrimitive>::template calculate_se<D, M, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("se"), py::arg("n"),
+      py::arg("offset") = 0);
+  runner_class->def_static(
       "calculate_se_yz_masked",
       &Runner<TPrimitive>::template calculate_se_yz_masked<D, M, TPrimitive>,
       py::arg("v0"), py::arg("v1"), py::arg("mask"), py::arg("n"),
@@ -383,6 +388,15 @@ void declare_metrics(py::module& m,
       py::arg("histogram_p"), py::arg("histogram_q"), py::arg("n_p"),
       py::arg("n_q"), py::arg("q_lower_bound") = static_cast<TPrimitive>(1e-6),
       py::arg("num_bins") = kHistogram256BinCount);
+  runner_class->def_static(
+      "sum_products", &Runner<TPrimitive>::template sum_products<D, TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset") = 0);
+  runner_class->def_static(
+      "sum_products_different_offsets",
+      &Runner<TPrimitive>::template sum_products_different_offsets<D, 2,
+                                                                   TPrimitive>,
+      py::arg("v0"), py::arg("v1"), py::arg("n"), py::arg("offset0") = 0,
+      py::arg("offset1") = 0);
 }
 
 template <unsigned int D, typename M>
@@ -1210,6 +1224,10 @@ py::class_<Runner<TF>> declare_runner(py::module& m, const char* name) {
            py::arg("sample_num_neighbors"), py::arg("sample_v"),
            py::arg("sample_pellet_neighbors"),
            py::arg("sample_num_pellet_neighbors"), py::arg("num_samples"))
+      .def("launch_compute_distance_mask_multiple",
+           &TRunner::launch_compute_distance_mask_multiple, py::arg("grid_x"),
+           py::arg("buoy_x"), py::arg("mask"), py::arg("distance_threshold"),
+           py::arg("num_grid_points"), py::arg("num_buoys"))
       .def("launch_sample_vorticity", &TRunner::launch_sample_vorticity)
       .def("launch_sample_vorticity_with_pellets",
            &TRunner::launch_sample_vorticity_with_pellets)
