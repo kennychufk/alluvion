@@ -1020,6 +1020,9 @@ void declare_solver_i(py::module& m, const char* name) {
       .def_readwrite("min_density_solve", &TSolverI::min_density_solve)
       .def_readwrite("max_density_solve", &TSolverI::max_density_solve)
       .def_property_readonly(
+          "particle_guiding",
+          [](TSolverI const& solver) { return solver.particle_guiding.get(); })
+      .def_property_readonly(
           "particle_pressure",
           [](TSolverI const& solver) { return solver.particle_pressure.get(); })
       .def_property_readonly("particle_last_pressure",
